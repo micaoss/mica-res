@@ -1,11 +1,48 @@
 import type { RelationTuple } from "./policy.service";
-import type { GrantParams, PolicyContext, ResourceDefinition, Subject, TupleKey } from "./registry";
+import type { GrantParams, PermissionCache, PolicyContext, ResourceDefinition, Subject, TupleKey } from "./registry";
 import type { AppDatabase } from "@/db";
 import { ForbiddenError } from "@/shared/lib/errors";
 import { createTuple, deleteTupleByKey, deleteTuplesForEntity } from "./policy.service";
 import { registerResource } from "./registry";
 import { registerRouteBinding } from "./route-registry";
-import { check, listUserResources } from "./zanzibar.engine";
+import { check, listUserResources, resolveUserGroups } from "./zanzibar.engine";
+
+export function createPermissionCache(): PermissionCache {
+  const cache: PermissionCache = {
+    checks: new Map(),
+    clear() {
+      cache.checks.clear();
+      cache.groupClosure = undefined;
+    },
+  };
+  return cache;
+}
+
+/**
+ * The one engine entry point for the facade. Hooks (`bypass`, `onChecked`)
+ * stay outside so their per-call contract is untouched; only the graph
+ * resolution is memoised. Group closure is resolved once per request and
+ * handed to the engine so `group:G#member` usersets become set lookups.
+ */
+async function resolveAllowed(ctx: PolicyContext, namespace: string, objectId: string, relation: string): Promise<boolean> {
+  const { cache } = ctx;
+  if (!cache)
+    return (await check(ctx.db, namespace, objectId, relation, ctx.actor.type, ctx.actor.id)).allowed;
+
+  const key = `${namespace}:${objectId}#${relation}@${ctx.actor.type}:${ctx.actor.id}`;
+  const hit = cache.checks.get(key);
+  if (hit !== undefined)
+    return hit;
+
+  if (cache.groupClosure === undefined && ctx.actor.type === "user")
+    cache.groupClosure = new Set(await resolveUserGroups(ctx.db, ctx.actor.id));
+
+  const result = await check(ctx.db, namespace, objectId, relation, ctx.actor.type, ctx.actor.id, {
+    ...(cache.groupClosure && { groupClosure: cache.groupClosure }),
+  });
+  cache.checks.set(key, result.allowed);
+  return result.allowed;
+}
 
 /**
  * Action-based permission client for one resource. Business code calls
@@ -42,16 +79,9 @@ export class ResourceAccess<TAction extends string> {
       }
     }
 
-    const result = await check(
-      ctx.db,
-      this.definition.namespace,
-      objectId,
-      this.definition.actions[action],
-      ctx.actor.type,
-      ctx.actor.id,
-    );
-    await hooks?.onChecked?.(ctx, { action, objectId, allowed: result.allowed, bypassed: false });
-    return result.allowed;
+    const allowed = await resolveAllowed(ctx, this.definition.namespace, objectId, this.definition.actions[action]);
+    await hooks?.onChecked?.(ctx, { action, objectId, allowed, bypassed: false });
+    return allowed;
   }
 
   // No bypass: that's a property of the request actor, not of an
@@ -96,6 +126,7 @@ export class ResourceAccess<TAction extends string> {
       },
       ctx.actor.id,
     );
+    ctx.cache?.clear();
 
     await hooks?.onGranted?.(ctx, tuple);
     return tuple;
@@ -120,6 +151,7 @@ export class ResourceAccess<TAction extends string> {
       subjectRelation: defaultSubjectRelation(params.subject),
     };
     const removed = await deleteTupleByKey(ctx.db, key);
+    ctx.cache?.clear();
 
     if (removed)
       await hooks?.onRevoked?.(ctx, key);
@@ -153,8 +185,7 @@ export class ResourceAccess<TAction extends string> {
         return true;
     }
 
-    const result = await check(ctx.db, this.definition.namespace, objectId, required, ctx.actor.type, ctx.actor.id);
-    return result.allowed;
+    return await resolveAllowed(ctx, this.definition.namespace, objectId, required);
   }
 
   /**

@@ -50,6 +50,22 @@ export interface CheckResult {
   readonly resolvedThrough: readonly string[];
 }
 
+/**
+ * Per-resolution state for `check()`. Callers normally pass nothing; the
+ * engine fills in fresh recursion state. `groupClosure` is the one
+ * caller-facing knob: the full set of group ids the subject belongs to
+ * (nested groups already flattened). When supplied, a `group:G#member`
+ * userset resolves as a set lookup instead of recursing into the group's
+ * membership one group at a time — a request that checks many objects
+ * resolves the closure once and reuses it.
+ */
+export interface CheckOptions {
+  readonly depth?: number;
+  readonly visited?: Set<string>;
+  readonly budget?: NodeBudget;
+  readonly groupClosure?: ReadonlySet<string>;
+}
+
 export interface SubjectNode {
   readonly namespace: string;
   readonly id: string;
@@ -87,10 +103,14 @@ export async function check(
   relation: string,
   subjectNs: string,
   subjectId: string,
-  depth = 0,
-  visited: Set<string> = new Set(),
-  budget: NodeBudget = makeBudget(),
+  options: CheckOptions = {},
 ): Promise<CheckResult> {
+  const depth = options.depth ?? 0;
+  const visited = options.visited ?? new Set<string>();
+  const budget = options.budget ?? makeBudget();
+  const { groupClosure } = options;
+  const recurse: CheckOptions = { depth: depth + 1, visited, budget, ...(groupClosure && { groupClosure }) };
+
   if (depth > MAX_DEPTH) {
     return { allowed: false, resolvedThrough: [] };
   }
@@ -151,6 +171,17 @@ export async function check(
         .all();
 
   for (const tuple of usersetTuples) {
+    // Membership answered from the supplied closure: no per-group recursion.
+    if (groupClosure && isGroupMembership(tuple.subjectNamespace, tuple.subjectRelation!)) {
+      if (groupClosure.has(tuple.subjectId)) {
+        return {
+          allowed: true,
+          resolvedThrough: [formatTuple(namespace, objectId, relation, tuple.subjectNamespace, tuple.subjectId, tuple.subjectRelation)],
+        };
+      }
+      continue;
+    }
+
     const innerResult = await check(
       db,
       tuple.subjectNamespace,
@@ -158,9 +189,7 @@ export async function check(
       tuple.subjectRelation!,
       subjectNs,
       subjectId,
-      depth + 1,
-      visited,
-      budget,
+      recurse,
     );
     if (innerResult.allowed) {
       return {
@@ -176,7 +205,7 @@ export async function check(
   // 3. Computed userset — check parent relations
   const parentRelations = getParentRelations(namespace, relation);
   for (const parentRel of parentRelations) {
-    const parentResult = await check(db, namespace, objectId, parentRel, subjectNs, subjectId, depth + 1, visited, budget);
+    const parentResult = await check(db, namespace, objectId, parentRel, subjectNs, subjectId, recurse);
     if (parentResult.allowed) {
       return {
         allowed: true,
@@ -208,9 +237,7 @@ export async function check(
         rule.computed_userset,
         subjectNs,
         subjectId,
-        depth + 1,
-        visited,
-        budget,
+        recurse,
       );
       if (innerResult.allowed) {
         return {
@@ -409,8 +436,10 @@ export async function listUserResources(
 
 /**
  * Recursively resolve all groups a user belongs to (handles nested groups).
+ * Exported so a request can compute the closure once and hand it to
+ * `check()` via `CheckOptions.groupClosure`.
  */
-async function resolveUserGroups(db: AppDatabase, userId: string, budget: NodeBudget): Promise<readonly string[]> {
+export async function resolveUserGroups(db: AppDatabase, userId: string, budget: NodeBudget = makeBudget()): Promise<readonly string[]> {
   const allGroups = new Set<string>();
 
   // Direct group memberships

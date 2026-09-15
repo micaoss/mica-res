@@ -2,7 +2,7 @@ import { registerBackupContribution } from "@/modules/backup/registry";
 import { policyBackupContribution } from "./policy.backup";
 
 export { policyContext, policyMiddleware, requirePermission } from "./middleware";
-export { defineResource, ResourceAccess } from "./permission";
+export { createPermissionCache, defineResource, ResourceAccess } from "./permission";
 export { NOOP_POLICY_LOGGER } from "./policy-logger";
 export { policyRoutes } from "./policy.routes";
 export {
@@ -17,6 +17,7 @@ export {
 export type {
   EntityDescriptor,
   GrantParams,
+  PermissionCache,
   PolicyActor,
   PolicyContext,
   PolicyRequest,

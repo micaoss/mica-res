@@ -167,6 +167,24 @@ lifecycle point.
 | `canRevoke` | Before `revoke()` writes | gate who can take grants back |
 | `onGranted` | After a successful grant | audit, notify, cache-invalidate |
 | `onRevoked` | After a successful revoke | audit, notify, cache-invalidate |
+
+### Request-scoped cache
+
+`policyContext(c)` attaches a `PermissionCache` to the context. Every
+`can` / `assert` / field check on that context memoises the engine's
+answer for `(namespace, object, relation, actor)`, and the actor's group
+closure (nested groups flattened) is resolved once and handed to the
+engine, so a `group:G#member` userset is a set lookup instead of a
+per-group recursion. The middleware gate and a handler's own `assert`
+on the same object therefore cost one resolution, and `filterWritable`
+/ `projectFields` no longer re-walk the graph per restricted field.
+
+`grant` / `revoke` / `cascadeDelete` clear the cache. The cache lives and
+dies with the request, so there is no cross-request invalidation. Hooks
+(`bypass`, `onChecked`) still run on every call — only the graph walk is
+memoised. Code that writes tuples directly and then checks permissions in
+the same request must call `ctx.cache?.clear()` itself. A context built
+by hand without a `cache` (cron actors, internal helpers) resolves live.
 | `onChecked` | After every check (use sparingly!) | per-request audit sampling |
 | `resolveEntity` | On demand by audit / UI | render `name` instead of opaque id |
 

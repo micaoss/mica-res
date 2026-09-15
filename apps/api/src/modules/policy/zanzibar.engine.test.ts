@@ -241,6 +241,22 @@ describe("Zanzibar Engine", () => {
     });
   });
 
+  describe("check — supplied group closure", () => {
+    it("treats a caller-supplied group closure as the membership source instead of re-resolving per group", async () => {
+      // No group_members row for the user: the engine on its own must deny.
+      await insertTuple(db, "app", "closure-app", "viewer", "group", "g-closed", "member");
+      expect((await check(db, "app", "closure-app", "viewer", "user", "outsider")).allowed).toBe(false);
+
+      // With the closure handed in (as a request-scoped resolver would),
+      // membership is a set lookup and no group recursion happens.
+      const withClosure = await check(db, "app", "closure-app", "viewer", "user", "outsider", {
+        groupClosure: new Set(["g-closed"]),
+      });
+      expect(withClosure.allowed).toBe(true);
+      expect(withClosure.resolvedThrough[0]).toBe("app:closure-app#viewer@group:g-closed#member");
+    });
+  });
+
   describe("expand — node budget", () => {
     it("stops expanding once the shared node budget is exhausted instead of walking the whole fan-out", async () => {
       // Direct leaves cost nothing — they come back in the object's own row

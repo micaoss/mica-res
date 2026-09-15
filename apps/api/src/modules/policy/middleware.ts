@@ -6,7 +6,7 @@ import type { AppEnv } from "@/shared/lib/types";
 import { getClientIp } from "@/shared/lib/client-ip";
 import { AppError, ForbiddenError, NotFoundError, UnauthorizedError } from "@/shared/lib/errors";
 import { getAuthProvider } from "@/shared/middleware/auth-registry";
-import { getAccessByName } from "./permission";
+import { createPermissionCache, getAccessByName } from "./permission";
 import { getResource } from "./registry";
 import { getAllRouteBindings } from "./route-registry";
 
@@ -32,6 +32,7 @@ export function policyContext(c: Context<AppEnv>): PolicyContext | null {
     logger: c.get("logger"),
     actor: { id: user.id, type: "user", role: user.role, name: user.name },
     request: buildPolicyRequest(c),
+    cache: createPermissionCache(),
   };
 }
 

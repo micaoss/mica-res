@@ -50,6 +50,13 @@ each upstream tag; your fork's `Unreleased` block sits at the top.
   fail a run on bunfig `coverageThreshold` (verified), so the CI coverage gate
   stays; the api coverage baseline it documents moves to lines 85.93% /
   functions 78.79% under the new runtime.
+- `PolicyContext` carries a request-scoped `PermissionCache`: repeated
+  checks of the same `(object, relation, actor)` within one request —
+  middleware gate + handler `assert`, per-field `filterWritable` /
+  `projectFields`, editor-then-viewer probes — resolve once. The actor's
+  group closure is computed once per request and passed to the engine
+  (`CheckOptions.groupClosure`), turning group usersets into set lookups.
+  `grant` / `revoke` clear it; hooks still fire per call.
 
 ### Fixed
 

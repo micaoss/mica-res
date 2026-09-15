@@ -35,10 +35,27 @@ export interface PolicyActor {
   readonly metadata?: Readonly<Record<string, unknown>>;
 }
 
+/**
+ * Request-scoped memo for engine results. One object per request; the
+ * permission snapshot stays consistent for the request's lifetime and is
+ * dropped with it, so there is no cross-request invalidation to get wrong.
+ * `grant` / `revoke` / `cascadeDelete` clear it. Code that writes tuples
+ * directly (bypassing the facade) must call `clear()` itself if it goes on
+ * to check permissions in the same request.
+ */
+export interface PermissionCache {
+  readonly checks: Map<string, boolean>;
+  /** Flattened group ids for the actor, resolved once on first use. */
+  groupClosure?: ReadonlySet<string> | undefined;
+  clear: () => void;
+}
+
 export interface PolicyContext {
   readonly db: AppDatabase;
   readonly actor: PolicyActor;
   readonly request?: PolicyRequest;
+  /** Absent → every call resolves live (internal helpers, cron actors). */
+  readonly cache?: PermissionCache;
   // Threaded through so per-resource onGranted / onRevoked hooks (e.g.
   // document.permission's share-audit emitter) can write to the
   // structured logger without reaching for a process-global handle.

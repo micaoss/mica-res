@@ -25,6 +25,10 @@ keep_versions   = 3                      # retained versions for rollback
 # allows the asset; switch to "enforce" once you publish signed assets
 # (run `lode-cli keygen`, set LODE_SIGNING_KEY in CI, and list trusted_keys).
 require_signature = "auto"
+# Strongly recommended for any deployment that polls updates: without a key
+# here, "auto" installs assets UNVERIFIED (checksum only). The release
+# workflow signs automatically once the LODE_SIGNING_KEY secret is set —
+# paste the trusted_keys entry `lode-cli keygen` printed:
 # trusted_keys = ["<key_id>:<base64-pubkey>"]
 
 [command]

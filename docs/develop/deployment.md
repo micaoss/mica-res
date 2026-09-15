@@ -318,6 +318,16 @@ The `/api/backup/export` admin endpoint produces a JSON dump of selected modules
 
 Updates are driven by [lode](https://github.com/dotns/lode). To publish one: bump the version, cut a GitHub Release with a `v*` tag, and the `release` workflow builds + uploads the lode asset (`<app>-linux-x64.tar.gz` + `manifest.json` + `checksums.txt`). Each deployed lode polls its source (`deploy/lode.toml` `[update]`) on `check_interval`, then — per `policy` (`off` / `check` / `auto`) — downloads, verifies the checksum (and signature when `[trust].require_signature` is set), runs the new version, waits out `health_grace`, and **auto-rolls-back** to the last good version if the new one exits early. `keep_versions` bounds the retained versions.
 
+**Sign your releases.** The checksum lives in the same release as the asset,
+so on its own it proves integrity, not origin — anyone who can publish a
+release can ship an asset every polling lode will install. Run
+`lode-cli keygen` once, store the printed seed as the `LODE_SIGNING_KEY`
+repository secret, and put the printed `trusted_keys` entry in
+`deploy/lode.toml`. The `release` workflow then signs every asset
+(`scripts/ci/sign-release.sh` → `<asset>.sig`) and lode's `auto` trust mode
+fails closed on anything unsigned. Until a key is configured the signing
+step is skipped and lode logs an UNVERIFIED warning on each install.
+
 The SQLite migrations ship inside the asset (`drizzle/`) and run on boot of the new version. The risky schema cases:
 
 | Change | Path |

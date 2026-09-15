@@ -63,6 +63,22 @@ jobs:
       - name: Validate lode release assets
         run: bun scripts/ci/validate-lode-release.ts
 
+      # Sign the asset when a key is configured. Without LODE_SIGNING_KEY the
+      # step is skipped and lode installs the asset UNVERIFIED (its `auto`
+      # trust mode) — checksum only. Generate a key with `lode-cli keygen`,
+      # store the seed as the LODE_SIGNING_KEY repository secret, and list
+      # the printed trusted_keys entry in deploy/lode.toml.
+      - name: Check for signing key
+        env:
+          LODE_SIGNING_KEY: ${{ secrets.LODE_SIGNING_KEY }}
+        run: echo "HAS_SIGNING_KEY=$([ -n "$LODE_SIGNING_KEY" ] && echo true || echo false)" >> "$GITHUB_ENV"
+
+      - name: Sign lode asset
+        if: env.HAS_SIGNING_KEY == 'true'
+        env:
+          LODE_SIGNING_KEY: ${{ secrets.LODE_SIGNING_KEY }}
+        run: bash scripts/ci/sign-release.sh
+
       - name: Upload assets to GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

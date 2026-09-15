@@ -6,8 +6,13 @@
 set -euo pipefail
 
 gh release view "${TAG_NAME:?TAG_NAME is required}" >/dev/null
+# The .sig sidecar exists only when the release was signed (see
+# sign-release.sh); upload it when present so lode can verify.
+sig=()
+[ -s "dist/${ASSET_NAME:?ASSET_NAME is required}.sig" ] && sig=("dist/${ASSET_NAME}.sig")
 gh release upload "${TAG_NAME}" \
-  "dist/${ASSET_NAME:?ASSET_NAME is required}" \
+  "dist/${ASSET_NAME}" \
   dist/manifest.json \
   dist/checksums.txt \
+  "${sig[@]}" \
   --clobber

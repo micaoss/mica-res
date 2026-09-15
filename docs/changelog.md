@@ -77,6 +77,11 @@ each upstream tag; your fork's `Unreleased` block sits at the top.
 - `docker-compose.yml` drops all capabilities and sets
   `no-new-privileges` on the app service (the image already runs as the
   unprivileged `bun` user).
+- The release workflow signs the lode asset (`scripts/ci/sign-release.sh`,
+  `<asset>.sig` sidecar) whenever the `LODE_SIGNING_KEY` secret is set and
+  uploads the signature alongside; `deploy/lode.toml` and the deployment
+  guide explain that `require_signature = "auto"` installs UNVERIFIED until
+  a `trusted_keys` entry is configured.
 - **Migration note for forks with a deployed database:** per template
   convention the single squashed `0000_init` migration was regenerated in
   place rather than appended to. A database already at `0000_init` will

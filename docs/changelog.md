@@ -66,6 +66,13 @@ each upstream tag; your fork's `Unreleased` block sits at the top.
 - `policyMiddleware` let the handler run when a route binding pointed at a
   resource with no registered definition. It now fails closed with a 500 —
   that state is a wiring bug, not a reason to skip the permission check.
+- `expand()` had only the depth cap; `check()` / `listUserResources()` also
+  carried the shared node budget. It now threads the same budget through
+  every recursive branch, so a wide nested-userset graph is cut off instead
+  of walked in full.
+- `registerRouteBinding()` accepted a second binding on the same
+  `(method, path)`, which would gate the route twice with whichever action
+  each declared. It now throws at registration.
 
 ## v0.1.0 — 2026-05-14
 

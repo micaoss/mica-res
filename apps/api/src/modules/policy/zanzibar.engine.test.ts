@@ -241,6 +241,25 @@ describe("Zanzibar Engine", () => {
     });
   });
 
+  describe("expand — node budget", () => {
+    it("stops expanding once the shared node budget is exhausted instead of walking the whole fan-out", async () => {
+      // Direct leaves cost nothing — they come back in the object's own row
+      // fetch. The fan-out that needs bounding is nested userset expansion:
+      // 12 groups, each recursed into to enumerate its members.
+      for (let i = 0; i < 12; i++) {
+        await insertTuple(db, "group", `team-${i}`, "member", "user", `u${i}`);
+        await insertTuple(db, "app", "wide-app", "viewer", "group", `team-${i}`, "member");
+      }
+
+      const full = await expand(db, "app", "wide-app", "viewer");
+      expect(collectUserIds(full)).toHaveLength(12);
+
+      // 1 for the root + 4 group expansions, then the rest are cut short.
+      const capped = await expand(db, "app", "wide-app", "viewer", 0, new Set(), { remaining: 5 });
+      expect(collectUserIds(capped)).toHaveLength(4);
+    });
+  });
+
   describe("listUserResources", () => {
     it("should list directly assigned resources", async () => {
       await insertTuple(db, "app", "app-a", "viewer", "user", "zhangsan");

@@ -14,7 +14,7 @@ const MAX_DEPTH = 10;
 
 /**
  * Hard cap on the total number of graph nodes a single top-level resolution
- * (`check` / `listUserResources`) may visit, summed across *all* recursion
+ * (`check` / `expand` / `listUserResources`) may visit, summed across *all* recursion
  * branches. `MAX_DEPTH` only bounds a single path; a wide permission graph can
  * still fan out into an exponential number of paths within that depth. This
  * shared counter bounds the aggregate work and short-circuits a pathological
@@ -234,8 +234,15 @@ export async function expand(
   relation: string,
   depth = 0,
   visited: Set<string> = new Set(),
+  budget: NodeBudget = makeBudget(),
 ): Promise<SubjectNode[]> {
   if (depth > MAX_DEPTH)
+    return [];
+
+  // Same shared budget as check(): depth alone does not bound a wide graph,
+  // and expand walks every branch rather than short-circuiting on the first
+  // hit, so it is the path most exposed to fan-out.
+  if (!spend(budget))
     return [];
 
   const key = expandKey(namespace, objectId, relation);
@@ -261,7 +268,7 @@ export async function expand(
 
   for (const tuple of tuples) {
     if (tuple.subjectRelation) {
-      const children = await expand(db, tuple.subjectNamespace, tuple.subjectId, tuple.subjectRelation, depth + 1, visited);
+      const children = await expand(db, tuple.subjectNamespace, tuple.subjectId, tuple.subjectRelation, depth + 1, visited, budget);
       nodes.push({
         namespace: tuple.subjectNamespace,
         id: tuple.subjectId,
@@ -280,7 +287,7 @@ export async function expand(
   // Expand parent relations (computed_userset)
   const parentRelations = getParentRelations(namespace, relation);
   for (const parentRel of parentRelations) {
-    const parentNodes = await expand(db, namespace, objectId, parentRel, depth + 1, visited);
+    const parentNodes = await expand(db, namespace, objectId, parentRel, depth + 1, visited, budget);
     nodes.push(...parentNodes);
   }
 
@@ -300,7 +307,7 @@ export async function expand(
       .all();
 
     for (const tuple of tuplesetTuples) {
-      const children = await expand(db, tuple.subjectNamespace, tuple.subjectId, rule.computed_userset, depth + 1, visited);
+      const children = await expand(db, tuple.subjectNamespace, tuple.subjectId, rule.computed_userset, depth + 1, visited, budget);
       nodes.push({
         namespace: tuple.subjectNamespace,
         id: tuple.subjectId,

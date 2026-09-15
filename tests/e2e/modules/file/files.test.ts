@@ -19,8 +19,8 @@ describe("/api/files/:id — generic download path", () => {
     const docId = doc.data.id;
 
     const fd = new FormData();
-    fd.append("file", new Blob([new TextEncoder().encode("hello files route")], { type: "text/plain" }), "hello.txt");
-    const upload = await user.raw(`/api/documents/${docId}/attachments`, { method: "POST", body: fd });
+    fd.append("file", new File(["hello files route"], "hello.txt", { type: "text/plain" }));
+    const upload = await user.raw(`/api/documents/${docId}/attachments`, { method: "POST", formData: fd });
     expect(upload.status).toBe(201);
     const att = (await upload.json() as { data: Attachment }).data;
     expect(att.fileId).toBeTruthy();

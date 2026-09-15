@@ -41,7 +41,13 @@ export async function createDb(path: string, encryptionKey?: string) {
   for (const pragma of [
     "PRAGMA synchronous = NORMAL",
     "PRAGMA cache_size = -65536",
-    "PRAGMA mmap_size = 268435456",
+    // Never memory-map an encrypted database. libsql's page-level
+    // encryption and mmap I/O do not mix: with mmap on, a long-lived
+    // encrypted WAL was observed to become "database disk image is
+    // malformed" after an ordinary fresh-page append (reproduced end-to-end
+    // by the e2e suite; deterministic per write sequence; clean with mmap
+    // off). Plaintext databases keep the mapping.
+    ...(encryptionKey ? [] : ["PRAGMA mmap_size = 268435456"]),
     "PRAGMA temp_store = MEMORY",
   ]) {
     try {

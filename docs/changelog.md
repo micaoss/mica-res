@@ -51,6 +51,22 @@ each upstream tag; your fork's `Unreleased` block sits at the top.
   stays; the api coverage baseline it documents moves to lines 85.93% /
   functions 78.79% under the new runtime.
 
+### Fixed
+
+- `PATCH /api/policy/tuples/:id` deleted the old tuple before validating the
+  new relation, so a rejected relation (typo, or one that collided with an
+  existing row) answered 422 and silently revoked the permission. The rewrite
+  now validates first and runs delete + insert in one transaction
+  (`updateTupleRelation`). The route also goes through the same
+  `group:*#member` guard as `POST` and the batch endpoint.
+- `POST /api/policy/tuples/batch` accepted the same tuple twice in one payload
+  and inserted both — the duplicate check only looked at rows already in the
+  table, and `idx_tuples_unique` cannot catch it when `subjectRelation` is
+  NULL. Intra-batch duplicates are now a 422 before anything is written.
+- `policyMiddleware` let the handler run when a route binding pointed at a
+  resource with no registered definition. It now fails closed with a 500 —
+  that state is a wiring bug, not a reason to skip the permission check.
+
 ## v0.1.0 — 2026-05-14
 
 First tagged template release. Subsequent forks should anchor their

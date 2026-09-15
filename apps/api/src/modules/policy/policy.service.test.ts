@@ -179,6 +179,14 @@ describe("Policy Service", () => {
       expect(tuples).toHaveLength(2);
     });
 
+    it("should reject a batch that repeats the same tuple and insert nothing", async () => {
+      const dup = { namespace: "app", objectId: "app-a", relation: "viewer", subjectNamespace: "user", subjectId: "u1" };
+      expect(batchCreateTuples(db, [dup, { ...dup }], userId)).rejects.toThrow("Duplicate tuple");
+
+      const rows = await getTuplesByObject(db, "app", "app-a");
+      expect(rows).toHaveLength(0);
+    });
+
     it("should reject batch with invalid tuple", async () => {
       expect(batchCreateTuples(db, [
         { namespace: "app", objectId: "app-a", relation: "viewer", subjectNamespace: "user", subjectId: "u1" },

@@ -4,7 +4,7 @@ import type { PolicyContext, PolicyRequest, ResourceRouteSpec } from "./registry
 import type { RouteBinding } from "./route-registry";
 import type { AppEnv } from "@/shared/lib/types";
 import { getClientIp } from "@/shared/lib/client-ip";
-import { ForbiddenError, NotFoundError, UnauthorizedError } from "@/shared/lib/errors";
+import { AppError, ForbiddenError, NotFoundError, UnauthorizedError } from "@/shared/lib/errors";
 import { getAuthProvider } from "@/shared/middleware/auth-registry";
 import { getAccessByName } from "./permission";
 import { getResource } from "./registry";
@@ -172,8 +172,11 @@ export function policyMiddleware(options: { readonly basePath?: string } = {}): 
 
     const access = getAccessByName(match.binding.resourceName);
     const def = getResource(match.binding.resourceName);
+    // A binding only exists because defineResource() wrote it, so this
+    // cannot happen by construction — but a permission gate's fallback
+    // must be to deny, never to let the handler run unchecked.
     if (!access || !def)
-      return next();
+      throw new AppError(`Policy binding for resource '${match.binding.resourceName}' has no registered definition`);
 
     const params: Record<string, string> = {};
     for (let i = 0; i < match.paramNames.length; i++)

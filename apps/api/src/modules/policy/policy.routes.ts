@@ -16,6 +16,7 @@ import {
   getTupleById,
   getTuplesBySubject,
   listTuples,
+  updateTupleRelation,
 } from "./policy.service";
 import { getPermissionManifest } from "./registry";
 import {
@@ -248,17 +249,12 @@ export function policyRoutes() {
       }
 
       const body = c.req.valid("json");
+      rejectGroupMembershipTuple({ namespace: existing.namespace, relation: body.relation });
 
-      // Delete old and create new with updated relation
-      await deleteTuple(db, id);
-      const updated = await createTuple(db, {
-        namespace: existing.namespace,
-        objectId: existing.objectId,
-        relation: body.relation,
-        subjectNamespace: existing.subjectNamespace,
-        subjectId: existing.subjectId,
-        subjectRelation: existing.subjectRelation,
-      }, user.id);
+      const updated = await updateTupleRelation(db, id, body.relation, user.id);
+      if (!updated) {
+        throw new NotFoundError("Tuple", id);
+      }
 
       const tupleStr = `${existing.namespace}:${existing.objectId}#${body.relation}@${existing.subjectNamespace}:${existing.subjectId}${existing.subjectRelation ? `#${existing.subjectRelation}` : ""}`;
       await audit(db, c.get("logger"), {

@@ -428,6 +428,90 @@ describe("resource-group members", () => {
   });
 });
 
+describe("PATCH /policy/tuples/:id", () => {
+  let app: Hono<AppEnv> | undefined;
+  beforeEach(() => {
+    app = buildApp(db);
+  });
+
+  async function seedTuple(cookie: string, relation = "viewer"): Promise<string> {
+    const res = await app!.request("/policy/tuples", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Cookie": cookie },
+      body: JSON.stringify({ namespace: "item", objectId: "doc-1", relation, subjectNamespace: "user", subjectId: "u1" }),
+    });
+    expect(res.status).toBe(201);
+    const body = await res.json() as { data: { id: string } };
+    return body.data.id;
+  }
+
+  async function patchRelation(cookie: string, id: string, relation: string) {
+    return await app!.request(`/policy/tuples/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "Cookie": cookie },
+      body: JSON.stringify({ relation }),
+    });
+  }
+
+  test("rewrites the relation and drops the old row", async () => {
+    const { cookie } = await sessionCookieFor("admin");
+    const id = await seedTuple(cookie);
+
+    const res = await patchRelation(cookie, id, "editor");
+    expect(res.status).toBe(200);
+
+    const rows = await db.select().from(relationTuples).where(eq(relationTuples.objectId, "doc-1")).all();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.relation).toBe("editor");
+  });
+
+  test("an invalid relation is a 422 and leaves the original tuple untouched", async () => {
+    const { cookie } = await sessionCookieFor("admin");
+    const id = await seedTuple(cookie);
+
+    const res = await patchRelation(cookie, id, "not-a-relation");
+    expect(res.status).toBe(422);
+
+    const row = await db.select().from(relationTuples).where(eq(relationTuples.id, id)).get();
+    expect(row?.relation).toBe("viewer");
+  });
+
+  test("a relation that already exists for the same subject is a 422 and leaves the original untouched", async () => {
+    const { cookie } = await sessionCookieFor("admin");
+    const id = await seedTuple(cookie, "viewer");
+    await seedTuple(cookie, "editor");
+
+    const res = await patchRelation(cookie, id, "editor");
+    expect(res.status).toBe(422);
+
+    const rows = await db.select().from(relationTuples).where(eq(relationTuples.objectId, "doc-1")).all();
+    expect(rows.map(r => r.relation).sort()).toEqual(["editor", "viewer"]);
+  });
+
+  test("refuses to rewrite a row into group:X#member like POST does", async () => {
+    const { cookie, userId } = await sessionCookieFor("admin");
+    // Legacy row from before group membership moved to group_members —
+    // nothing can create one through the API any more, so seed it directly.
+    const id = nanoid();
+    await db.insert(relationTuples).values({
+      id,
+      namespace: "group",
+      objectId: "g1",
+      relation: "member",
+      subjectNamespace: "user",
+      subjectId: "u1",
+      subjectRelation: null,
+      createdBy: userId,
+      createdAt: new Date().toISOString(),
+    }).run();
+
+    const res = await patchRelation(cookie, id, "member");
+    expect(res.status).toBe(422);
+    const body = await res.json() as { error: { message: string } };
+    expect(body.error.message).toMatch(/group membership/i);
+  });
+});
+
 describe("POST /policy/tuples — group membership guard", () => {
   test("rejects group:X#member writes with 422 and points to the account route", async () => {
     const app = buildApp(db);

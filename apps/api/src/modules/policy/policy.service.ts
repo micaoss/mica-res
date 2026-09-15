@@ -125,6 +125,50 @@ export async function createTuple(db: AppDatabase, input: CreateTupleInput, crea
   return values;
 }
 
+/**
+ * Rewrite a tuple's relation. Validation runs before anything is touched,
+ * and the delete + insert share one BEGIN IMMEDIATE transaction, so a
+ * rejected relation (unknown for the namespace, or colliding with an
+ * existing row) leaves the original tuple in place instead of silently
+ * revoking it. Returns undefined when `id` does not exist.
+ */
+export async function updateTupleRelation(db: AppDatabase, id: string, relation: string, createdBy: string): Promise<RelationTuple | undefined> {
+  const existing = await getTupleById(db, id);
+  if (!existing)
+    return undefined;
+
+  const input: CreateTupleInput = {
+    namespace: existing.namespace,
+    objectId: existing.objectId,
+    relation,
+    subjectNamespace: existing.subjectNamespace,
+    subjectId: existing.subjectId,
+    subjectRelation: existing.subjectRelation,
+  };
+  validateTupleInput(input);
+
+  const values = {
+    id: nanoid(),
+    namespace: input.namespace,
+    objectId: input.objectId,
+    relation: input.relation,
+    subjectNamespace: input.subjectNamespace,
+    subjectId: input.subjectId,
+    subjectRelation: existing.subjectRelation,
+    createdBy,
+    createdAt: new Date().toISOString(),
+  };
+
+  await db.transaction(async (tx) => {
+    // Delete first so rewriting to the same relation is not a self-collision.
+    await tx.delete(relationTuples).where(eq(relationTuples.id, id)).run();
+    await checkDuplicateTuple(tx, input);
+    await tx.insert(relationTuples).values(values).run();
+  });
+
+  return values;
+}
+
 export async function deleteTuple(db: AppDatabase, id: string): Promise<boolean> {
   const existing = await db.select({ id: relationTuples.id }).from(relationTuples).where(eq(relationTuples.id, id)).get();
   if (!existing)
@@ -178,8 +222,19 @@ export async function deleteTupleByKey(
 }
 
 export async function batchCreateTuples(db: AppDatabase, inputs: readonly CreateTupleInput[], createdBy: string): Promise<readonly RelationTuple[]> {
+  // checkDuplicateTuple below only sees rows already in the table, so two
+  // identical inputs in one batch would both pass it and both insert — and
+  // idx_tuples_unique cannot catch that when subjectRelation is NULL.
+  const seen = new Set<string>();
   for (const input of inputs) {
     validateTupleInput(input);
+    const key = `${input.namespace}:${input.objectId}#${input.relation}@${input.subjectNamespace}:${input.subjectId}#${input.subjectRelation ?? ""}`;
+    if (seen.has(key)) {
+      throw new ValidationError("Duplicate tuple", {
+        tuple: "The batch contains the same relation tuple more than once",
+      });
+    }
+    seen.add(key);
   }
 
   const now = new Date().toISOString();

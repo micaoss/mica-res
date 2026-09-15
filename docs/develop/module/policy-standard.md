@@ -294,7 +294,8 @@ What the global middleware does, per request:
 2. Match `(method, path)` — no match → pass through (unregistered route).
 3. Resolve the actor via `c.get("user")` or the auth provider.
 4. **Admin role → bypass** (no DB queries).
-5. Look up the `ResourceAccess` by `resourceName`.
+5. Look up the `ResourceAccess` by `resourceName` — missing → 500 (a
+   binding without a definition is a wiring bug; the gate fails closed).
 6. Extract URL params from the regex match → call
    `hooks.resolveObjectId(c, params)` → object id.
 7. Run `access.can(ctx, action, objectId)` → 403 on deny.

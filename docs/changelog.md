@@ -80,6 +80,10 @@ each upstream tag; your fork's `Unreleased` block sits at the top.
   (group-member null → sentinel).
 - `find-unused-i18n` / `clean-unused-i18n` are wired as `bun run i18n:unused`
   / `bun run i18n:clean`; the README listed them as scripts but nothing did.
+- `initFileModule` warns once at boot when `FILE_PRESIGN_ENABLED` (default
+  `true`) is set on a storage driver that cannot presign — the bundled
+  `local` driver — instead of silently streaming every download through
+  the API.
 - `docker-compose.yml` drops all capabilities and sets
   `no-new-privileges` on the app service (the image already runs as the
   unprivileged `bun` user).

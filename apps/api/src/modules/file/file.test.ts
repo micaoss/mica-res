@@ -584,3 +584,27 @@ describe("schema cross-checks", () => {
     expect(row?.id).toBe(ok);
   });
 });
+
+describe("initFileModule presign capability warning", () => {
+  test("warns once when presign is enabled on a driver that cannot presign, silent otherwise", async () => {
+    const { initFileModule } = await import("./index");
+    const warned: unknown[] = [];
+    const logger = {
+      warn: (...args: unknown[]) => {
+        warned.push(args);
+      },
+    };
+
+    // The local driver's setup() needs a root it can create.
+    const root = resolve(tmpdir(), `test-file-presign-${Date.now()}`);
+    const base = { ...testConfig, FILE_STORAGE_DRIVER: "local", FILE_STORAGE_LOCAL_ROOT: root } as typeof testConfig;
+
+    await initFileModule({ ...base, FILE_PRESIGN_ENABLED: true }, logger);
+    expect(warned).toHaveLength(1);
+    expect(String((warned[0] as unknown[])[1])).toMatch(/cannot presign/);
+
+    await initFileModule({ ...base, FILE_PRESIGN_ENABLED: false }, logger);
+    expect(warned).toHaveLength(1);
+    rmSync(root, { recursive: true, force: true });
+  });
+});

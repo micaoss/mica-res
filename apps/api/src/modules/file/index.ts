@@ -1,4 +1,5 @@
 import type { Config } from "@/config";
+import type { Logger } from "@/shared/lib/logger";
 import { registerBackupContribution } from "@/modules/backup/registry";
 import { fileBackupContribution } from "./file.backup";
 import { getDriver, setActiveDriver } from "./storage/registry";
@@ -39,8 +40,18 @@ registerBackupContribution(fileBackupContribution);
  * (side-effect imports above); this function only picks the active
  * driver and runs its optional `setup(config)` hook.
  */
-export async function initFileModule(config: Config): Promise<void> {
+export async function initFileModule(config: Config, logger?: Pick<Logger, "warn">): Promise<void> {
   const driver = getDriver(config.FILE_STORAGE_DRIVER);
   await driver.setup?.(config);
   setActiveDriver(config.FILE_STORAGE_DRIVER);
+  // FILE_PRESIGN_ENABLED defaults to true, but presigning is a driver
+  // capability the bundled `local` driver does not have — downloads then
+  // stream through the API. Say so once at boot instead of silently
+  // ignoring the setting.
+  if (config.FILE_PRESIGN_ENABLED && !driver.presignDownload) {
+    logger?.warn(
+      { driver: driver.name },
+      "FILE_PRESIGN_ENABLED is set but the active storage driver cannot presign downloads; files will stream through the API",
+    );
+  }
 }

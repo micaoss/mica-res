@@ -157,7 +157,7 @@ export async function buildFullApp({ config, db, logger, encryption }: AppDeps) 
 
   await seedSettingsFromEnv(db, config);
   startAuditRetentionSweep(db, config, logger);
-  await initFileModule(config);
+  await initFileModule(config, logger);
   startFileGcSweep(db, config, logger);
   // Actions catalog is always populated so admins can plan jobs even
   // with the scheduler off. `startCron` allocates Baker and starts

@@ -4,7 +4,7 @@
  *
  * Usage:
  *   bun run clean          # standard clean
- *   bun run clean --all    # also remove node_modules, data/uploads, e2e cache
+ *   bun run clean --all    # also remove node_modules, data/db, data/uploads, e2e cache
  */
 import { existsSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
@@ -38,6 +38,12 @@ const allTargets = [
   "apps/web/node_modules",
   "packages/shared/node_modules",
   "packages/tsconfig/node_modules",
+  // Local database, with its WAL/SHM and the encryption meta.db that pairs
+  // with it. The template regenerates the squashed 0000_init migration in
+  // place, so a dev DB from an earlier schema cannot be migrated — it has
+  // to be rebuilt, and `app.db` without its `meta.db` (or vice versa) boots
+  // into a locked state against a file that no longer matches.
+  "data/db",
   // Test residue: per-test attachment trees and the e2e cache (run dirs +
   // dex binary + JUnit reports).
   "data/uploads",

@@ -80,6 +80,10 @@ each upstream tag; your fork's `Unreleased` block sits at the top.
   (group-member null → sentinel).
 - `find-unused-i18n` / `clean-unused-i18n` are wired as `bun run i18n:unused`
   / `bun run i18n:clean`; the README listed them as scripts but nothing did.
+- `bun run clean:all` now removes `data/db` (the local database with its
+  WAL/SHM, pid file and encryption `meta.db`) — the README already said it
+  did. Needed whenever the squashed `0000_init` migration is regenerated,
+  since a dev DB from the old schema cannot be migrated forward.
 - `initFileModule` warns once at boot when `FILE_PRESIGN_ENABLED` (default
   `true`) is set on a storage driver that cannot presign — the bundled
   `local` driver — instead of silently streaming every download through

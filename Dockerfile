@@ -5,7 +5,7 @@
 # checksum/signature per lode.toml, runs `bun index.js`, and supervises
 # update / rollback. The app's writable state lives on the /srv/lode volume,
 # separate from the swappable version directories.
-ARG BUN_IMAGE=docker.io/oven/bun:1.3.14-debian
+ARG BUN_IMAGE=docker.io/oven/bun:1.4.2-debian
 ARG LODE_IMAGE=docker.io/dotns/lode:latest
 
 FROM ${LODE_IMAGE} AS lode

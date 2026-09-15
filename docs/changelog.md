@@ -43,6 +43,13 @@ each upstream tag; your fork's `Unreleased` block sits at the top.
   8.x still caps its peer range at `<6.1.0`, so TypeScript 7 would break linting.
 - The app sidebar now starts expanded when the visitor has no stored
   `sidebar_state` preference (it used to start collapsed).
+- Bun 1.3.14 → 1.4.2 and Node 22.13.0 → 24.21.0 across every pin: CI and
+  release workflows, the runtime image base (`oven/bun:1.4.2-debian`) and
+  `deploy/lode.toml`'s runtime download. `@types/bun` already tracks 1.4.2, so
+  the type surface and the runtime now match again. Bun 1.4.2 still does not
+  fail a run on bunfig `coverageThreshold` (verified), so the CI coverage gate
+  stays; the api coverage baseline it documents moves to lines 85.93% /
+  functions 78.79% under the new runtime.
 
 ## v0.1.0 — 2026-05-14
 

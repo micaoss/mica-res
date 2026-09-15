@@ -19,7 +19,7 @@ docker build -t myapp .
 
 The asset is a flat runtime directory: lode unpacks it, runs `bun index.js` from the version directory, and the app serves the SPA from `dist/` and runs Drizzle migrations from `drizzle/` on disk. `BUILD_COMMIT` / `BUILD_VERSION` / `BUILD_TIME` are injected at package time (from git + the release tag) so `app --version` and `/api/system/version` report the real values.
 
-The container image bakes only the lode binary on top of `oven/bun:1.3.14-debian` (override `BUN_IMAGE` / `LODE_IMAGE` build-args). The app itself is **not** in the image — lode fetches the release asset named by `deploy/lode.toml` (`[update].asset`) at runtime. See [Upgrade playbook](#upgrade-playbook) and the lode [integration guide](https://github.com/dotns/lode/blob/main/docs/integration.md).
+The container image bakes only the lode binary on top of `oven/bun:1.4.2-debian` (override `BUN_IMAGE` / `LODE_IMAGE` build-args). The app itself is **not** in the image — lode fetches the release asset named by `deploy/lode.toml` (`[update].asset`) at runtime. See [Upgrade playbook](#upgrade-playbook) and the lode [integration guide](https://github.com/dotns/lode/blob/main/docs/integration.md).
 
 ## Required environment
 

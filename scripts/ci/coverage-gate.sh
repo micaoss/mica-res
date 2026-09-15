@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Coverage ratchet for apps/api. Bun 1.3.14 does not fail a run on bunfig
+# Coverage ratchet for apps/api. Bun 1.4.2 does not fail a run on bunfig
 # `coverageThreshold` (it only prints the table), so parse the text reporter's
 # "All files" row (which honours apps/api/bunfig.toml's
 # coveragePathIgnorePatterns) and fail below the floor.

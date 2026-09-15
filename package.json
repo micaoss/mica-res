@@ -29,6 +29,8 @@
     "test:e2e": "bun tests/e2e/run.ts",
     "check": "bun run lint && bun run typecheck && bun run test && bun run build && bun run check:i18n && bun run check:env-docs && bun run check:api-docs",
     "check:i18n": "bun scripts/check-i18n.ts",
+    "i18n:unused": "bun scripts/find-unused-i18n.ts",
+    "i18n:clean": "bun scripts/clean-unused-i18n.ts",
     "check:env-docs": "bun scripts/gen-env-docs.ts --check",
     "check:api-docs": "bun run --filter @app/api check:api-docs",
     "gen:env-docs": "bun scripts/gen-env-docs.ts",

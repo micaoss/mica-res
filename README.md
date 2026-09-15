@@ -75,7 +75,7 @@ packages/tsconfig/ Shared TS config
 docs/              Architecture, module standards, deployment, rebranding
 tests/e2e/         Live e2e harness (dex + API)
 scripts/           dev-all / dev-dex / rebrand / package / clean / hash-password
-                   / check-i18n / find-unused-i18n / clean-unused-i18n / gen-env-docs
+                   / check-i18n / i18n:unused / i18n:clean / gen-env-docs
 ```
 
 ## Documentation

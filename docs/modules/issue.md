@@ -53,11 +53,23 @@ Mounted under `protectedRoutes`; every route requires `authRequired`.
 
 ## Permissions
 
-The route layer composes three signals:
+Issues are a `defineResource` on the shared `item` namespace
+(`issue.permission.ts`), so every path — the issue routes, the generic
+`/api/files/*` download path, comments and comment attachments — answers
+from the same relation tuples:
 
-1. **Creator** — `items.creator_id === user.id`. Full edit rights.
-2. **Assignee** — `relation_tuples` row with `relation='assignee'`. Can view + change `status` only.
-3. **Admin** — `user.role === 'admin'`. Bypasses every check.
+| Action | Relation | Who holds it |
+|---|---|---|
+| `issue:read`, `issue:download` | `viewer` | anyone granted `viewer`, plus `editor` / `owner` / `assignee` by implication |
+| `issue:update` (any field) | `editor` | creator (`owner ⊂ editor`) and anyone granted `editor` |
+| `issue:transition` (status-only `PATCH`) | `assignee` | the current handler; creator by implication |
+| `issue:delete` | `owner` | creator |
+| `issue:manage_attachments` | `assignee` | handler and creator |
+
+`PATCH /api/issues/:id` is not bound to a single action: the handler picks
+`issue:update` for a whole-record payload and additionally admits
+`issue:transition` when the payload is `status` only. Admins bypass every
+check via the resource's `bypass` hook.
 
 `updateIssue`'s assignee handling is atomic: when `assigneeId` is set, the
 prior `assignee` tuple is deleted and a new one is written in the same

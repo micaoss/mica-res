@@ -70,8 +70,14 @@ each upstream tag; your fork's `Unreleased` block sits at the top.
   `description`, unique name). The `__meta__` tuple that smuggled the
   description into `subject_relation` is gone, along with the name-clash
   pre-checks it needed.
-- Backup format is v2. v1 dumps migrate forward on import (null →
-  sentinel, `__meta__` → `resource_groups`).
+- `group_members.subject_relation` gets the same treatment as
+  `relation_tuples`: `NOT NULL DEFAULT ''`, so `idx_group_members_unique`
+  enforces direct-membership uniqueness and `addUserMember`'s pre-check is
+  gone. Callers still pass `null` for "direct member"; storage holds the
+  sentinel.
+- Backup format is v3. Older dumps migrate forward on import: v1 → v2
+  (tuple null → sentinel, `__meta__` → `resource_groups`), v2 → v3
+  (group-member null → sentinel).
 - `find-unused-i18n` / `clean-unused-i18n` are wired as `bun run i18n:unused`
   / `bun run i18n:clean`; the README listed them as scripts but nothing did.
 - `docker-compose.yml` drops all capabilities and sets

@@ -95,7 +95,19 @@ const migrateV1ToV2: BackupMigrator = (data) => {
  * Forward-version migrators: index N-1 transforms version N into N+1.
  * Never break old backups outright.
  */
-const MIGRATIONS: ReadonlyArray<BackupMigrator> = [migrateV1ToV2];
+/** v2 → v3: `group_members.subjectRelation` became NOT NULL with the empty-string sentinel. */
+const migrateV2ToV3: BackupMigrator = (data) => {
+  const rows = data.tables.group_members;
+  if (!rows)
+    return { ...data, version: 3 };
+  return {
+    ...data,
+    version: 3,
+    tables: { ...data.tables, group_members: rows.map(r => ({ ...r, subjectRelation: r.subjectRelation ?? "" })) },
+  };
+};
+
+const MIGRATIONS: ReadonlyArray<BackupMigrator> = [migrateV1ToV2, migrateV2ToV3];
 
 /**
  * Walk a parsed JSON tree and reject pathological shapes (unbounded

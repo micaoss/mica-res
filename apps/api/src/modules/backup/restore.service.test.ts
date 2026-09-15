@@ -70,7 +70,7 @@ describe("validateBackupData", () => {
   test("returns the parsed object on a well-formed payload", () => {
     const ok = validateBackupData({ version: 1, exportedAt: "2026-05-14T00:00:00Z", modules: ["users"], tables: { users: [] } });
     // v1 input is migrated forward to the current format.
-    expect(ok.version).toBe(2);
+    expect(ok.version).toBe(3);
     expect(ok.modules).toEqual(["users"]);
   });
 });
@@ -119,7 +119,7 @@ describe("validateBackupData — v1 → v2 migrator", () => {
         ],
       },
     });
-    expect(v2.version).toBe(2);
+    expect(v2.version).toBe(3);
     expect(v2.tables.relation_tuples!.map(r => r.subjectRelation)).toEqual(["", "member"]);
     expect(v2.tables.resource_groups).toEqual([
       { id: "rg1", name: "Ops", description: "the ops group", createdBy: "u1", createdAt: "2026-01-02T00:00:00Z" },

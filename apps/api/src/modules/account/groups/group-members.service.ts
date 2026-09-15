@@ -1,7 +1,8 @@
 import type { AppDatabase } from "@/db";
-import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, eq, inArray, ne, or, sql } from "drizzle-orm";
 import { customAlphabet } from "nanoid";
-import { groupMembers } from "@/modules/account/groups/schema";
+import { DIRECT_MEMBER, groupMembers } from "@/modules/account/groups/schema";
+import { isUniqueViolation } from "@/shared/lib/errors";
 
 const nanoid = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyz", 8);
 
@@ -19,29 +20,24 @@ export async function addUserMember(
   userId: string,
   createdBy: string,
 ): Promise<boolean> {
-  const existing = await db
-    .select({ id: groupMembers.id })
-    .from(groupMembers)
-    .where(
-      and(
-        eq(groupMembers.groupId, groupId),
-        eq(groupMembers.subjectNamespace, "user"),
-        eq(groupMembers.subjectId, userId),
-        isNull(groupMembers.subjectRelation),
-      ),
-    )
-    .get();
-  if (existing)
-    return false;
-  await db.insert(groupMembers).values({
-    id: nanoid(),
-    groupId,
-    subjectNamespace: "user",
-    subjectId: userId,
-    subjectRelation: null,
-    createdBy,
-    createdAt: new Date().toISOString(),
-  }).run();
+  // idx_group_members_unique is the duplicate guard; "already a member"
+  // is the same false the pre-check used to return.
+  try {
+    await db.insert(groupMembers).values({
+      id: nanoid(),
+      groupId,
+      subjectNamespace: "user",
+      subjectId: userId,
+      subjectRelation: DIRECT_MEMBER,
+      createdBy,
+      createdAt: new Date().toISOString(),
+    }).run();
+  }
+  catch (err) {
+    if (isUniqueViolation(err))
+      return false;
+    throw err;
+  }
   return true;
 }
 
@@ -59,7 +55,7 @@ export async function removeUserMember(
         eq(groupMembers.groupId, groupId),
         eq(groupMembers.subjectNamespace, "user"),
         eq(groupMembers.subjectId, userId),
-        isNull(groupMembers.subjectRelation),
+        eq(groupMembers.subjectRelation, DIRECT_MEMBER),
       ),
     )
     .get();
@@ -81,7 +77,7 @@ export async function listUserMembersWithJoinedAt(
       and(
         eq(groupMembers.groupId, groupId),
         eq(groupMembers.subjectNamespace, "user"),
-        isNull(groupMembers.subjectRelation),
+        eq(groupMembers.subjectRelation, DIRECT_MEMBER),
       ),
     )
     .all();
@@ -98,7 +94,7 @@ export async function getUserMemberCounts(db: AppDatabase): Promise<Map<string, 
     .where(
       and(
         eq(groupMembers.subjectNamespace, "user"),
-        isNull(groupMembers.subjectRelation),
+        eq(groupMembers.subjectRelation, DIRECT_MEMBER),
       ),
     )
     .groupBy(groupMembers.groupId)
@@ -117,7 +113,7 @@ export async function listGroupIdsForUser(db: AppDatabase, userId: string): Prom
       and(
         eq(groupMembers.subjectNamespace, "user"),
         eq(groupMembers.subjectId, userId),
-        isNull(groupMembers.subjectRelation),
+        eq(groupMembers.subjectRelation, DIRECT_MEMBER),
       ),
     )
     .all();
@@ -135,7 +131,7 @@ export async function listUserIdsInGroup(db: AppDatabase, groupId: string): Prom
       and(
         eq(groupMembers.groupId, groupId),
         eq(groupMembers.subjectNamespace, "user"),
-        isNull(groupMembers.subjectRelation),
+        eq(groupMembers.subjectRelation, DIRECT_MEMBER),
       ),
     )
     .all();
@@ -154,7 +150,7 @@ export async function listGroupMembershipsForUser(
       and(
         eq(groupMembers.subjectNamespace, "user"),
         eq(groupMembers.subjectId, userId),
-        isNull(groupMembers.subjectRelation),
+        eq(groupMembers.subjectRelation, DIRECT_MEMBER),
       ),
     )
     .all();
@@ -170,7 +166,7 @@ export async function listGroupMembershipsForUsers(
 ): Promise<readonly { userId: string; groupId: string }[]> {
   const filter = and(
     eq(groupMembers.subjectNamespace, "user"),
-    isNull(groupMembers.subjectRelation),
+    eq(groupMembers.subjectRelation, DIRECT_MEMBER),
     userIds && userIds.length > 0 ? inArray(groupMembers.subjectId, [...userIds]) : undefined,
   );
   const rows = await db
@@ -195,9 +191,9 @@ export async function findDirectMember(
   subjectId: string,
   subjectRelation: string | null,
 ): Promise<GroupMember | undefined> {
-  const subjectRelationCondition = subjectRelation === null
-    ? isNull(groupMembers.subjectRelation)
-    : eq(groupMembers.subjectRelation, subjectRelation);
+  // `null` keeps meaning "direct member" for callers (the policy engine
+  // passes null); storage holds the sentinel.
+  const subjectRelationCondition = eq(groupMembers.subjectRelation, subjectRelation ?? DIRECT_MEMBER);
   return await db
     .select()
     .from(groupMembers)
@@ -213,8 +209,8 @@ export async function findDirectMember(
 }
 
 /**
- * All membership rows whose subject is itself a userset (subjectRelation IS
- * NOT NULL). Used by the engine's userset-traversal branch in `check()`.
+ * All membership rows whose subject is itself a userset (subjectRelation
+ * is not the direct-member sentinel). Used by the engine's userset branch.
  */
 export async function listUsersetMembers(db: TxOrDb, groupId: string): Promise<readonly GroupMember[]> {
   return await db
@@ -223,7 +219,7 @@ export async function listUsersetMembers(db: TxOrDb, groupId: string): Promise<r
     .where(
       and(
         eq(groupMembers.groupId, groupId),
-        sql`${groupMembers.subjectRelation} IS NOT NULL`,
+        ne(groupMembers.subjectRelation, DIRECT_MEMBER),
       ),
     )
     .all();

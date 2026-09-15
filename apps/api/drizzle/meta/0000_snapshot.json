@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "a8642d73-812f-4137-a475-7eee7b471866",
+  "id": "03137eeb-430d-4041-a569-fef7864dfd5e",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "auth_lockouts": {
@@ -220,8 +220,9 @@
           "name": "subject_relation",
           "type": "text",
           "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
+          "notNull": true,
+          "autoincrement": false,
+          "default": "''"
         },
         "created_by": {
           "name": "created_by",

@@ -31,7 +31,7 @@ export async function verifyDek(dbPath: string, dekHex: string): Promise<void> {
 }
 
 /** Bump together with `MIGRATIONS` in restore.service.ts. */
-export const CURRENT_BACKUP_VERSION = 2;
+export const CURRENT_BACKUP_VERSION = 3;
 
 export interface BackupData {
   version: number;

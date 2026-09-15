@@ -3,9 +3,12 @@ import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { sql } from "drizzle-orm";
 import { customAlphabet } from "nanoid";
 import { createDb } from "@/db";
 import { users } from "@/modules/account/users/schema";
+import { isUniqueViolation } from "@/shared/lib/errors";
+import { addUserMember } from "./group-members.service";
 import {
   addGroupMember,
   createGroup,
@@ -146,5 +149,38 @@ describe("member management", () => {
     expect(await removeGroupMember(db, g.id, u)).toBe(true);
     expect(await removeGroupMember(db, g.id, u)).toBe(false);
     expect((await getGroupMembers(db, g.id)).length).toBe(0);
+  });
+});
+
+describe("group_members direct-membership uniqueness", () => {
+  test("the index rejects a duplicate direct member and NULL rows are impossible", async () => {
+    const userId = await seedUser();
+    const group = await createGroup(db, { name: "uniq" });
+
+    expect(await addUserMember(db, group.id, userId, userId)).toBe(true);
+    // Second add is refused by idx_group_members_unique, not an app-level pre-check.
+    expect(await addUserMember(db, group.id, userId, userId)).toBe(false);
+
+    // A raw duplicate carrying the sentinel trips the index.
+    let raw: unknown;
+    try {
+      await db.run(sql`INSERT INTO group_members (id, group_id, subject_namespace, subject_id, subject_relation, created_at)
+                       VALUES ('dup', ${group.id}, 'user', ${userId}, '', '2026-01-01T00:00:00Z')`);
+    }
+    catch (err) {
+      raw = err;
+    }
+    expect(isUniqueViolation(raw)).toBe(true);
+
+    // NULL can no longer be stored at all — that was the hole the sentinel closes.
+    let nullErr: unknown;
+    try {
+      await db.run(sql`INSERT INTO group_members (id, group_id, subject_namespace, subject_id, subject_relation, created_at)
+                       VALUES ('nul', ${group.id}, 'user', ${userId}, NULL, '2026-01-01T00:00:00Z')`);
+    }
+    catch (err) {
+      nullErr = err;
+    }
+    expect(nullErr).toBeDefined();
   });
 });

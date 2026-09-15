@@ -15,18 +15,20 @@ export const groups = sqliteTable("groups", {
 // by the account module so a deployment can drop the policy module while
 // keeping user-group features.
 //
-// `subject_relation` is NULL for direct user membership and `'member'` for
-// nested-group membership (one group as a member of another).
-//
-// Note: SQLite treats every NULL as distinct under UNIQUE constraints, so the
-// `unique` below does NOT block duplicate user-membership rows; the service
-// layer guards that with an explicit pre-insert check (see addUserMember).
+// `subject_relation` is the empty string for direct user membership and
+// `'member'` for nested-group membership (one group as a member of another).
+// SQLite treats every NULL as distinct under UNIQUE, so a nullable column
+// would leave `idx_group_members_unique` unable to block duplicate direct
+// rows; the sentinel makes the index the single point of enforcement (same
+// convention as policy.relation_tuples.DIRECT_SUBJECT).
+export const DIRECT_MEMBER = "";
+
 export const groupMembers = sqliteTable("group_members", {
   id: text("id").primaryKey(),
   groupId: text("group_id").notNull().references(() => groups.id, { onDelete: "cascade" }),
   subjectNamespace: text("subject_namespace").notNull(),
   subjectId: text("subject_id").notNull(),
-  subjectRelation: text("subject_relation"),
+  subjectRelation: text("subject_relation").notNull().default(DIRECT_MEMBER),
   createdBy: text("created_by").references(() => users.id),
   createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
 }, t => [

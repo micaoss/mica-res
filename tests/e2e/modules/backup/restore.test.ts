@@ -148,8 +148,8 @@ describe("/api/backup round-trip (export → import)", () => {
       modules: string[];
       tables: Record<string, unknown[]>;
     };
-    // Backup format v2 (sentinel subject_relation + resource_groups table).
-    expect(dump.version).toBe(2);
+    // Backup format v3 (sentinel subject_relation on tuples + group members, resource_groups table).
+    expect(dump.version).toBe(3);
     expect(dump.modules).toContain("users");
     expect(dump.modules).toContain("settings");
 

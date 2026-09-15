@@ -32,7 +32,7 @@ CREATE TABLE `group_members` (
 	`group_id` text NOT NULL,
 	`subject_namespace` text NOT NULL,
 	`subject_id` text NOT NULL,
-	`subject_relation` text,
+	`subject_relation` text DEFAULT '' NOT NULL,
 	`created_by` text,
 	`created_at` text NOT NULL,
 	FOREIGN KEY (`group_id`) REFERENCES `groups`(`id`) ON UPDATE no action ON DELETE cascade,

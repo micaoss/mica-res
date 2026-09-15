@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { customAlphabet } from "nanoid";
 import { createDb } from "@/db";
 import { users } from "@/modules/account/users/schema";
@@ -17,7 +17,7 @@ import {
   removeResourceGroupMember,
   updateResourceGroup,
 } from "./resource-group.service";
-import { relationTuples } from "./schema";
+import { DIRECT_SUBJECT, relationTuples, resourceGroups } from "./schema";
 
 const nanoid = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyz", 8);
 
@@ -125,7 +125,18 @@ describe("deleteResourceGroup", () => {
     expect(await deleteResourceGroup(db, "missing1")).toBe(false);
   });
 
-  test("cascade removes meta + parent + access tuples", async () => {
+  test("identity lives in resource_groups, not in a __meta__ tuple", async () => {
+    const rg = await createResourceGroup(db, { name: "table-backed", description: "desc" }, actor);
+    const rows = await db.select().from(resourceGroups).where(eq(resourceGroups.id, rg.id)).all();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.name).toBe("table-backed");
+    expect(rows[0]!.description).toBe("desc");
+    expect(await db.select().from(relationTuples).all()).toHaveLength(0);
+
+    expect((await listResourceGroups(db)).map(g => g.id)).toContain(rg.id);
+  });
+
+  test("cascade removes the row + parent + access tuples", async () => {
     const rg = await createResourceGroup(db, { name: "cascade" }, actor);
 
     // member tuple (<resource>:<id>#parent@resource_group:<groupId>)
@@ -139,29 +150,18 @@ describe("deleteResourceGroup", () => {
       relation: "viewer",
       subjectNamespace: "user",
       subjectId: "user-9",
-      subjectRelation: null,
+      subjectRelation: DIRECT_SUBJECT,
       createdBy: actor,
       createdAt: new Date().toISOString(),
     }).run();
 
     const before = await db.select().from(relationTuples).all();
-    expect(before.length).toBe(3);
+    expect(before.length).toBe(2);
 
     expect(await deleteResourceGroup(db, rg.id)).toBe(true);
 
-    // meta gone
-    const meta = await db
-      .select()
-      .from(relationTuples)
-      .where(
-        and(
-          eq(relationTuples.namespace, "resource_group"),
-          eq(relationTuples.objectId, rg.id),
-          eq(relationTuples.relation, "__meta__"),
-        ),
-      )
-      .get();
-    expect(meta).toBeUndefined();
+    // row gone
+    expect(await db.select().from(resourceGroups).where(eq(resourceGroups.id, rg.id)).get()).toBeUndefined();
 
     // parent member tuple gone
     expect((await getResourceGroupMembers(db, rg.id)).length).toBe(0);

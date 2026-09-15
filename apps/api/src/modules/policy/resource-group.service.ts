@@ -1,11 +1,15 @@
 import type { AppDatabase } from "@/db";
 import { and, eq } from "drizzle-orm";
 import { customAlphabet } from "nanoid";
-import { relationTuples } from "@/modules/policy/schema";
-import { NotFoundError, ValidationError } from "@/shared/lib/errors";
+import { DIRECT_SUBJECT, relationTuples, resourceGroups } from "@/modules/policy/schema";
+import { isUniqueViolation, NotFoundError, ValidationError } from "@/shared/lib/errors";
 import { getAllNamespaces } from "./namespace-config";
 
 const nanoid = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyz", 8);
+
+function duplicateName(): ValidationError {
+  return new ValidationError("Duplicate resource group", { name: "A resource group with this name already exists" });
+}
 
 export interface ResourceGroup {
   readonly id: string;
@@ -21,10 +25,12 @@ export interface ResourceGroupMember {
 }
 
 /**
- * Resource groups are virtual entities tracked via relation tuples.
+ * Resource groups are rows in `resource_groups`; only their edges live in
+ * relation_tuples.
  *
- * - Group identity:  resource_group:<id>#__meta__@resource_group:<name>  (stores description in subjectRelation)
+ * - Group identity:  resource_groups (id, name, description)
  * - Group members:   <resource-ns>:<resource-id>#parent@resource_group:<groupId>
+ * - Access grants:   resource_group:<groupId>#<relation>@<subject>
  *
  * Member namespaces must be registered via `loadNamespaces`. In this template the
  * default registry only ships the `user`, `group`, and `resource_group`
@@ -45,39 +51,14 @@ export async function createResourceGroup(
   const name = input.name.trim();
   const description = input.description?.trim() || null;
 
-  // Duplicate-name check + insert in one transaction so two concurrent
-  // creates of the same name cannot both pass the check (the unique index
-  // keys on objectId, so it offers no name-level backstop).
-  await db.transaction(async (tx) => {
-    const existing = await tx
-      .select()
-      .from(relationTuples)
-      .where(
-        and(
-          eq(relationTuples.namespace, "resource_group"),
-          eq(relationTuples.relation, "__meta__"),
-          eq(relationTuples.subjectNamespace, "resource_group"),
-          eq(relationTuples.subjectId, name),
-        ),
-      )
-      .get();
-
-    if (existing) {
-      throw new ValidationError("Duplicate resource group", { name: "A resource group with this name already exists" });
-    }
-
-    await tx.insert(relationTuples).values({
-      id,
-      namespace: "resource_group",
-      objectId: id,
-      relation: "__meta__",
-      subjectNamespace: "resource_group",
-      subjectId: name,
-      subjectRelation: description,
-      createdBy,
-      createdAt: now,
-    }).run();
-  });
+  // idx_resource_groups_name is the duplicate-name guard; surface the
+  // constraint as the same 422 callers always got.
+  try {
+    await db.insert(resourceGroups).values({ id, name, description, createdBy, createdAt: now }).run();
+  }
+  catch (err) {
+    throw isUniqueViolation(err) ? duplicateName() : err;
+  }
 
   return { id, name, description, createdAt: now };
 }
@@ -93,76 +74,28 @@ export async function updateResourceGroup(
 
   const name = input.name.trim();
   const description = input.description?.trim() || null;
-  let createdAt = "";
 
-  // Existence + rename-collision check + update in one transaction so a
-  // concurrent rename to the same name cannot interleave between the
-  // clash check and the write.
-  await db.transaction(async (tx) => {
-    const meta = await tx
-      .select()
-      .from(relationTuples)
-      .where(
-        and(
-          eq(relationTuples.namespace, "resource_group"),
-          eq(relationTuples.objectId, id),
-          eq(relationTuples.relation, "__meta__"),
-        ),
-      )
-      .get();
+  const row = await db.select().from(resourceGroups).where(eq(resourceGroups.id, id)).get();
+  if (!row)
+    throw new NotFoundError("ResourceGroup", id);
 
-    if (!meta) {
-      throw new NotFoundError("ResourceGroup", id);
-    }
-    createdAt = meta.createdAt;
+  try {
+    await db.update(resourceGroups).set({ name, description }).where(eq(resourceGroups.id, id)).run();
+  }
+  catch (err) {
+    throw isUniqueViolation(err) ? duplicateName() : err;
+  }
 
-    if (name !== meta.subjectId) {
-      const clash = await tx
-        .select()
-        .from(relationTuples)
-        .where(
-          and(
-            eq(relationTuples.namespace, "resource_group"),
-            eq(relationTuples.relation, "__meta__"),
-            eq(relationTuples.subjectNamespace, "resource_group"),
-            eq(relationTuples.subjectId, name),
-          ),
-        )
-        .get();
-      if (clash) {
-        throw new ValidationError("Duplicate resource group", { name: "A resource group with this name already exists" });
-      }
-    }
-
-    await tx
-      .update(relationTuples)
-      .set({ subjectId: name, subjectRelation: description })
-      .where(eq(relationTuples.id, meta.id))
-      .run();
-  });
-
-  return { id, name, description, createdAt };
+  return { id, name, description, createdAt: row.createdAt };
 }
 
 export async function deleteResourceGroup(db: AppDatabase, id: string): Promise<boolean> {
-  const meta = await db
-    .select()
-    .from(relationTuples)
-    .where(
-      and(
-        eq(relationTuples.namespace, "resource_group"),
-        eq(relationTuples.objectId, id),
-        eq(relationTuples.relation, "__meta__"),
-      ),
-    )
-    .get();
-
-  if (!meta)
+  const row = await db.select({ id: resourceGroups.id }).from(resourceGroups).where(eq(resourceGroups.id, id)).get();
+  if (!row)
     return false;
 
   await db.transaction(async (tx) => {
-    // Delete meta tuple
-    await tx.delete(relationTuples).where(eq(relationTuples.id, meta.id)).run();
+    await tx.delete(resourceGroups).where(eq(resourceGroups.id, id)).run();
 
     // Delete all member tuples (<resource>:<id>#parent@resource_group:<id>)
     await tx.delete(relationTuples).where(
@@ -186,23 +119,8 @@ export async function deleteResourceGroup(db: AppDatabase, id: string): Promise<
 }
 
 export async function listResourceGroups(db: AppDatabase): Promise<readonly ResourceGroup[]> {
-  const metas = await db
-    .select()
-    .from(relationTuples)
-    .where(
-      and(
-        eq(relationTuples.namespace, "resource_group"),
-        eq(relationTuples.relation, "__meta__"),
-      ),
-    )
-    .all();
-
-  return metas.map(m => ({
-    id: m.objectId,
-    name: m.subjectId,
-    description: m.subjectRelation,
-    createdAt: m.createdAt,
-  }));
+  const rows = await db.select().from(resourceGroups).all();
+  return rows.map(r => ({ id: r.id, name: r.name, description: r.description, createdAt: r.createdAt }));
 }
 
 export async function getResourceGroupMembers(db: AppDatabase, groupId: string): Promise<readonly ResourceGroupMember[]> {
@@ -242,22 +160,9 @@ export async function addResourceGroupMember(
     });
   }
 
-  // Verify group exists
-  const meta = await db
-    .select()
-    .from(relationTuples)
-    .where(
-      and(
-        eq(relationTuples.namespace, "resource_group"),
-        eq(relationTuples.objectId, groupId),
-        eq(relationTuples.relation, "__meta__"),
-      ),
-    )
-    .get();
-
-  if (!meta) {
+  const group = await db.select({ id: resourceGroups.id }).from(resourceGroups).where(eq(resourceGroups.id, groupId)).get();
+  if (!group)
     throw new NotFoundError("ResourceGroup", groupId);
-  }
 
   // Check duplicate
   const existing = await db
@@ -288,7 +193,7 @@ export async function addResourceGroupMember(
     relation: "parent",
     subjectNamespace: "resource_group",
     subjectId: groupId,
-    subjectRelation: null,
+    subjectRelation: DIRECT_SUBJECT,
     createdBy,
     createdAt: now,
   }).run();

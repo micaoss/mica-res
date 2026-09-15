@@ -15,7 +15,7 @@ import { users } from "@/modules/account/users/schema";
 import { auditEvents } from "@/modules/audit/schema";
 import { errorHandler } from "@/shared/middleware/error-handler";
 import { policyRoutes } from "./policy.routes";
-import { relationTuples } from "./schema";
+import { DIRECT_SUBJECT, relationTuples } from "./schema";
 // Importing the account module registers the session-cookie auth provider
 // that `authRequired` resolves through — without it the middleware throws.
 import "@/modules/account";
@@ -500,7 +500,7 @@ describe("PATCH /policy/tuples/:id", () => {
       relation: "member",
       subjectNamespace: "user",
       subjectId: "u1",
-      subjectRelation: null,
+      subjectRelation: DIRECT_SUBJECT,
       createdBy: userId,
       createdAt: new Date().toISOString(),
     }).run();

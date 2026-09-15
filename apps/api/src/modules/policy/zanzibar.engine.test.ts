@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { customAlphabet } from "nanoid";
 import { createDb } from "@/db";
 import { groupMembers, groups } from "@/modules/account/groups/schema";
-import { relationTuples } from "@/modules/policy/schema";
+import { DIRECT_SUBJECT, relationTuples } from "@/modules/policy/schema";
 import { loadNamespaces } from "./namespace-config";
 import { check, expand, listUserResources } from "./zanzibar.engine";
 
@@ -93,7 +93,7 @@ async function insertTuple(
     relation: rel,
     subjectNamespace: subNs,
     subjectId: subId,
-    subjectRelation: subRel ?? null,
+    subjectRelation: subRel ?? DIRECT_SUBJECT,
     createdBy: null,
     createdAt: new Date().toISOString(),
   }).run();

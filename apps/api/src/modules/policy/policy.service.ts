@@ -1,16 +1,11 @@
 import type { AppDatabase } from "@/db";
-import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { customAlphabet } from "nanoid";
-import { relationTuples } from "@/modules/policy/schema";
-import { ValidationError } from "@/shared/lib/errors";
+import { DIRECT_SUBJECT, relationTuples } from "@/modules/policy/schema";
+import { isUniqueViolation, ValidationError } from "@/shared/lib/errors";
 import { getNamespace, getValidRelations } from "./namespace-config";
 
 const nanoid = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyz", 8);
-
-// The drizzle transaction callback receives a tx handle that is API-compatible
-// with the db for queries but not structurally `AppDatabase` (no .transaction
-// /.close). Helpers that must run either standalone or inside a tx accept this.
-type TxOrDb = AppDatabase | Parameters<Parameters<AppDatabase["transaction"]>[0]>[0];
 
 export interface CreateTupleInput {
   readonly namespace: string;
@@ -31,7 +26,19 @@ export interface TupleFilter {
   readonly limit?: number | undefined;
 }
 
-export type RelationTuple = typeof relationTuples.$inferSelect;
+type RelationTupleRow = typeof relationTuples.$inferSelect;
+
+/** What callers see: a direct subject reads as `subjectRelation: null`. */
+export type RelationTuple = Omit<RelationTupleRow, "subjectRelation"> & { readonly subjectRelation: string | null };
+
+/** Storage keeps the `""` sentinel (so idx_tuples_unique can enforce it); the API edge keeps `null`. */
+function toApiTuple(row: RelationTupleRow): RelationTuple {
+  return { ...row, subjectRelation: row.subjectRelation === DIRECT_SUBJECT ? null : row.subjectRelation };
+}
+
+function duplicateTuple(): ValidationError {
+  return new ValidationError("Duplicate tuple", { tuple: "A relation tuple with the same key already exists" });
+}
 
 function validateTupleInput(input: CreateTupleInput): void {
   const ns = getNamespace(input.namespace);
@@ -64,36 +71,8 @@ function validateTupleInput(input: CreateTupleInput): void {
 }
 
 export async function getTupleById(db: AppDatabase, id: string): Promise<RelationTuple | undefined> {
-  return await db.select().from(relationTuples).where(eq(relationTuples.id, id)).get();
-}
-
-async function checkDuplicateTuple(db: TxOrDb, input: CreateTupleInput): Promise<void> {
-  const subjectRelation = input.subjectRelation ?? null;
-
-  const subjectRelationCondition = subjectRelation === null
-    ? isNull(relationTuples.subjectRelation)
-    : eq(relationTuples.subjectRelation, subjectRelation);
-
-  const existing = await db
-    .select({ id: relationTuples.id })
-    .from(relationTuples)
-    .where(
-      and(
-        eq(relationTuples.namespace, input.namespace),
-        eq(relationTuples.objectId, input.objectId),
-        eq(relationTuples.relation, input.relation),
-        eq(relationTuples.subjectNamespace, input.subjectNamespace),
-        eq(relationTuples.subjectId, input.subjectId),
-        subjectRelationCondition,
-      ),
-    )
-    .get();
-
-  if (existing) {
-    throw new ValidationError("Duplicate tuple", {
-      tuple: "A relation tuple with the same key already exists",
-    });
-  }
+  const row = await db.select().from(relationTuples).where(eq(relationTuples.id, id)).get();
+  return row && toApiTuple(row);
 }
 
 export async function createTuple(db: AppDatabase, input: CreateTupleInput, createdBy: string): Promise<RelationTuple> {
@@ -108,21 +87,21 @@ export async function createTuple(db: AppDatabase, input: CreateTupleInput, crea
     relation: input.relation,
     subjectNamespace: input.subjectNamespace,
     subjectId: input.subjectId,
-    subjectRelation: input.subjectRelation ?? null,
+    subjectRelation: input.subjectRelation ?? DIRECT_SUBJECT,
     createdBy,
     createdAt: now,
   };
 
-  // BEGIN IMMEDIATE (libsql sqlite3 client default) takes the write lock at
-  // transaction start, so the duplicate check + insert serialize against
-  // concurrent writers — the only protection for NULL subjectRelation rows,
-  // which idx_tuples_unique cannot enforce (SQLite treats NULLs as distinct).
-  await db.transaction(async (tx) => {
-    await checkDuplicateTuple(tx, input);
-    await tx.insert(relationTuples).values(values).run();
-  });
+  // idx_tuples_unique is the whole duplicate guard now that a direct subject
+  // is stored as "" rather than NULL.
+  try {
+    await db.insert(relationTuples).values(values).run();
+  }
+  catch (err) {
+    throw isUniqueViolation(err) ? duplicateTuple() : err;
+  }
 
-  return values;
+  return toApiTuple(values);
 }
 
 /**
@@ -154,19 +133,24 @@ export async function updateTupleRelation(db: AppDatabase, id: string, relation:
     relation: input.relation,
     subjectNamespace: input.subjectNamespace,
     subjectId: input.subjectId,
-    subjectRelation: existing.subjectRelation,
+    subjectRelation: existing.subjectRelation ?? DIRECT_SUBJECT,
     createdBy,
     createdAt: new Date().toISOString(),
   };
 
-  await db.transaction(async (tx) => {
-    // Delete first so rewriting to the same relation is not a self-collision.
-    await tx.delete(relationTuples).where(eq(relationTuples.id, id)).run();
-    await checkDuplicateTuple(tx, input);
-    await tx.insert(relationTuples).values(values).run();
-  });
+  try {
+    await db.transaction(async (tx) => {
+      // Delete first so rewriting to the same relation is not a self-collision;
+      // a real collision trips idx_tuples_unique and rolls the delete back.
+      await tx.delete(relationTuples).where(eq(relationTuples.id, id)).run();
+      await tx.insert(relationTuples).values(values).run();
+    });
+  }
+  catch (err) {
+    throw isUniqueViolation(err) ? duplicateTuple() : err;
+  }
 
-  return values;
+  return toApiTuple(values);
 }
 
 export async function deleteTuple(db: AppDatabase, id: string): Promise<boolean> {
@@ -195,10 +179,7 @@ export async function deleteTupleByKey(
     readonly subjectRelation?: string | null | undefined;
   },
 ): Promise<boolean> {
-  const subjectRelation = key.subjectRelation ?? null;
-  const subjectRelationCondition = subjectRelation === null
-    ? isNull(relationTuples.subjectRelation)
-    : eq(relationTuples.subjectRelation, subjectRelation);
+  const subjectRelationCondition = eq(relationTuples.subjectRelation, key.subjectRelation ?? DIRECT_SUBJECT);
 
   const existing = await db
     .select({ id: relationTuples.id })
@@ -222,9 +203,9 @@ export async function deleteTupleByKey(
 }
 
 export async function batchCreateTuples(db: AppDatabase, inputs: readonly CreateTupleInput[], createdBy: string): Promise<readonly RelationTuple[]> {
-  // checkDuplicateTuple below only sees rows already in the table, so two
-  // identical inputs in one batch would both pass it and both insert — and
-  // idx_tuples_unique cannot catch that when subjectRelation is NULL.
+  // idx_tuples_unique would reject a repeated input too, but only after the
+  // transaction has started; a pre-check turns it into a clean 422 before
+  // anything is written.
   const seen = new Set<string>();
   for (const input of inputs) {
     validateTupleInput(input);
@@ -238,33 +219,32 @@ export async function batchCreateTuples(db: AppDatabase, inputs: readonly Create
   }
 
   const now = new Date().toISOString();
-  const tuples: RelationTuple[] = [];
+  const tuples: RelationTupleRow[] = [];
 
-  await db.transaction(async (tx) => {
-    // Dedup check inside the (BEGIN IMMEDIATE) tx so it serializes with the
-    // inserts against concurrent writers.
-    for (const input of inputs) {
-      await checkDuplicateTuple(tx, input);
-    }
-    for (const input of inputs) {
-      const id = nanoid();
-      const values = {
-        id,
-        namespace: input.namespace,
-        objectId: input.objectId,
-        relation: input.relation,
-        subjectNamespace: input.subjectNamespace,
-        subjectId: input.subjectId,
-        subjectRelation: input.subjectRelation ?? null,
-        createdBy,
-        createdAt: now,
-      };
-      await tx.insert(relationTuples).values(values).run();
-      tuples.push(values);
-    }
-  });
-
-  return tuples;
+  try {
+    await db.transaction(async (tx) => {
+      for (const input of inputs) {
+        const id = nanoid();
+        const values = {
+          id,
+          namespace: input.namespace,
+          objectId: input.objectId,
+          relation: input.relation,
+          subjectNamespace: input.subjectNamespace,
+          subjectId: input.subjectId,
+          subjectRelation: input.subjectRelation ?? DIRECT_SUBJECT,
+          createdBy,
+          createdAt: now,
+        };
+        await tx.insert(relationTuples).values(values).run();
+        tuples.push(values);
+      }
+    });
+  }
+  catch (err) {
+    throw isUniqueViolation(err) ? duplicateTuple() : err;
+  }
+  return tuples.map(toApiTuple);
 }
 
 export async function batchDeleteTuples(db: AppDatabase, ids: readonly string[]): Promise<number> {
@@ -320,7 +300,7 @@ export async function listTuples(db: AppDatabase, filter: TupleFilter): Promise<
 }
 
 export async function getTuplesByObject(db: AppDatabase, namespace: string, objectId: string): Promise<readonly RelationTuple[]> {
-  return await db
+  return (await db
     .select()
     .from(relationTuples)
     .where(
@@ -329,11 +309,11 @@ export async function getTuplesByObject(db: AppDatabase, namespace: string, obje
         eq(relationTuples.objectId, objectId),
       ),
     )
-    .all();
+    .all()).map(toApiTuple);
 }
 
 export async function getTuplesBySubject(db: AppDatabase, subjectNamespace: string, subjectId: string): Promise<readonly RelationTuple[]> {
-  return await db
+  return (await db
     .select()
     .from(relationTuples)
     .where(
@@ -342,7 +322,7 @@ export async function getTuplesBySubject(db: AppDatabase, subjectNamespace: stri
         eq(relationTuples.subjectId, subjectId),
       ),
     )
-    .all();
+    .all()).map(toApiTuple);
 }
 
 /**

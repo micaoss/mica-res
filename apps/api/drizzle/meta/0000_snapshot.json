@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "77f69d75-2d28-4e86-abaa-25845b428ac9",
+  "id": "a8642d73-812f-4137-a475-7eee7b471866",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "auth_lockouts": {
@@ -1687,8 +1687,9 @@
           "name": "subject_relation",
           "type": "text",
           "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
+          "notNull": true,
+          "autoincrement": false,
+          "default": "''"
         },
         "created_by": {
           "name": "created_by",
@@ -1741,6 +1742,73 @@
         "relation_tuples_created_by_users_id_fk": {
           "name": "relation_tuples_created_by_users_id_fk",
           "tableFrom": "relation_tuples",
+          "tableTo": "users",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "resource_groups": {
+      "name": "resource_groups",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_resource_groups_name": {
+          "name": "idx_resource_groups_name",
+          "columns": [
+            "name"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "resource_groups_created_by_users_id_fk": {
+          "name": "resource_groups_created_by_users_id_fk",
+          "tableFrom": "resource_groups",
           "tableTo": "users",
           "columnsFrom": [
             "created_by"

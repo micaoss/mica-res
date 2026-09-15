@@ -6,8 +6,7 @@ import { documentAccess } from "@/modules/document/document.permission";
 import { documentDetails } from "@/modules/document/schema";
 import { items } from "@/modules/item/schema";
 import { NOOP_POLICY_LOGGER } from "@/modules/policy";
-import { relationTuples } from "@/modules/policy/schema";
-import { listUserResources } from "@/modules/policy/zanzibar.engine";
+import { DIRECT_SUBJECT, relationTuples } from "@/modules/policy/schema";
 import { nanoid, ulid } from "@/shared/lib/id";
 
 const LIKE_SPECIAL_RE = /[%_]/g;
@@ -135,7 +134,7 @@ export async function createDocument(db: AppDatabase, input: CreateDocumentInput
       relation: "owner",
       subjectNamespace: "user",
       subjectId: input.creatorId,
-      subjectRelation: null,
+      subjectRelation: DIRECT_SUBJECT,
       createdBy: input.creatorId,
       createdAt: now,
     }).run();
@@ -149,7 +148,7 @@ export async function createDocument(db: AppDatabase, input: CreateDocumentInput
         relation: "parent_item",
         subjectNamespace: "item",
         subjectId: parentItemId,
-        subjectRelation: null,
+        subjectRelation: DIRECT_SUBJECT,
         createdBy: input.creatorId,
         createdAt: now,
       }).run();
@@ -262,7 +261,7 @@ export async function updateDocument(
           relation: "parent_item",
           subjectNamespace: "item",
           subjectId: parentItemIdSpec,
-          subjectRelation: null,
+          subjectRelation: DIRECT_SUBJECT,
           createdBy: item.creatorId,
           createdAt: now,
         }).run();
@@ -378,25 +377,13 @@ async function buildDocumentConditions(params: ListDocumentsParams) {
 }
 
 /**
- * Resolve the set of `items.id` the user has a direct or inherited
- * `viewer` grant on. The policy engine's `listUserResources` returns
- * direct + group grants; we then expand via `parent_item` business
- * descendants because the engine's tuple-to-userset path only handles
- * resource_group today.
+ * Resolve the set of `items.id` the user can read: direct + group grants
+ * plus everything reachable through `parent_item` inheritance. The engine
+ * walks the tuple_to_userset edge itself, so this is the same answer
+ * `check()` gives per object — no module-side descendant expansion.
  */
 async function listVisibleItemIds(db: AppDatabase, userId: string): Promise<readonly string[]> {
-  const direct = await listUserResources(db, userId, "item", "viewer");
-  if (direct.length === 0)
-    return [];
-  const rows = await db.all<{ id: string }>(sql`
-    WITH RECURSIVE chain(id) AS (
-      SELECT value FROM json_each(${JSON.stringify([...direct])})
-      UNION
-      SELECT dd.item_id FROM ${documentDetails} dd JOIN chain c ON dd.parent_id = c.id
-    )
-    SELECT id FROM chain
-  `);
-  return rows.map(r => r.id);
+  return await documentAccess.listObjectsFor(db, userId, "document:read");
 }
 
 export async function listDocuments(db: AppDatabase, params: ListDocumentsParams = {}) {

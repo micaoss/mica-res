@@ -86,6 +86,18 @@ All policy routes require admin access.
 
 For group subjects, `subjectRelation` defaults to `member` when omitted.
 
+A direct subject is reported as `subjectRelation: null` on every read and
+accepted as `null` / omitted on every write. In storage the column is
+`NOT NULL` and a direct subject is the empty string — that lets
+`idx_tuples_unique` enforce uniqueness for direct grants, which it cannot
+do with NULL (SQLite treats every NULL as distinct). The service layer maps
+between the two; nothing outside `policy.service.ts` needs to know.
+
+Resource groups are rows in `resource_groups` (`id`, `name`, `description`).
+Only their edges live in `relation_tuples`: membership as
+`<ns>:<id>#parent@resource_group:<gid>`, access grants as
+`resource_group:<gid>#<relation>@<subject>`.
+
 ## Check Request
 
 ```json

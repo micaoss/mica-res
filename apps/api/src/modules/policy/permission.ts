@@ -1,6 +1,7 @@
 import type { RelationTuple } from "./policy.service";
 import type { GrantParams, PermissionCache, PolicyContext, ResourceDefinition, Subject, TupleKey } from "./registry";
 import type { AppDatabase } from "@/db";
+import { DIRECT_SUBJECT } from "@/modules/policy/schema";
 import { ForbiddenError } from "@/shared/lib/errors";
 import { createTuple, deleteTupleByKey, deleteTuplesForEntity } from "./policy.service";
 import { registerResource } from "./registry";
@@ -283,8 +284,8 @@ export function defineResource<T extends string>(definition: ResourceDefinition<
   return access;
 }
 
-function defaultSubjectRelation(subject: Subject): string | null {
+function defaultSubjectRelation(subject: Subject): string {
   if (subject.relation !== undefined)
     return subject.relation;
-  return subject.type === "group" ? "member" : null;
+  return subject.type === "group" ? "member" : DIRECT_SUBJECT;
 }

@@ -447,6 +447,22 @@ describe("getDocumentTreeForUser", () => {
     expect(childNode?.parentId).toBe(a.id);
   });
 
+  test("a share on an ancestor makes the whole subtree visible in tree + list, not just the shared node", async () => {
+    const alice = await seedUser("Alice");
+    const bob = await seedUser("Bob");
+    const parent = await createDocument(db, { title: "P", creatorId: alice });
+    const child = await createDocument(db, { title: "C", creatorId: alice, parentId: parent.id });
+    const grand = await createDocument(db, { title: "G", creatorId: alice, parentId: child.id });
+    await createDocument(db, { title: "unrelated", creatorId: alice });
+    await addDocumentShare(policyCtx(alice), { documentId: parent.id, targetType: "user", targetId: bob, permission: "viewer" });
+
+    const tree = await getDocumentTreeForUser(db, { id: bob, role: "user" });
+    expect(tree.map(n => n.id).sort()).toEqual([parent.id, child.id, grand.id].sort());
+
+    const mine = await listMyDocuments(db, { userId: bob });
+    expect(mine.data.map(d => d.id).sort()).toEqual([parent.id, child.id, grand.id].sort());
+  });
+
   test("non-admin only sees their own + their visible docs", async () => {
     const alice = await seedUser("Alice");
     const bob = await seedUser("Bob");

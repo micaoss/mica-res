@@ -30,6 +30,9 @@ export async function verifyDek(dbPath: string, dekHex: string): Promise<void> {
   }
 }
 
+/** Bump together with `MIGRATIONS` in restore.service.ts. */
+export const CURRENT_BACKUP_VERSION = 2;
+
 export interface BackupData {
   version: number;
   exportedAt: string;
@@ -41,7 +44,7 @@ const STREAM_BATCH_SIZE = 1000;
 
 /**
  * Stream a backup as JSON. Returns a `ReadableStream<Uint8Array>` whose
- * chunks form a single JSON document — `{"version":1,...,"tables":{"a":[...]}}`.
+ * chunks form a single JSON document — `{"version":2,...,"tables":{"a":[...]}}`.
  *
  * Memory cost is ~one batch (≤ STREAM_BATCH_SIZE rows × row size), not the
  * whole DB — important on small VMs once the audit table grows past tens
@@ -59,7 +62,7 @@ export function streamJsonBackup(db: AppDatabase, selectedModules: string[]): {
     async start(controller) {
       try {
         controller.enqueue(enc.encode(
-          `{"version":1,"exportedAt":${JSON.stringify(new Date().toISOString())},`
+          `{"version":${CURRENT_BACKUP_VERSION},"exportedAt":${JSON.stringify(new Date().toISOString())},`
           + `"modules":${JSON.stringify(modules)},"tables":{`,
         ));
 

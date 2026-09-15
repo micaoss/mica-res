@@ -43,4 +43,8 @@ Encryption verification flow: client first calls `POST /api/encryption/challenge
 
 - Incremental / differential backups.
 - Scheduled / off-site backups.
-- Cross-version migration of backup files (only matching schema versions are accepted).
+- Backups newer than the running build (`version` > the build's
+  `CURRENT_BACKUP_VERSION`). Older dumps are migrated forward on import:
+  v1 → v2 coerces a `null` `relation_tuples.subjectRelation` to the
+  direct-subject sentinel and lifts `resource_group … #__meta__` tuples into
+  `resource_groups` rows.

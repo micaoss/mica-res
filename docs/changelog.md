@@ -57,6 +57,27 @@ each upstream tag; your fork's `Unreleased` block sits at the top.
   group closure is computed once per request and passed to the engine
   (`CheckOptions.groupClosure`), turning group usersets into set lookups.
   `grant` / `revoke` clear it; hooks still fire per call.
+- `check()` fetches all tuples on a `(namespace, objectId)` once per
+  resolution and answers every rung of the `computed_userset` ladder from
+  memory, instead of two to four queries per rung on the same object.
+- `relation_tuples.subject_relation` is `NOT NULL DEFAULT ''`: a direct
+  subject is stored as the empty string so `idx_tuples_unique` enforces
+  uniqueness for direct grants (SQLite treats NULLs as distinct). The API
+  still reads and writes `null`. The application-level duplicate pre-check
+  and its `BEGIN IMMEDIATE` transaction are gone; a collision surfaces as
+  the same 422.
+- Resource groups have their own `resource_groups` table (`id`, `name`,
+  `description`, unique name). The `__meta__` tuple that smuggled the
+  description into `subject_relation` is gone, along with the name-clash
+  pre-checks it needed.
+- Backup format is v2. v1 dumps migrate forward on import (null →
+  sentinel, `__meta__` → `resource_groups`).
+- **Migration note for forks with a deployed database:** per template
+  convention the single squashed `0000_init` migration was regenerated in
+  place rather than appended to. A database already at `0000_init` will
+  not pick up the `subject_relation` constraint or the `resource_groups`
+  table automatically; apply the two changes by hand (or export a backup,
+  recreate, and import — the importer migrates the dump).
 
 ### Fixed
 
@@ -80,6 +101,13 @@ each upstream tag; your fork's `Unreleased` block sits at the top.
 - `registerRouteBinding()` accepted a second binding on the same
   `(method, path)`, which would gate the route twice with whichever action
   each declared. It now throws at registration.
+- `listUserResources()` hard-coded its `tuple_to_userset` branch to
+  `resource_group`, so for the shipped `item` namespace (`parent_item`
+  edges with `item` subjects) "which objects can I see" silently dropped
+  every inherited grant; only documents got subtree visibility, via a
+  module-side recursive CTE. The branch is now the true reverse of
+  `check()`: config-driven, self-referential rules walk to a fixpoint under
+  the node budget, cross-namespace rules recurse. The document CTE is gone.
 
 ## v0.1.0 — 2026-05-14
 

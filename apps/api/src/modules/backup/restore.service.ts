@@ -22,6 +22,7 @@ import type { Logger } from "@/shared/lib/logger";
 import { getTableColumns, getTableName, sql } from "drizzle-orm";
 import { getActiveDriver } from "@/modules/file/storage/registry";
 import { AppError } from "@/shared/lib/errors";
+import { CURRENT_BACKUP_VERSION } from "./export.service";
 import { getDataModules, resolveModulesWithDeps } from "./registry";
 
 /**
@@ -56,20 +57,45 @@ const MAX_ROWS_PER_TABLE = 500_000;
 const MAX_STRING_LENGTH = 1_000_000;
 const MAX_OBJECT_DEPTH = 16;
 
-/**
- * Highest backup version this binary knows how to import. Older versions
- * must be upgraded by the migrator chain in `MIGRATIONS`.
- */
-const CURRENT_BACKUP_VERSION = 1;
-
 type BackupMigrator = (data: BackupData) => BackupData;
 
 /**
- * Forward-version migrators: index N transforms version N into N+1. Empty
- * today — when version 2 ships, append a function that reshapes a v1 dump
- * into the v2 layout. Never break old backups outright.
+ * v1 → v2: `relation_tuples.subjectRelation` became NOT NULL with the
+ * empty-string sentinel for direct subjects, and resource-group identity
+ * moved out of `__meta__` tuples into the `resource_groups` table.
  */
-const MIGRATIONS: ReadonlyArray<BackupMigrator> = [];
+const migrateV1ToV2: BackupMigrator = (data) => {
+  const tuples = data.tables.relation_tuples;
+  if (!tuples)
+    return { ...data, version: 2 };
+
+  const lifted: Record<string, unknown>[] = [];
+  const kept: Record<string, unknown>[] = [];
+  for (const row of tuples) {
+    if (row.namespace === "resource_group" && row.relation === "__meta__") {
+      lifted.push({
+        id: row.objectId,
+        name: row.subjectId,
+        description: row.subjectRelation ?? null,
+        createdBy: row.createdBy ?? null,
+        createdAt: row.createdAt,
+      });
+      continue;
+    }
+    kept.push({ ...row, subjectRelation: row.subjectRelation ?? "" });
+  }
+
+  const tables: BackupData["tables"] = { ...data.tables, relation_tuples: kept };
+  if (lifted.length > 0)
+    tables.resource_groups = [...(tables.resource_groups ?? []), ...lifted];
+  return { ...data, version: 2, tables };
+};
+
+/**
+ * Forward-version migrators: index N-1 transforms version N into N+1.
+ * Never break old backups outright.
+ */
+const MIGRATIONS: ReadonlyArray<BackupMigrator> = [migrateV1ToV2];
 
 /**
  * Walk a parsed JSON tree and reject pathological shapes (unbounded

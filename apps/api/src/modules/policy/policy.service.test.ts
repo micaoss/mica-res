@@ -3,9 +3,11 @@ import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { sql } from "drizzle-orm";
 import { customAlphabet } from "nanoid";
 import { createDb } from "@/db";
 import { users } from "@/modules/account/users/schema";
+import { isUniqueViolation } from "@/shared/lib/errors";
 import { loadNamespaces } from "./namespace-config";
 import {
   batchCreateTuples,
@@ -97,6 +99,36 @@ describe("Policy Service", () => {
       expect(tuple.id).toHaveLength(8);
       expect(tuple.namespace).toBe("app");
       expect(tuple.relation).toBe("viewer");
+    });
+
+    it("stores a direct subject with the empty-string sentinel but reports it as null", async () => {
+      const tuple = await createTuple(db, { namespace: "app", objectId: "s1", relation: "viewer", subjectNamespace: "user", subjectId: "u1" }, userId);
+      expect(tuple.subjectRelation).toBeNull();
+
+      const raw = await db.all<{ subject_relation: string }>(sql`SELECT subject_relation FROM relation_tuples WHERE object_id = 's1'`);
+      expect(raw).toEqual([{ subject_relation: "" }]);
+
+      const [listed] = await getTuplesByObject(db, "app", "s1");
+      expect(listed!.subjectRelation).toBeNull();
+    });
+
+    it("rejects a duplicate direct-subject tuple through the unique index, not an app-level pre-check", async () => {
+      const input = { namespace: "app", objectId: "s2", relation: "viewer", subjectNamespace: "user", subjectId: "u1" };
+      await createTuple(db, input, userId);
+      expect(createTuple(db, input, userId)).rejects.toThrow("Duplicate tuple");
+
+      // Two rows with an empty subject relation must be impossible at the
+      // SQL layer — the whole point of the sentinel. Drizzle wraps the driver
+      // error, so assert on the same predicate production uses.
+      let raw: unknown;
+      try {
+        await db.run(sql`INSERT INTO relation_tuples (id, namespace, object_id, relation, subject_namespace, subject_id, subject_relation, created_at)
+                         VALUES ('dupraw', 'app', 's2', 'viewer', 'user', 'u1', '', '2026-01-01T00:00:00Z')`);
+      }
+      catch (err) {
+        raw = err;
+      }
+      expect(isUniqueViolation(raw)).toBe(true);
     });
 
     it("should reject invalid namespace", async () => {

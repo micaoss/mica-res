@@ -243,7 +243,7 @@ CREATE TABLE `relation_tuples` (
 	`relation` text NOT NULL,
 	`subject_namespace` text NOT NULL,
 	`subject_id` text NOT NULL,
-	`subject_relation` text,
+	`subject_relation` text DEFAULT '' NOT NULL,
 	`created_by` text,
 	`created_at` text NOT NULL,
 	FOREIGN KEY (`created_by`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE no action
@@ -252,6 +252,16 @@ CREATE TABLE `relation_tuples` (
 CREATE INDEX `idx_tuples_object` ON `relation_tuples` (`namespace`,`object_id`,`relation`);--> statement-breakpoint
 CREATE INDEX `idx_tuples_subject` ON `relation_tuples` (`subject_namespace`,`subject_id`,`subject_relation`);--> statement-breakpoint
 CREATE UNIQUE INDEX `idx_tuples_unique` ON `relation_tuples` (`namespace`,`object_id`,`relation`,`subject_namespace`,`subject_id`,`subject_relation`);--> statement-breakpoint
+CREATE TABLE `resource_groups` (
+	`id` text PRIMARY KEY NOT NULL,
+	`name` text NOT NULL,
+	`description` text,
+	`created_by` text,
+	`created_at` text NOT NULL,
+	FOREIGN KEY (`created_by`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `idx_resource_groups_name` ON `resource_groups` (`name`);--> statement-breakpoint
 CREATE TABLE `settings` (
 	`key` text PRIMARY KEY NOT NULL,
 	`value` text NOT NULL,

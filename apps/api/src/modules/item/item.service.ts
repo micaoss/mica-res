@@ -1,7 +1,7 @@
 import type { AppDatabase } from "@/db";
 import { and, count, desc, eq, inArray, isNotNull, isNull, like, or, sql } from "drizzle-orm";
 import { items } from "@/modules/item/schema";
-import { relationTuples } from "@/modules/policy/schema";
+import { DIRECT_SUBJECT, relationTuples } from "@/modules/policy/schema";
 import { NotFoundError, ValidationError } from "@/shared/lib/errors";
 import { nanoid, ulid } from "@/shared/lib/id";
 
@@ -82,7 +82,7 @@ export async function createItem(db: AppDatabase, input: CreateItemInput): Promi
       relation: "owner",
       subjectNamespace: "user",
       subjectId: input.creatorId,
-      subjectRelation: null,
+      subjectRelation: DIRECT_SUBJECT,
       createdBy: input.creatorId,
       createdAt: now,
     }).run();

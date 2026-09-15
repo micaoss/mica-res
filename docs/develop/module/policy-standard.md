@@ -882,12 +882,20 @@ they don't fit the module-owns-one-resource shape.
 |---|---|---|
 | `user` | — | Subject only. |
 | `group` | `member` | Users-in-groups, groups-in-groups. |
-| `resource_group` | `viewer / editor / manager / admin / member` | Optional grouping primitive. |
+| `resource_group` | `viewer / editor / manager / admin / member` | Optional grouping primitive. Identity lives in the `resource_groups` table; only edges are tuples. |
 | `item` | `owner / editor / viewer / assignee / approver / watcher / parent_item` | Shared base for content sub-types. |
 
 Add new namespaces in
 [`apps/api/src/modules/policy/namespace-config.ts`](../../../apps/api/src/modules/policy/namespace-config.ts).
 Reuse before inventing.
+
+`tuple_to_userset` rules are honoured symmetrically: `check()` follows
+each tupleset tuple's own subject namespace, and `listUserResources()`
+reverses the same rule — a self-referential rule (`item.parent_item`)
+is walked downward to a fixpoint under the node budget, a cross-namespace
+rule recurses into that namespace's `computed_userset`. A module that
+declares a rule gets both "may I?" and "which ones?" for free; do not
+build a module-side descendant expansion.
 
 ## Appendix B — when to skip the wrapper
 

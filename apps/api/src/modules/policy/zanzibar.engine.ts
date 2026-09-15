@@ -1,5 +1,5 @@
 import type { AppDatabase } from "@/db";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import {
   findDirectMember,
   listAllMembers,
@@ -7,7 +7,7 @@ import {
   listParentGroupsForGroup,
   listUsersetMembers,
 } from "@/modules/account/groups/group-members.service";
-import { relationTuples } from "@/modules/policy/schema";
+import { DIRECT_SUBJECT, relationTuples } from "@/modules/policy/schema";
 import { getParentRelations, getTupleToUsersetRules } from "./namespace-config";
 
 const MAX_DEPTH = 10;
@@ -67,7 +67,7 @@ export interface CheckOptions {
   /**
    * Per-resolution row cache: every tuple on a `(namespace, objectId)` is
    * fetched once and the direct / userset / tuple_to_userset branches for
-   * *all* relations on that object are answered from memory. The
+   * all* relations on that object are answered from memory. The
    * computed_userset ladder (viewer ← editor ← owner) recurses on the same
    * object, so without this each rung re-queried the table.
    */
@@ -162,10 +162,11 @@ export async function check(
   const membership = isGroupMembership(namespace, relation);
   const rows = membership ? [] : await rowsForObject(db, namespace, objectId, objectRows);
 
-  // 1. Direct tuple match (subject_relation IS NULL)
+  // 1. Direct tuple match (subject_relation is the direct-subject sentinel;
+  // group_members keeps NULL for the same meaning)
   const direct = membership
     ? await findDirectMember(db, objectId, subjectNs, subjectId, null)
-    : rows.find(r => r.relation === relation && r.subjectNamespace === subjectNs && r.subjectId === subjectId && r.subjectRelation === null);
+    : rows.find(r => r.relation === relation && r.subjectNamespace === subjectNs && r.subjectId === subjectId && r.subjectRelation === DIRECT_SUBJECT);
 
   if (direct) {
     return {
@@ -177,7 +178,7 @@ export async function check(
   // 2. Userset indirect match — tuples with subject_relation set.
   const usersetTuples = membership
     ? await listUsersetMembers(db, objectId)
-    : rows.filter(r => r.relation === relation && r.subjectRelation !== null);
+    : rows.filter(r => r.relation === relation && r.subjectRelation !== DIRECT_SUBJECT);
 
   for (const tuple of usersetTuples) {
     // Membership answered from the supplied closure: no per-group recursion.
@@ -378,7 +379,7 @@ export async function listUserResources(
         inArray(relationTuples.relation, effectiveRelations),
         eq(relationTuples.subjectNamespace, "user"),
         eq(relationTuples.subjectId, userId),
-        isNull(relationTuples.subjectRelation),
+        eq(relationTuples.subjectRelation, DIRECT_SUBJECT),
       ),
     )
     .all();

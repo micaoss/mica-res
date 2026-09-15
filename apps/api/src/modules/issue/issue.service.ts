@@ -3,7 +3,7 @@ import { and, count, desc, eq, inArray, isNull, like, or, sql } from "drizzle-or
 import { users } from "@/modules/account/users/schema";
 import { issueDetails } from "@/modules/issue/schema";
 import { items } from "@/modules/item/schema";
-import { relationTuples } from "@/modules/policy/schema";
+import { DIRECT_SUBJECT, relationTuples } from "@/modules/policy/schema";
 import { check, listUserResources } from "@/modules/policy/zanzibar.engine";
 import { nanoid, ulid } from "@/shared/lib/id";
 
@@ -125,7 +125,7 @@ export async function createIssue(db: AppDatabase, input: CreateIssueInput): Pro
       relation: "owner",
       subjectNamespace: "user",
       subjectId: input.creatorId,
-      subjectRelation: null,
+      subjectRelation: DIRECT_SUBJECT,
       createdBy: input.creatorId,
       createdAt: now,
     }).run();
@@ -138,7 +138,7 @@ export async function createIssue(db: AppDatabase, input: CreateIssueInput): Pro
         relation: "assignee",
         subjectNamespace: "user",
         subjectId: input.assigneeId,
-        subjectRelation: null,
+        subjectRelation: DIRECT_SUBJECT,
         createdBy: input.creatorId,
         createdAt: now,
       }).run();
@@ -211,7 +211,7 @@ export async function updateIssue(db: AppDatabase, shortId: string, input: Updat
           relation: "assignee",
           subjectNamespace: "user",
           subjectId: input.assigneeId,
-          subjectRelation: null,
+          subjectRelation: DIRECT_SUBJECT,
           createdBy: item.creatorId,
           createdAt: now,
         }).run();

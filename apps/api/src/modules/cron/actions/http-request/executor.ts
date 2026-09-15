@@ -1,4 +1,5 @@
 import type { ActionExecutor } from "../types";
+import { Buffer } from "node:buffer";
 import { promises as dns } from "node:dns";
 import { z } from "zod";
 import { DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS, MIN_TIMEOUT_MS } from "./spec";

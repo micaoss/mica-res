@@ -21,12 +21,13 @@ export const Route = createFileRoute("/_app")({
 // Restore the sidebar expanded/collapsed preference from cookie on first
 // render. The Sidebar component writes to `sidebar_state` on toggle but
 // never reads it back (designed for SSR). For our SPA we hydrate it here
-// so the user's choice survives a full reload.
+// so the user's choice survives a full reload. With no stored preference the
+// sidebar starts expanded.
 function readSidebarPreference(): boolean {
   if (typeof document === "undefined")
-    return false;
+    return true;
   const match = document.cookie.match(/(?:^|;\s*)sidebar_state=([^;]+)/);
-  return match ? match[1] === "true" : false;
+  return match ? match[1] === "true" : true;
 }
 
 function AppLayout() {

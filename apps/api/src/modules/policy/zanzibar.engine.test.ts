@@ -322,6 +322,16 @@ describe("Zanzibar Engine", () => {
     });
   });
 
+  describe("check — default item namespace", () => {
+    it("assignee implies viewer, so the handler of an item can read it through the engine", async () => {
+      loadNamespaces(); // shipped defaults
+      await insertTuple(db, "item", "task-1", "assignee", "user", "lin");
+      expect((await check(db, "item", "task-1", "viewer", "user", "lin")).allowed).toBe(true);
+      expect((await check(db, "item", "task-1", "editor", "user", "lin")).allowed).toBe(false);
+      loadNamespaces(testNamespaces);
+    });
+  });
+
   describe("check — supplied group closure", () => {
     it("treats a caller-supplied group closure as the membership source instead of re-resolving per group", async () => {
       // No group_members row for the user: the engine on its own must deny.

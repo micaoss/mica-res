@@ -54,7 +54,7 @@ const defaultNamespaces: readonly NamespaceConfig[] = [
   // Relations:
   // - owner    : creator; full control. Written by ItemService.createItem.
   // - editor   : can modify; implied by owner.
-  // - viewer   : can read; implied by editor. Also inherited from any
+  // - viewer   : can read; implied by editor and by assignee. Also inherited from any
   //              ancestor `item` reached via the parent_item edge — this is
   //              how document subtree visibility works (a viewer/editor on a
   //              parent item flows down to its descendants).
@@ -84,6 +84,11 @@ const defaultNamespaces: readonly NamespaceConfig[] = [
         union: [
           { this: {} },
           { computed_userset: { relation: "editor" } },
+          // The current handler of an item can always read it. This is the
+          // one rule the issue routes used to encode by hand
+          // (`creatorId || assigneeId`); keeping it in the namespace means
+          // every path — routes, attachments, comments — agrees.
+          { computed_userset: { relation: "assignee" } },
           { tuple_to_userset: { tupleset: "parent_item", computed_userset: "viewer" } },
         ],
       },

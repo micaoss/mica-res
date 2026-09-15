@@ -1,4 +1,5 @@
 import type { Context } from "hono";
+import type { AppDatabase } from "@/db";
 import type { AppEnv } from "@/shared/lib/types";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -13,17 +14,18 @@ import {
   uploadAndReference,
 } from "@/modules/file";
 import { mountItemCommentRoutes } from "@/modules/item/comment.routes";
+import { NOOP_POLICY_LOGGER, policyContext } from "@/modules/policy";
 import { getClientIp } from "@/shared/lib/client-ip";
 import { AppError, ForbiddenError, NotFoundError } from "@/shared/lib/errors";
 import { describeRoute, errors, jsonCreated, jsonOk, jsonPaged, raw, SECURITY, TAGS, validator } from "@/shared/lib/openapi";
 import { authRequired } from "@/shared/middleware/auth";
+import { issueAccess } from "./issue.permission";
 import {
   createIssue,
   getIssueByShortId,
   getUserById,
   listIssues,
   listMyIssues,
-  resolveAccess,
   resolveIssueItem,
   softDeleteIssue,
   updateIssue,
@@ -74,6 +76,14 @@ function auditMeta(c: Context) {
     ip: getClientIp(c),
     userAgent: c.req.header("user-agent") ?? "unknown",
   };
+}
+
+/** Resolve the `item` row behind an issue short id; 404 when absent. */
+async function requireItem(db: AppDatabase, shortId: string) {
+  const item = await resolveIssueItem(db, shortId);
+  if (!item)
+    throw new NotFoundError("Issue", shortId);
+  return item;
 }
 
 export function issueRoutes() {
@@ -188,14 +198,11 @@ export function issueRoutes() {
     validator("param", z.object({ id: z.string() })),
     async (c) => {
       const db = c.get("db");
-      const user = c.get("user")!;
       const id = c.req.valid("param").id;
       const issue = await getIssueByShortId(db, id);
       if (!issue)
         throw new NotFoundError("Issue", id);
-      if (user.role !== "admin" && issue.creatorId !== user.id && issue.assigneeId !== user.id) {
-        throw new ForbiddenError();
-      }
+      await issueAccess.assert(policyContext(c)!, "issue:read", (await requireItem(db, id)).id);
       return c.json({ success: true, data: issue });
     },
   );
@@ -223,20 +230,18 @@ export function issueRoutes() {
       if (!existing)
         throw new NotFoundError("Issue", id);
 
-      const isAdmin = user.role === "admin";
-      const isCreator = existing.creatorId === user.id;
-      const isAssignee = existing.assigneeId === user.id;
-      if (!isAdmin && !isCreator && !isAssignee) {
-        throw new ForbiddenError();
-      }
-
       const body = c.req.valid("json");
-
-      if (!isAdmin && !isCreator) {
-        const nonStatusKeys = Object.keys(body).filter(k => k !== "status");
-        if (nonStatusKeys.length > 0) {
-          throw new AppError("Assignees can only update status", 403, "FORBIDDEN");
-        }
+      const ctx = policyContext(c)!;
+      const itemId = (await requireItem(db, id)).id;
+      // Whole-record edits need `editor`; a status-only payload is the
+      // handler's job and is also open to `assignee`.
+      const statusOnly = Object.keys(body).every(k => k === "status");
+      const allowed = await issueAccess.can(ctx, "issue:update", itemId)
+        || (statusOnly && await issueAccess.can(ctx, "issue:transition", itemId));
+      if (!allowed) {
+        throw statusOnly
+          ? new ForbiddenError()
+          : new AppError("Assignees can only update status", 403, "FORBIDDEN");
       }
 
       if (body.assigneeId) {
@@ -317,9 +322,7 @@ export function issueRoutes() {
       const existing = await getIssueByShortId(db, id);
       if (!existing)
         throw new NotFoundError("Issue", id);
-      if (user.role !== "admin" && existing.creatorId !== user.id) {
-        throw new ForbiddenError();
-      }
+      await issueAccess.assert(policyContext(c)!, "issue:delete", (await requireItem(db, id)).id);
       await softDeleteIssue(db, id);
       await audit(db, c.get("logger"), {
         actorId: user.id,
@@ -355,9 +358,7 @@ export function issueRoutes() {
       const issue = await getIssueByShortId(db, id);
       if (!issue)
         throw new NotFoundError("Issue", id);
-      if (user.role !== "admin" && issue.creatorId !== user.id && issue.assigneeId !== user.id) {
-        throw new ForbiddenError();
-      }
+      await issueAccess.assert(policyContext(c)!, "issue:manage_attachments", (await requireItem(db, id)).id);
       const item = await resolveIssueItem(db, id);
       if (!item)
         throw new NotFoundError("Issue", id);
@@ -411,14 +412,11 @@ export function issueRoutes() {
     }),
     async (c) => {
       const db = c.get("db");
-      const user = c.get("user")!;
       const id = c.req.param("id");
       const issue = await getIssueByShortId(db, id);
       if (!issue)
         throw new NotFoundError("Issue", id);
-      if (user.role !== "admin" && issue.creatorId !== user.id && issue.assigneeId !== user.id) {
-        throw new ForbiddenError();
-      }
+      await issueAccess.assert(policyContext(c)!, "issue:read", (await requireItem(db, id)).id);
       const item = await resolveIssueItem(db, id);
       if (!item)
         throw new NotFoundError("Issue", id);
@@ -441,15 +439,12 @@ export function issueRoutes() {
     }),
     async (c) => {
       const db = c.get("db");
-      const user = c.get("user")!;
       const id = c.req.param("id");
       const aid = c.req.param("aid");
       const issue = await getIssueByShortId(db, id);
       if (!issue)
         throw new NotFoundError("Issue", id);
-      if (user.role !== "admin" && issue.creatorId !== user.id && issue.assigneeId !== user.id) {
-        throw new ForbiddenError();
-      }
+      await issueAccess.assert(policyContext(c)!, "issue:download", (await requireItem(db, id)).id);
       const item = await resolveIssueItem(db, id);
       if (!item)
         throw new NotFoundError("Issue", id);
@@ -483,9 +478,7 @@ export function issueRoutes() {
       const issue = await getIssueByShortId(db, id);
       if (!issue)
         throw new NotFoundError("Issue", id);
-      if (user.role !== "admin" && issue.creatorId !== user.id && issue.assigneeId !== user.id) {
-        throw new ForbiddenError();
-      }
+      await issueAccess.assert(policyContext(c)!, "issue:manage_attachments", (await requireItem(db, id)).id);
       const item = await resolveIssueItem(db, id);
       if (!item)
         throw new NotFoundError("Issue", id);
@@ -524,14 +517,16 @@ export function issueRoutes() {
       return { item, resource: issue, externalId: idParam, resourceName: issue.title };
     },
     async permissions(db, user, subject) {
-      const access = await resolveAccess(db, subject.item, user.id);
-      const isAdmin = user.role === "admin";
-      const canAct = isAdmin || access.isCreator || access.isAssignee;
+      // Same shape as document.routes: a minimal context so the framework
+      // (and its per-request cache) answers, not a hand-rolled column rule.
+      const ctx = { db, logger: NOOP_POLICY_LOGGER, actor: { id: user.id, type: "user", role: user.role } };
+      const canRead = await issueAccess.can(ctx, "issue:read", subject.item.id);
+      const isHandler = await issueAccess.can(ctx, "issue:transition", subject.item.id);
       return {
-        canRead: canAct,
-        canPost: canAct,
-        includeInternal: isAdmin || access.isCreator || access.isAssignee,
-        canDelete: authorId => isAdmin || authorId === user.id,
+        canRead,
+        canPost: canRead,
+        includeInternal: isHandler,
+        canDelete: authorId => user.role === "admin" || authorId === user.id,
       };
     },
   });

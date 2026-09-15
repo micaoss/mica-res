@@ -108,6 +108,24 @@ each upstream tag; your fork's `Unreleased` block sits at the top.
   module-side recursive CTE. The branch is now the true reverse of
   `check()`: config-driven, self-referential rules walk to a fixpoint under
   the node budget, cross-namespace rules recurse. The document CTE is gone.
+- The issue module answered "may I?" from two different authorities: its
+  own routes and comments checked the `items` columns (`admin || creator ||
+  assignee`), while the generic `/files/*` download path and comment
+  attachments asked the policy engine — so the same attachment could be 200
+  on one URL and 403 on the other, and an engine-granted `viewer` was
+  refused by `GET /issues/:id` while `/permissions` said yes. Issues are now
+  a `defineResource` on the `item` namespace (`issue:read` / `download` →
+  viewer, `issue:update` → editor, `issue:transition` (status-only) →
+  assignee, `issue:delete` → owner, `issue:manage_attachments` → assignee),
+  and `assignee` now implies `viewer` in the namespace so the handler keeps
+  read access everywhere. Every issue path resolves through the engine.
+- The cron `http-request` action followed redirects, so a public URL
+  answering `302` to a private address slipped past the DNS-pinned SSRF
+  guard. Redirects are now reported, never followed, and the response body
+  is read to a 64 KiB cap instead of being buffered in full.
+- `errorHandler` never mapped SQLite constraint errors to 409: drizzle wraps
+  the driver error, so the code/message it checked lived on `.cause`. The
+  check now walks the cause chain (`isConstraintViolation`).
 
 ## v0.1.0 — 2026-05-14
 

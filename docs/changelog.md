@@ -150,6 +150,23 @@ each upstream tag; your fork's `Unreleased` block sits at the top.
   id, so two attachments written in the same millisecond came back in
   arbitrary order (a long-standing flaky test). Ties now break by insertion
   order (`rowid`).
+- **Encrypted databases could become "database disk image is malformed".**
+  `createDb` set `PRAGMA mmap_size = 256 MiB` unconditionally; libsql's
+  page-level encryption and memory-mapped I/O do not mix, and under an
+  ordinary write sequence (reproduced end-to-end by the new `/api/files`
+  e2e, deterministic per sequence) a fresh-page append left the encrypted
+  file unreadable — surfacing as 500s mid-run or a failed unlock after
+  restart. Encrypted databases are no longer memory-mapped; plaintext keeps
+  the mapping. A test pins the pragma per mode.
+- The generic `/api/files/*` download path was admin-only in the shipped
+  app: `cronRoutes()` registered `router.use("*", adminRequired)`, and Hono
+  merges a sub-router's `use("*")` into the parent where it applies to
+  every router mounted afterwards — `fileRoutes()` is mounted last. Cron's
+  guard is now scoped to `/cron/*`; a composition test over
+  `protectedRoutes()` pins that a non-admin reaches later routers.
+- `stopFileGcSweep()` only cancelled timers; a sweep already running kept
+  writing while shutdown closed the database under it. It now waits for the
+  in-flight sweep, and a tick that fires while one is running is skipped.
 
 ### Removed
 

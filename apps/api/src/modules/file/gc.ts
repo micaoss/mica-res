@@ -8,6 +8,13 @@ const SWEEP_BATCH = 500;
 const FIRST_RUN_DELAY_MS = 30 * 1000;
 
 let timer: ReturnType<typeof setInterval> | undefined;
+/**
+ * The sweep currently executing, if any. Shutdown must wait for it: a
+ * sweep cut off mid-statement while `closeDb` closes the client underneath
+ * it can leave the (encrypted) database file malformed on the next open.
+ */
+let inFlight: Promise<void> | undefined;
+let stopped = false;
 let firstRunTimer: ReturnType<typeof setTimeout> | undefined;
 // Mutable: DEK rotation rebuilds the app with a new db handle. The
 // long-lived timer reads this ref so it doesn't outlive the previous
@@ -49,7 +56,7 @@ export function startFileGcSweep(db: AppDatabase, config: Config, logger: Logger
 
   const run = async () => {
     const live = currentDb;
-    if (!live)
+    if (!live || stopped)
       return;
     try {
       // First, release file_references rows whose owner row has gone
@@ -68,16 +75,31 @@ export function startFileGcSweep(db: AppDatabase, config: Config, logger: Logger
     }
   };
 
+  // Track the running sweep so stopFileGcSweep() can drain it. Sweeps do
+  // not overlap: a tick that fires while one is still running is skipped.
+  const launch = () => {
+    if (inFlight)
+      return;
+    inFlight = run().finally(() => {
+      inFlight = undefined;
+    });
+  };
+
+  stopped = false;
   // Defer the first sweep so it doesn't fight startup work.
   firstRunTimer = setTimeout(() => {
     firstRunTimer = undefined;
-    void run();
-    timer = setInterval(() => void run(), intervalMs);
+    launch();
+    timer = setInterval(launch, intervalMs);
   }, FIRST_RUN_DELAY_MS);
 }
 
-/** Stop the periodic sweep — used by shutdown and tests. */
-export function stopFileGcSweep(): void {
+/**
+ * Stop the periodic sweep and wait for any sweep already running — used by
+ * shutdown (before the DB is closed) and by tests.
+ */
+export async function stopFileGcSweep(): Promise<void> {
+  stopped = true;
   if (timer) {
     clearInterval(timer);
     timer = undefined;
@@ -86,4 +108,5 @@ export function stopFileGcSweep(): void {
     clearTimeout(firstRunTimer);
     firstRunTimer = undefined;
   }
+  await inFlight;
 }

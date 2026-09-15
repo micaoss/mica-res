@@ -15,9 +15,9 @@ shell = "system"
 # it runs the api coverage and fails the build if the text-reporter
 # "All files" row drops below the floor below.
 #
-# Measured baseline 2026-09-15 (full api suite, 549 tests, 0 fail), text
+# Measured baseline 2026-09-15 (full api suite, 572 tests, 0 fail), text
 # reporter "All files" (honours `coveragePathIgnorePatterns`):
-#   lines 85.93%, functions 78.79%.
+#   lines 86.72%, functions 80.01%.
 # Realistic ratchet floor (just below baseline, ~3pt headroom for per-run
 # variance — passes today, blocks regression, never lowered to make red pass):
 #   line >= 80, function >= 70

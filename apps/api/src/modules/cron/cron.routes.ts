@@ -104,8 +104,12 @@ export function cronRoutes() {
   // route. Handlers below treat `getScheduler()` as nullable — when
   // the scheduler is not running, DB writes still land and the Baker
   // side effects no-op.
-  router.use("*", authRequired);
-  router.use("*", adminRequired);
+  // Scoped to this router's own prefix on purpose. `protectedRoutes()`
+  // mounts every module router on "/", and Hono merges a sub-router's
+  // `use("*")` into the parent, where it applies to every router mounted
+  // afterwards — a `use("*", adminRequired)` here made the generic
+  // /files/* download path admin-only for everyone.
+  router.use("/cron/*", authRequired, adminRequired);
 
   async function findJob(c: Context<AppEnv>, identifier: string) {
     const db = c.get("db");

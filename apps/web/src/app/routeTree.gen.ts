@@ -10,24 +10,24 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteRouteImport } from './routes/_app/route'
-import { Route as AppIndexRouteImport } from './routes/_app/index'
-import { Route as errorErrorRouteImport } from './routes/(error)/error'
-import { Route as errorDeniedRouteImport } from './routes/(error)/denied'
-import { Route as encryptionUnlockRouteImport } from './routes/(encryption)/unlock'
-import { Route as encryptionSetupRouteImport } from './routes/(encryption)/setup'
-import { Route as authTotpVerifyRouteImport } from './routes/(auth)/totp-verify'
 import { Route as authLoginRouteImport } from './routes/(auth)/login'
-import { Route as AppOverviewRouteRouteImport } from './routes/_app/overview/route'
-import { Route as AppIssuesRouteRouteImport } from './routes/_app/issues/route'
-import { Route as AppDocumentsRouteRouteImport } from './routes/_app/documents/route'
+import { Route as authTotpVerifyRouteImport } from './routes/(auth)/totp-verify'
+import { Route as encryptionSetupRouteImport } from './routes/(encryption)/setup'
+import { Route as encryptionUnlockRouteImport } from './routes/(encryption)/unlock'
+import { Route as errorDeniedRouteImport } from './routes/(error)/denied'
+import { Route as errorErrorRouteImport } from './routes/(error)/error'
+import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppAdminRouteRouteImport } from './routes/_app/admin/route'
+import { Route as AppDocumentsRouteRouteImport } from './routes/_app/documents/route'
+import { Route as AppIssuesRouteRouteImport } from './routes/_app/issues/route'
+import { Route as AppOverviewRouteRouteImport } from './routes/_app/overview/route'
+import { Route as AppAdminAuditRouteImport } from './routes/_app/admin/audit'
+import { Route as AppAdminCronRouteImport } from './routes/_app/admin/cron'
+import { Route as AppAdminPoliciesRouteImport } from './routes/_app/admin/policies'
+import { Route as AppAdminSettingsRouteImport } from './routes/_app/admin/settings'
+import { Route as AppAdminUsersRouteImport } from './routes/_app/admin/users'
 import { Route as AppIssuesIndexRouteImport } from './routes/_app/issues/index'
 import { Route as AppIssuesIssueIdRouteImport } from './routes/_app/issues/$issueId'
-import { Route as AppAdminUsersRouteImport } from './routes/_app/admin/users'
-import { Route as AppAdminSettingsRouteImport } from './routes/_app/admin/settings'
-import { Route as AppAdminPoliciesRouteImport } from './routes/_app/admin/policies'
-import { Route as AppAdminCronRouteImport } from './routes/_app/admin/cron'
-import { Route as AppAdminAuditRouteImport } from './routes/_app/admin/audit'
 import { Route as AppAdminUsersIndexRouteImport } from './routes/_app/admin/users/index'
 import { Route as AppAdminUsersGroupsRouteImport } from './routes/_app/admin/users/groups'
 
@@ -35,29 +35,9 @@ const AppRouteRoute = AppRouteRouteImport.update({
   id: '/_app',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AppIndexRoute = AppIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => AppRouteRoute,
-} as any)
-const errorErrorRoute = errorErrorRouteImport.update({
-  id: '/(error)/error',
-  path: '/error',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const errorDeniedRoute = errorDeniedRouteImport.update({
-  id: '/(error)/denied',
-  path: '/denied',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const encryptionUnlockRoute = encryptionUnlockRouteImport.update({
-  id: '/(encryption)/unlock',
-  path: '/unlock',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const encryptionSetupRoute = encryptionSetupRouteImport.update({
-  id: '/(encryption)/setup',
-  path: '/setup',
+const authLoginRoute = authLoginRouteImport.update({
+  id: '/(auth)/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const authTotpVerifyRoute = authTotpVerifyRouteImport.update({
@@ -65,21 +45,34 @@ const authTotpVerifyRoute = authTotpVerifyRouteImport.update({
   path: '/totp-verify',
   getParentRoute: () => rootRouteImport,
 } as any)
-const authLoginRoute = authLoginRouteImport.update({
-  id: '/(auth)/login',
-  path: '/login',
+const encryptionSetupRoute = encryptionSetupRouteImport.update({
+  id: '/(encryption)/setup',
+  path: '/setup',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AppOverviewRouteRoute = AppOverviewRouteRouteImport.update({
-  id: '/overview',
-  path: '/overview',
+const encryptionUnlockRoute = encryptionUnlockRouteImport.update({
+  id: '/(encryption)/unlock',
+  path: '/unlock',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const errorDeniedRoute = errorDeniedRouteImport.update({
+  id: '/(error)/denied',
+  path: '/denied',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const errorErrorRoute = errorErrorRouteImport.update({
+  id: '/(error)/error',
+  path: '/error',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppIndexRoute = AppIndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => AppRouteRoute,
-} as any).lazy(() =>
-  import('./routes/_app/overview/route.lazy').then((d) => d.Route),
-)
-const AppIssuesRouteRoute = AppIssuesRouteRouteImport.update({
-  id: '/issues',
-  path: '/issues',
+} as any)
+const AppAdminRouteRoute = AppAdminRouteRouteImport.update({
+  id: '/admin',
+  path: '/admin',
   getParentRoute: () => AppRouteRoute,
 } as any)
 const AppDocumentsRouteRoute = AppDocumentsRouteRouteImport.update({
@@ -89,10 +82,50 @@ const AppDocumentsRouteRoute = AppDocumentsRouteRouteImport.update({
 } as any).lazy(() =>
   import('./routes/_app/documents/route.lazy').then((d) => d.Route),
 )
-const AppAdminRouteRoute = AppAdminRouteRouteImport.update({
-  id: '/admin',
-  path: '/admin',
+const AppIssuesRouteRoute = AppIssuesRouteRouteImport.update({
+  id: '/issues',
+  path: '/issues',
   getParentRoute: () => AppRouteRoute,
+} as any)
+const AppOverviewRouteRoute = AppOverviewRouteRouteImport.update({
+  id: '/overview',
+  path: '/overview',
+  getParentRoute: () => AppRouteRoute,
+} as any).lazy(() =>
+  import('./routes/_app/overview/route.lazy').then((d) => d.Route),
+)
+const AppAdminAuditRoute = AppAdminAuditRouteImport.update({
+  id: '/audit',
+  path: '/audit',
+  getParentRoute: () => AppAdminRouteRoute,
+} as any).lazy(() =>
+  import('./routes/_app/admin/audit.lazy').then((d) => d.Route),
+)
+const AppAdminCronRoute = AppAdminCronRouteImport.update({
+  id: '/cron',
+  path: '/cron',
+  getParentRoute: () => AppAdminRouteRoute,
+} as any).lazy(() =>
+  import('./routes/_app/admin/cron.lazy').then((d) => d.Route),
+)
+const AppAdminPoliciesRoute = AppAdminPoliciesRouteImport.update({
+  id: '/policies',
+  path: '/policies',
+  getParentRoute: () => AppAdminRouteRoute,
+} as any).lazy(() =>
+  import('./routes/_app/admin/policies.lazy').then((d) => d.Route),
+)
+const AppAdminSettingsRoute = AppAdminSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AppAdminRouteRoute,
+} as any).lazy(() =>
+  import('./routes/_app/admin/settings.lazy').then((d) => d.Route),
+)
+const AppAdminUsersRoute = AppAdminUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
+  getParentRoute: () => AppAdminRouteRoute,
 } as any)
 const AppIssuesIndexRoute = AppIssuesIndexRouteImport.update({
   id: '/',
@@ -107,39 +140,6 @@ const AppIssuesIssueIdRoute = AppIssuesIssueIdRouteImport.update({
   getParentRoute: () => AppIssuesRouteRoute,
 } as any).lazy(() =>
   import('./routes/_app/issues/$issueId.lazy').then((d) => d.Route),
-)
-const AppAdminUsersRoute = AppAdminUsersRouteImport.update({
-  id: '/users',
-  path: '/users',
-  getParentRoute: () => AppAdminRouteRoute,
-} as any)
-const AppAdminSettingsRoute = AppAdminSettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
-  getParentRoute: () => AppAdminRouteRoute,
-} as any).lazy(() =>
-  import('./routes/_app/admin/settings.lazy').then((d) => d.Route),
-)
-const AppAdminPoliciesRoute = AppAdminPoliciesRouteImport.update({
-  id: '/policies',
-  path: '/policies',
-  getParentRoute: () => AppAdminRouteRoute,
-} as any).lazy(() =>
-  import('./routes/_app/admin/policies.lazy').then((d) => d.Route),
-)
-const AppAdminCronRoute = AppAdminCronRouteImport.update({
-  id: '/cron',
-  path: '/cron',
-  getParentRoute: () => AppAdminRouteRoute,
-} as any).lazy(() =>
-  import('./routes/_app/admin/cron.lazy').then((d) => d.Route),
-)
-const AppAdminAuditRoute = AppAdminAuditRouteImport.update({
-  id: '/audit',
-  path: '/audit',
-  getParentRoute: () => AppAdminRouteRoute,
-} as any).lazy(() =>
-  import('./routes/_app/admin/audit.lazy').then((d) => d.Route),
 )
 const AppAdminUsersIndexRoute = AppAdminUsersIndexRouteImport.update({
   id: '/',
@@ -309,39 +309,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_app/': {
-      id: '/_app/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof AppIndexRouteImport
-      parentRoute: typeof AppRouteRoute
-    }
-    '/(error)/error': {
-      id: '/(error)/error'
-      path: '/error'
-      fullPath: '/error'
-      preLoaderRoute: typeof errorErrorRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/(error)/denied': {
-      id: '/(error)/denied'
-      path: '/denied'
-      fullPath: '/denied'
-      preLoaderRoute: typeof errorDeniedRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/(encryption)/unlock': {
-      id: '/(encryption)/unlock'
-      path: '/unlock'
-      fullPath: '/unlock'
-      preLoaderRoute: typeof encryptionUnlockRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/(encryption)/setup': {
-      id: '/(encryption)/setup'
-      path: '/setup'
-      fullPath: '/setup'
-      preLoaderRoute: typeof encryptionSetupRouteImport
+    '/(auth)/login': {
+      id: '/(auth)/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof authLoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/(auth)/totp-verify': {
@@ -351,25 +323,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof authTotpVerifyRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/(auth)/login': {
-      id: '/(auth)/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof authLoginRouteImport
+    '/(encryption)/setup': {
+      id: '/(encryption)/setup'
+      path: '/setup'
+      fullPath: '/setup'
+      preLoaderRoute: typeof encryptionSetupRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_app/overview': {
-      id: '/_app/overview'
-      path: '/overview'
-      fullPath: '/overview'
-      preLoaderRoute: typeof AppOverviewRouteRouteImport
+    '/(encryption)/unlock': {
+      id: '/(encryption)/unlock'
+      path: '/unlock'
+      fullPath: '/unlock'
+      preLoaderRoute: typeof encryptionUnlockRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/(error)/denied': {
+      id: '/(error)/denied'
+      path: '/denied'
+      fullPath: '/denied'
+      preLoaderRoute: typeof errorDeniedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/(error)/error': {
+      id: '/(error)/error'
+      path: '/error'
+      fullPath: '/error'
+      preLoaderRoute: typeof errorErrorRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_app/': {
+      id: '/_app/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRouteRoute
     }
-    '/_app/issues': {
-      id: '/_app/issues'
-      path: '/issues'
-      fullPath: '/issues'
-      preLoaderRoute: typeof AppIssuesRouteRouteImport
+    '/_app/admin': {
+      id: '/_app/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AppAdminRouteRouteImport
       parentRoute: typeof AppRouteRoute
     }
     '/_app/documents': {
@@ -379,12 +372,54 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppDocumentsRouteRouteImport
       parentRoute: typeof AppRouteRoute
     }
-    '/_app/admin': {
-      id: '/_app/admin'
-      path: '/admin'
-      fullPath: '/admin'
-      preLoaderRoute: typeof AppAdminRouteRouteImport
+    '/_app/issues': {
+      id: '/_app/issues'
+      path: '/issues'
+      fullPath: '/issues'
+      preLoaderRoute: typeof AppIssuesRouteRouteImport
       parentRoute: typeof AppRouteRoute
+    }
+    '/_app/overview': {
+      id: '/_app/overview'
+      path: '/overview'
+      fullPath: '/overview'
+      preLoaderRoute: typeof AppOverviewRouteRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/_app/admin/audit': {
+      id: '/_app/admin/audit'
+      path: '/audit'
+      fullPath: '/admin/audit'
+      preLoaderRoute: typeof AppAdminAuditRouteImport
+      parentRoute: typeof AppAdminRouteRoute
+    }
+    '/_app/admin/cron': {
+      id: '/_app/admin/cron'
+      path: '/cron'
+      fullPath: '/admin/cron'
+      preLoaderRoute: typeof AppAdminCronRouteImport
+      parentRoute: typeof AppAdminRouteRoute
+    }
+    '/_app/admin/policies': {
+      id: '/_app/admin/policies'
+      path: '/policies'
+      fullPath: '/admin/policies'
+      preLoaderRoute: typeof AppAdminPoliciesRouteImport
+      parentRoute: typeof AppAdminRouteRoute
+    }
+    '/_app/admin/settings': {
+      id: '/_app/admin/settings'
+      path: '/settings'
+      fullPath: '/admin/settings'
+      preLoaderRoute: typeof AppAdminSettingsRouteImport
+      parentRoute: typeof AppAdminRouteRoute
+    }
+    '/_app/admin/users': {
+      id: '/_app/admin/users'
+      path: '/users'
+      fullPath: '/admin/users'
+      preLoaderRoute: typeof AppAdminUsersRouteImport
+      parentRoute: typeof AppAdminRouteRoute
     }
     '/_app/issues/': {
       id: '/_app/issues/'
@@ -399,41 +434,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/issues/$issueId'
       preLoaderRoute: typeof AppIssuesIssueIdRouteImport
       parentRoute: typeof AppIssuesRouteRoute
-    }
-    '/_app/admin/users': {
-      id: '/_app/admin/users'
-      path: '/users'
-      fullPath: '/admin/users'
-      preLoaderRoute: typeof AppAdminUsersRouteImport
-      parentRoute: typeof AppAdminRouteRoute
-    }
-    '/_app/admin/settings': {
-      id: '/_app/admin/settings'
-      path: '/settings'
-      fullPath: '/admin/settings'
-      preLoaderRoute: typeof AppAdminSettingsRouteImport
-      parentRoute: typeof AppAdminRouteRoute
-    }
-    '/_app/admin/policies': {
-      id: '/_app/admin/policies'
-      path: '/policies'
-      fullPath: '/admin/policies'
-      preLoaderRoute: typeof AppAdminPoliciesRouteImport
-      parentRoute: typeof AppAdminRouteRoute
-    }
-    '/_app/admin/cron': {
-      id: '/_app/admin/cron'
-      path: '/cron'
-      fullPath: '/admin/cron'
-      preLoaderRoute: typeof AppAdminCronRouteImport
-      parentRoute: typeof AppAdminRouteRoute
-    }
-    '/_app/admin/audit': {
-      id: '/_app/admin/audit'
-      path: '/audit'
-      fullPath: '/admin/audit'
-      preLoaderRoute: typeof AppAdminAuditRouteImport
-      parentRoute: typeof AppAdminRouteRoute
     }
     '/_app/admin/users/': {
       id: '/_app/admin/users/'

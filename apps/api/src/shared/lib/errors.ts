@@ -52,12 +52,30 @@ export class UnauthorizedError extends AppError {
  * `.cause`; walk the chain rather than trusting the outermost error.
  */
 export function isUniqueViolation(err: unknown): boolean {
+  return matchesInCauseChain(err, code => code === "SQLITE_CONSTRAINT_UNIQUE", /UNIQUE constraint failed/i);
+}
+
+/** Any SQLite constraint (UNIQUE / CHECK / FOREIGN KEY / NOT NULL), walking `.cause`. */
+export function isConstraintViolation(err: unknown): boolean {
+  return matchesInCauseChain(
+    err,
+    code => code.startsWith("SQLITE_CONSTRAINT"),
+    /\b(?:UNIQUE|CHECK|FOREIGN KEY|NOT NULL) constraint failed\b/i,
+  );
+}
+
+/**
+ * Drizzle wraps the driver error in `DrizzleQueryError`, so the libsql
+ * `code` / message sit on `.cause`; walk the chain rather than trusting
+ * the outermost error.
+ */
+function matchesInCauseChain(err: unknown, codeOk: (code: string) => boolean, re: RegExp): boolean {
   let cur: unknown = err;
   for (let i = 0; i < 5 && cur && typeof cur === "object"; i++) {
     const { code, message, cause } = cur as { code?: unknown; message?: unknown; cause?: unknown };
-    if (typeof code === "string" && code.startsWith("SQLITE_CONSTRAINT"))
+    if (typeof code === "string" && codeOk(code))
       return true;
-    if (typeof message === "string" && /UNIQUE constraint failed/i.test(message))
+    if (typeof message === "string" && re.test(message))
       return true;
     cur = cause;
   }

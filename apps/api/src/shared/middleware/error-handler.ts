@@ -2,7 +2,7 @@ import type { Context } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import type { AppEnv } from "@/shared/lib/types";
 import { ZodError } from "zod";
-import { AppError } from "@/shared/lib/errors";
+import { AppError, isConstraintViolation } from "@/shared/lib/errors";
 
 export function errorHandler(err: Error, c: Context<AppEnv>) {
   if (err instanceof AppError) {
@@ -19,12 +19,10 @@ export function errorHandler(err: Error, c: Context<AppEnv>) {
   // SQLite/libsql constraint violations are the DB-level backstop for
   // check-then-write races (group/cron unique name, relation tuples).
   // Surface them as an actionable 409 instead of an opaque 500. The raw
-  // message can name columns, so keep the response generic.
-  const code = (err as { code?: unknown }).code;
-  if (
-    (typeof code === "string" && code.startsWith("SQLITE_CONSTRAINT"))
-    || /\b(?:UNIQUE|CHECK|FOREIGN KEY|NOT NULL) constraint failed\b/i.test(err.message)
-  ) {
+  // message can name columns, so keep the response generic. Drizzle wraps
+  // the driver error in DrizzleQueryError, so the code/message live on
+  // `.cause` — walk the chain instead of trusting the outer error.
+  if (isConstraintViolation(err)) {
     return c.json({
       success: false,
       error: { code: "CONFLICT", message: "Resource already exists or violates a constraint" },

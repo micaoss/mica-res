@@ -47,6 +47,15 @@ describe("errorHandler", () => {
     expect((await res.json() as { error: { code: string } }).error.code).toBe("NOT_FOUND");
   });
 
+  test("a constraint error wrapped by drizzle (code/message on .cause) still maps to 409", async () => {
+    const driverErr = Object.assign(new Error("SQLITE_CONSTRAINT: UNIQUE constraint failed: groups.name"), { code: "SQLITE_CONSTRAINT" });
+    const wrapped = new Error("Failed query: insert into \"groups\" ...", { cause: driverErr });
+    const res = await buildApp(wrapped).request("/p");
+    expect(res.status).toBe(409);
+    const body = await res.json() as { error: { code: string } };
+    expect(body.error.code).toBe("CONFLICT");
+  });
+
   test("non-AppError errors return 500 INTERNAL_ERROR and log via logger.error", async () => {
     const app = buildApp(new Error("kaboom"));
     const res = await app.request("/p");

@@ -26,6 +26,8 @@ function parseConfig(config: Record<string, unknown>): HttpRequestConfig {
 // a 100 MB endpoint can't blow up cron_job_logs.result. Body is only
 // surfaced for debugging; status assertions use the prefix.
 const MAX_BODY_PREVIEW_BYTES = 2048;
+/** Hard cap on bytes read from the response — the preview only needs the head. */
+const MAX_BODY_READ_BYTES = 64 * 1024;
 
 // IPv4 literal regex; captured groups are the four octets.
 const RE_IPV4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
@@ -130,6 +132,40 @@ export function isPrivateDestination(hostname: string): boolean {
  * there's no retry, no backoff, and no SLO bookkeeping. Pair with the
  * audit + run-history surface for visibility.
  */
+/**
+ * Read at most MAX_BODY_READ_BYTES of the body, then cancel the stream.
+ * `res.text()` would buffer the whole response first; a large or
+ * endless body must not be able to pin the executor's memory.
+ */
+async function readBodyPreview(res: Response): Promise<string> {
+  if (!res.body)
+    return "";
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  let truncated = false;
+  try {
+    while (total < MAX_BODY_READ_BYTES) {
+      const { done, value } = await reader.read();
+      if (done)
+        break;
+      chunks.push(value);
+      total += value.byteLength;
+    }
+    if (total >= MAX_BODY_READ_BYTES) {
+      truncated = true;
+      await reader.cancel();
+    }
+  }
+  catch {
+    // Body read failures aren't fatal — status is the primary signal.
+  }
+  const text = new TextDecoder().decode(Buffer.concat(chunks.map(c => Buffer.from(c))));
+  if (text.length > MAX_BODY_PREVIEW_BYTES || truncated)
+    return `${text.slice(0, MAX_BODY_PREVIEW_BYTES)}…(truncated)`;
+  return text;
+}
+
 export const execute: ActionExecutor = async (ctx, config) => {
   const cfg = parseConfig(config);
   const method = (cfg.method ?? "GET").toUpperCase();
@@ -190,6 +226,9 @@ export const execute: ActionExecutor = async (ctx, config) => {
   const startedAt = Date.now();
   const init: RequestInit = {
     method,
+    // Never auto-follow: a 3xx to a private address would sail past the
+    // DNS pin above. Redirects are reported as the response they are.
+    redirect: "manual",
     signal: AbortSignal.timeout(Math.min(timeoutMs, ctx.config.HTTP_ACTION_TIMEOUT_SECONDS * 1000)),
   };
   if (cfg.headers !== undefined)
@@ -229,15 +268,11 @@ export const execute: ActionExecutor = async (ctx, config) => {
   }
 
   const durationMs = Date.now() - startedAt;
-  let bodyPreview = "";
-  try {
-    const text = await res.text();
-    bodyPreview = text.length > MAX_BODY_PREVIEW_BYTES
-      ? `${text.slice(0, MAX_BODY_PREVIEW_BYTES)}…(${text.length - MAX_BODY_PREVIEW_BYTES} bytes truncated)`
-      : text;
-  }
-  catch {
-    // Body read failures aren't fatal — status is the primary signal.
+  const bodyPreview = await readBodyPreview(res);
+
+  if (res.status >= 300 && res.status < 400) {
+    const location = res.headers.get("location") ?? "";
+    throw new Error(`${method} ${cfg.url} → ${res.status} redirect to ${location || "<no location>"} (redirects are not followed)`);
   }
 
   const expected = expectStatus ?? null;

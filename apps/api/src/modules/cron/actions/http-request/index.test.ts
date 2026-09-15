@@ -58,6 +58,12 @@ beforeAll(() => {
           return new Promise((resolve) => {
             setTimeout(() => resolve(new Response("eventually", { status: 200 })), 500);
           });
+        case "/redirect-private":
+          return new Response(null, { status: 302, headers: { location: "http://10.0.0.1/latest/meta-data/" } });
+        case "/big":
+          return new Response("x".repeat(4 * 1024 * 1024), { status: 200 });
+        case "/big-404":
+          return new Response("y".repeat(4 * 1024 * 1024), { status: 404 });
         default:
           return new Response("?", { status: 200 });
       }
@@ -145,6 +151,28 @@ describe("runHttpRequest", () => {
 
   test("unreachable host produces a thrown error, not an unhandled rejection", async () => {
     expect(run({ url: "http://127.0.0.1:1/" })).rejects.toThrow(/failed/);
+  });
+
+  test("a redirect is reported, never followed — the DNS pin would not cover the second hop", async () => {
+    expect(run({ url: `${base}/redirect-private` })).rejects.toThrow(/302 redirect to http:\/\/10\.0\.0\.1.*not followed/);
+  });
+
+  test("a large body is read only up to the cap", async () => {
+    const result = await run({ url: `${base}/big` });
+    expect(result).toMatch(/→ 200/);
+  });
+
+  test("a large error body is truncated in the thrown message", async () => {
+    let msg = "";
+    try {
+      await run({ url: `${base}/big-404` });
+    }
+    catch (err) {
+      msg = (err as Error).message;
+    }
+    expect(msg).toMatch(/→ 404/);
+    expect(msg).toContain("…(truncated)");
+    expect(msg.length).toBeLessThan(4096);
   });
 });
 

@@ -1,4 +1,5 @@
 import type { FileServiceConfig } from "./file.service";
+import type { Config } from "@/config";
 import type { AppDatabase } from "@/db";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -597,13 +598,14 @@ describe("initFileModule presign capability warning", () => {
 
     // The local driver's setup() needs a root it can create.
     const root = resolve(tmpdir(), `test-file-presign-${Date.now()}`);
-    const base = { ...testConfig, FILE_STORAGE_DRIVER: "local", FILE_STORAGE_LOCAL_ROOT: root } as typeof testConfig;
+    // initFileModule takes the full Config; only the file keys matter here.
+    const base = { ...testConfig, FILE_STORAGE_DRIVER: "local", FILE_STORAGE_LOCAL_ROOT: root };
 
-    await initFileModule({ ...base, FILE_PRESIGN_ENABLED: true }, logger);
+    await initFileModule({ ...base, FILE_PRESIGN_ENABLED: true } as unknown as Config, logger);
     expect(warned).toHaveLength(1);
     expect(String((warned[0] as unknown[])[1])).toMatch(/cannot presign/);
 
-    await initFileModule({ ...base, FILE_PRESIGN_ENABLED: false }, logger);
+    await initFileModule({ ...base, FILE_PRESIGN_ENABLED: false } as unknown as Config, logger);
     expect(warned).toHaveLength(1);
     rmSync(root, { recursive: true, force: true });
   });

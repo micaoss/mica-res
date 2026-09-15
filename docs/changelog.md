@@ -180,6 +180,15 @@ each upstream tag; your fork's `Unreleased` block sits at the top.
   middleware never adopted — both TOTP routes check the step-up header
   inline), and the web `editor/toc.tsx` component.
 
+### Security
+
+- Transitive dependencies re-resolved within their existing ranges to clear
+  30 OSV advisories (19 High) across 14 packages flagged by the CI
+  `osv-scanner` step — among them `brace-expansion`, `browserslist`,
+  `fast-uri`, `js-yaml`, `nanoid` (transitive 3.x/5.x), `postcss`, `qs`,
+  `dompurify`, `ip-address`, `body-parser`. Lockfile only; no direct
+  dependency ranges changed.
+
 ## v0.1.0 — 2026-05-14
 
 First tagged template release. Subsequent forks should anchor their

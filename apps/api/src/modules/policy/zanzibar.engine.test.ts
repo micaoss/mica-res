@@ -33,6 +33,23 @@ const testNamespaces = [
       operator: { union: [{ this: {} }] },
     },
   },
+  // Self-referential tuple_to_userset: folder:child#parent@folder:root, and
+  // viewer flows down the chain (the shape `item.parent_item` uses).
+  {
+    name: "folder",
+    relations: {
+      viewer: { union: [{ this: {} }, { tuple_to_userset: { tupleset: "parent", computed_userset: "viewer" } }] },
+      parent: { union: [{ this: {} }] },
+    },
+  },
+  // Cross-namespace tuple_to_userset: doc:d#parent@folder:f.
+  {
+    name: "doc",
+    relations: {
+      viewer: { union: [{ this: {} }, { tuple_to_userset: { tupleset: "parent", computed_userset: "viewer" } }] },
+      parent: { union: [{ this: {} }] },
+    },
+  },
 ] as const;
 
 const nanoid = customAlphabet("0123456789abcdefghijklmnopqrstuvwxyz", 8);
@@ -238,6 +255,70 @@ describe("Zanzibar Engine", () => {
       const allUserIds = collectUserIds(tree);
       expect(allUserIds).toContain("zhangsan");
       expect(allUserIds).toContain("admin01");
+    });
+  });
+
+  describe("check — resolution path is stable", () => {
+    // Guard for the per-object single-fetch rewrite: the answer *and* the
+    // path it reports must not change.
+    it("reports the same resolvedThrough for a ladder + group + tuple_to_userset chain", async () => {
+      await insertTuple(db, "group", "readers", "member", "user", "lin");
+      await insertTuple(db, "folder", "root", "viewer", "group", "readers", "member");
+      await insertTuple(db, "folder", "child", "parent", "folder", "root");
+      await insertTuple(db, "app", "ladder", "admin", "user", "lin");
+
+      const viaChain = await check(db, "folder", "child", "viewer", "user", "lin");
+      expect(viaChain.allowed).toBe(true);
+      expect(viaChain.resolvedThrough).toEqual([
+        "folder:child#parent@folder:root",
+        "folder:root#viewer@group:readers#member",
+        "group:readers#member@user:lin",
+      ]);
+
+      const viaLadder = await check(db, "app", "ladder", "viewer", "user", "lin");
+      expect(viaLadder.allowed).toBe(true);
+      expect(viaLadder.resolvedThrough).toEqual(["app:ladder#admin@user:lin"]);
+    });
+  });
+
+  describe("listUserResources — tuple_to_userset is config-driven", () => {
+    it("walks a self-referential tupleset transitively (root → child → grandchild)", async () => {
+      await insertTuple(db, "folder", "root", "viewer", "user", "lin");
+      await insertTuple(db, "folder", "child", "parent", "folder", "root");
+      await insertTuple(db, "folder", "grand", "parent", "folder", "child");
+      await insertTuple(db, "folder", "other", "parent", "folder", "nobody-root");
+
+      const ids = await listUserResources(db, "lin", "folder", "viewer");
+      expect([...ids].sort()).toEqual(["child", "grand", "root"]);
+    });
+
+    it("follows a tupleset into another namespace using that namespace's computed_userset", async () => {
+      await insertTuple(db, "folder", "shared", "viewer", "user", "lin");
+      await insertTuple(db, "doc", "d1", "parent", "folder", "shared");
+      await insertTuple(db, "doc", "d2", "parent", "folder", "private");
+
+      const ids = await listUserResources(db, "lin", "doc", "viewer");
+      expect([...ids]).toEqual(["d1"]);
+    });
+
+    it("inherits through a group grant on the ancestor", async () => {
+      await insertTuple(db, "group", "team", "member", "user", "lin");
+      await insertTuple(db, "folder", "root", "viewer", "group", "team", "member");
+      await insertTuple(db, "folder", "child", "parent", "folder", "root");
+
+      const ids = await listUserResources(db, "lin", "folder", "viewer");
+      expect([...ids].sort()).toEqual(["child", "root"]);
+    });
+
+    it("mirrors check(): every object listed is one check() allows, and a parent cycle terminates", async () => {
+      await insertTuple(db, "folder", "a", "viewer", "user", "lin");
+      await insertTuple(db, "folder", "b", "parent", "folder", "a");
+      await insertTuple(db, "folder", "a", "parent", "folder", "b");
+
+      const ids = await listUserResources(db, "lin", "folder", "viewer");
+      expect([...ids].sort()).toEqual(["a", "b"]);
+      for (const id of ids)
+        expect((await check(db, "folder", id, "viewer", "user", "lin")).allowed).toBe(true);
     });
   });
 

@@ -1,5 +1,5 @@
 import type { AppDatabase } from "@/db";
-import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import {
   findDirectMember,
   listAllMembers,
@@ -64,6 +64,35 @@ export interface CheckOptions {
   readonly visited?: Set<string>;
   readonly budget?: NodeBudget;
   readonly groupClosure?: ReadonlySet<string>;
+  /**
+   * Per-resolution row cache: every tuple on a `(namespace, objectId)` is
+   * fetched once and the direct / userset / tuple_to_userset branches for
+   * *all* relations on that object are answered from memory. The
+   * computed_userset ladder (viewer ← editor ← owner) recurses on the same
+   * object, so without this each rung re-queried the table.
+   */
+  readonly objectRows?: Map<string, readonly TupleRow[]>;
+}
+
+type TupleRow = typeof relationTuples.$inferSelect;
+
+async function rowsForObject(
+  db: AppDatabase,
+  namespace: string,
+  objectId: string,
+  cache: Map<string, readonly TupleRow[]>,
+): Promise<readonly TupleRow[]> {
+  const key = `${namespace}:${objectId}`;
+  const hit = cache.get(key);
+  if (hit)
+    return hit;
+  const rows = await db
+    .select()
+    .from(relationTuples)
+    .where(and(eq(relationTuples.namespace, namespace), eq(relationTuples.objectId, objectId)))
+    .all();
+  cache.set(key, rows);
+  return rows;
 }
 
 export interface SubjectNode {
@@ -108,8 +137,9 @@ export async function check(
   const depth = options.depth ?? 0;
   const visited = options.visited ?? new Set<string>();
   const budget = options.budget ?? makeBudget();
+  const objectRows = options.objectRows ?? new Map<string, readonly TupleRow[]>();
   const { groupClosure } = options;
-  const recurse: CheckOptions = { depth: depth + 1, visited, budget, ...(groupClosure && { groupClosure }) };
+  const recurse: CheckOptions = { depth: depth + 1, visited, budget, objectRows, ...(groupClosure && { groupClosure }) };
 
   if (depth > MAX_DEPTH) {
     return { allowed: false, resolvedThrough: [] };
@@ -127,23 +157,15 @@ export async function check(
   }
   visited.add(key);
 
+  // Group membership lives in its own table; everything else is answered
+  // from the object's single row fetch.
+  const membership = isGroupMembership(namespace, relation);
+  const rows = membership ? [] : await rowsForObject(db, namespace, objectId, objectRows);
+
   // 1. Direct tuple match (subject_relation IS NULL)
-  const direct = isGroupMembership(namespace, relation)
+  const direct = membership
     ? await findDirectMember(db, objectId, subjectNs, subjectId, null)
-    : await db
-        .select()
-        .from(relationTuples)
-        .where(
-          and(
-            eq(relationTuples.namespace, namespace),
-            eq(relationTuples.objectId, objectId),
-            eq(relationTuples.relation, relation),
-            eq(relationTuples.subjectNamespace, subjectNs),
-            eq(relationTuples.subjectId, subjectId),
-            isNull(relationTuples.subjectRelation),
-          ),
-        )
-        .get();
+    : rows.find(r => r.relation === relation && r.subjectNamespace === subjectNs && r.subjectId === subjectId && r.subjectRelation === null);
 
   if (direct) {
     return {
@@ -152,23 +174,10 @@ export async function check(
     };
   }
 
-  // 2. Userset indirect match — find tuples with subject_relation set.
-  // The `subject_relation IS NOT NULL` predicate is pushed into SQL rather
-  // than JS-filtering the full result set.
-  const usersetTuples = isGroupMembership(namespace, relation)
+  // 2. Userset indirect match — tuples with subject_relation set.
+  const usersetTuples = membership
     ? await listUsersetMembers(db, objectId)
-    : await db
-        .select()
-        .from(relationTuples)
-        .where(
-          and(
-            eq(relationTuples.namespace, namespace),
-            eq(relationTuples.objectId, objectId),
-            eq(relationTuples.relation, relation),
-            isNotNull(relationTuples.subjectRelation),
-          ),
-        )
-        .all();
+    : rows.filter(r => r.relation === relation && r.subjectRelation !== null);
 
   for (const tuple of usersetTuples) {
     // Membership answered from the supplied closure: no per-group recursion.
@@ -217,17 +226,7 @@ export async function check(
   // 4. Tuple-to-userset — follow tupleset relation to another object, then check computed_userset there
   const ttuRules = getTupleToUsersetRules(namespace, relation);
   for (const rule of ttuRules) {
-    const tuplesetTuples = await db
-      .select()
-      .from(relationTuples)
-      .where(
-        and(
-          eq(relationTuples.namespace, namespace),
-          eq(relationTuples.objectId, objectId),
-          eq(relationTuples.relation, rule.tupleset),
-        ),
-      )
-      .all();
+    const tuplesetTuples = rows.filter(r => r.relation === rule.tupleset);
 
     for (const tuple of tuplesetTuples) {
       const innerResult = await check(
@@ -353,11 +352,18 @@ export async function listUserResources(
   namespace: string,
   relation: string,
   budget: NodeBudget = makeBudget(),
+  visited: Set<string> = new Set(),
 ): Promise<readonly string[]> {
-  // Shared global budget across the resource_group recursion below. Fail
-  // closed (return what we have) once exhausted.
+  // Shared global budget across the tuple_to_userset recursion below. Fail
+  // closed (return what we have) once exhausted. `visited` guards a
+  // (namespace, relation) pair from re-entering itself through a
+  // cross-namespace tupleset cycle.
   if (!spend(budget))
     return [];
+  const selfKey = `${namespace}#${relation}`;
+  if (visited.has(selfKey))
+    return [];
+  visited.add(selfKey);
 
   const objectIds = new Set<string>();
   const effectiveRelations = collectEffectiveRelations(namespace, relation);
@@ -404,29 +410,69 @@ export async function listUserResources(
     }
   }
 
-  // 3. Through tuple_to_userset (resource groups)
+  // 3. Through tuple_to_userset — the reverse of check()'s step 4. A rule
+  // `tupleset → computed_userset` means: an object O grants `relation` if
+  // some tuple `O#tupleset@S:x` exists and the user holds `computed_userset`
+  // on S:x. check() follows each tuple's subjectNamespace at resolve time;
+  // here we group the tupleset edges by subject namespace and reverse each
+  // group with that namespace's own rules.
   for (const rel of effectiveRelations) {
-    const ttuRules = getTupleToUsersetRules(namespace, rel);
-    for (const rule of ttuRules) {
-      const rgIds = await listUserResources(db, userId, "resource_group", rule.computed_userset, budget);
+    for (const rule of getTupleToUsersetRules(namespace, rel)) {
+      const subjectNamespaces = await db
+        .selectDistinct({ subjectNamespace: relationTuples.subjectNamespace })
+        .from(relationTuples)
+        .where(and(eq(relationTuples.namespace, namespace), eq(relationTuples.relation, rule.tupleset)))
+        .all();
 
-      for (const rgId of rgIds) {
-        const memberTuples = await db
-          .select()
+      for (const { subjectNamespace } of subjectNamespaces) {
+        if (subjectNamespace === namespace && rule.computed_userset === rel) {
+          // Self-referential (item.parent_item): everything found so far is a
+          // root; walk the edge downward to a fixpoint. This is the recursive
+          // CTE the document module used to own, generalised to any namespace.
+          let frontier = [...objectIds];
+          while (frontier.length > 0) {
+            if (!spend(budget))
+              break;
+            const children = await db
+              .select({ objectId: relationTuples.objectId })
+              .from(relationTuples)
+              .where(
+                and(
+                  eq(relationTuples.namespace, namespace),
+                  eq(relationTuples.relation, rule.tupleset),
+                  eq(relationTuples.subjectNamespace, namespace),
+                  inArray(relationTuples.subjectId, frontier),
+                ),
+              )
+              .all();
+            frontier = [];
+            for (const { objectId } of children) {
+              if (!objectIds.has(objectId)) {
+                objectIds.add(objectId);
+                frontier.push(objectId);
+              }
+            }
+          }
+          continue;
+        }
+
+        const reachable = await listUserResources(db, userId, subjectNamespace, rule.computed_userset, budget, visited);
+        if (reachable.length === 0)
+          continue;
+        const viaEdge = await db
+          .select({ objectId: relationTuples.objectId })
           .from(relationTuples)
           .where(
             and(
               eq(relationTuples.namespace, namespace),
               eq(relationTuples.relation, rule.tupleset),
-              eq(relationTuples.subjectNamespace, "resource_group"),
-              eq(relationTuples.subjectId, rgId),
+              eq(relationTuples.subjectNamespace, subjectNamespace),
+              inArray(relationTuples.subjectId, [...reachable]),
             ),
           )
           .all();
-
-        for (const t of memberTuples) {
-          objectIds.add(t.objectId);
-        }
+        for (const { objectId } of viaEdge)
+          objectIds.add(objectId);
       }
     }
   }

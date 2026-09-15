@@ -74,6 +74,9 @@ each upstream tag; your fork's `Unreleased` block sits at the top.
   sentinel, `__meta__` → `resource_groups`).
 - `find-unused-i18n` / `clean-unused-i18n` are wired as `bun run i18n:unused`
   / `bun run i18n:clean`; the README listed them as scripts but nothing did.
+- `docker-compose.yml` drops all capabilities and sets
+  `no-new-privileges` on the app service (the image already runs as the
+  unprivileged `bun` user).
 - **Migration note for forks with a deployed database:** per template
   convention the single squashed `0000_init` migration was regenerated in
   place rather than appended to. A database already at `0000_init` will

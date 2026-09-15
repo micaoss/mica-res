@@ -21,6 +21,13 @@ services:
     build:
       context: .
     restart: unless-stopped
+    # Defence in depth: the Dockerfile already runs as the unprivileged
+    # `bun` user; drop every capability and forbid privilege escalation so
+    # a compromised process cannot regain any.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     env_file:
       - .env.docker
     volumes:

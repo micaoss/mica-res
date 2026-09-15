@@ -142,6 +142,10 @@ each upstream tag; your fork's `Unreleased` block sits at the top.
 - `errorHandler` never mapped SQLite constraint errors to 409: drizzle wraps
   the driver error, so the code/message it checked lived on `.cause`. The
   check now walks the cause chain (`isConstraintViolation`).
+- `listReferencesByOwner` ordered by `created_at` then the random reference
+  id, so two attachments written in the same millisecond came back in
+  arbitrary order (a long-standing flaky test). Ties now break by insertion
+  order (`rowid`).
 
 ### Removed
 

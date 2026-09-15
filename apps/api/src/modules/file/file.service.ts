@@ -315,7 +315,10 @@ export async function listReferencesByOwner(
   ownerType: string,
   ownerId: string,
 ): Promise<readonly FileReferenceRow[]> {
-  return await db.select().from(fileReferences).where(and(eq(fileReferences.ownerType, ownerType), eq(fileReferences.ownerId, ownerId))).orderBy(desc(fileReferences.createdAt), desc(fileReferences.id)).all();
+  // createdAt is millisecond ISO text, so two references written in the
+  // same tick tie; break the tie by insertion order (rowid), not by the
+  // random nanoid — "newest-first" must mean what it says.
+  return await db.select().from(fileReferences).where(and(eq(fileReferences.ownerType, ownerType), eq(fileReferences.ownerId, ownerId))).orderBy(desc(fileReferences.createdAt), desc(sql`${fileReferences}.rowid`)).all();
 }
 
 /**

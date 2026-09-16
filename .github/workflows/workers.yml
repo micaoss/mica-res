@@ -174,12 +174,21 @@ jobs:
           }' > /tmp/worker-secrets.json
           bunx wrangler secret bulk /tmp/worker-secrets.json
           rm -f /tmp/worker-secrets.json
+          echo "secrets now bound:"
+          bunx wrangler secret list
           echo "::add-mask::$password"
           echo "password=$password" >> "$GITHUB_OUTPUT"
           echo "username=$username" >> "$GITHUB_OUTPUT"
 
-      # `secret bulk` publishes a new version, and the edge takes a moment to
-      # serve it. Waiting on "the route stopped answering 404" is not enough:
+      # `wrangler secret bulk` uploads a version carrying the new secrets, but
+      # the version serving traffic is still the one `wrangler deploy` made.
+      # Deploying again is what promotes a version that has both the code and
+      # the secrets.
+      - name: Activate the version carrying the secrets
+        working-directory: apps/api
+        run: bunx wrangler deploy
+
+      # The edge takes a moment to serve the new version. Waiting on "the route stopped answering 404" is not enough:
       # a previous run's secrets already satisfy that while the *new* hash is
       # still rolling out, which reads as a credential bug. So the gate is the
       # precondition the suite actually needs — these credentials log in.
@@ -195,7 +204,7 @@ jobs:
           # hammering past that only turns a diagnosable 401 into an opaque
           # 429. Each status is logged, which is what tells a wrong password
           # apart from a runtime that cannot verify one.
-          for _ in $(seq 1 10); do
+          for _ in $(seq 1 15); do
             last="$(curl -s -o /dev/null -w '%{http_code}' -X POST \
               -H 'Content-Type: application/json' -H 'X-Requested-With: XMLHttpRequest' \
               -H "Origin: $url" \

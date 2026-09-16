@@ -62,6 +62,30 @@ jobs:
       - name: Verify a mirrored git pack end to end
         run: bun src/cli.ts verify-pack
 
+      # Bit-identity proven by a client that refuses rather than reports: for
+      # every mirrored build-env `base` image, pull it by digest from the
+      # mirror and compare what docker says it got with what ghcr serves for
+      # the same tag. Docker verifies every layer digest as it pulls, so a
+      # wrong byte fails the pull.
+      - name: Pull a mirrored build-env image by digest and compare with ghcr
+        run: |
+          set -euo pipefail
+          snapshot=$(ls "${RUNNER_TEMP}"/sync/index-*.json | tail -1)
+          token=$(curl -sS 'https://ghcr.io/token?scope=repository:micaoss/mica-build-env:pull&service=ghcr.io' | jq -r .token)
+          jq -r '.objects[] | select(any(.readable[]; test("^/v2/micaoss/mica-build-env/manifests/base[.]"))) | [.sha256, (.readable[] | select(startswith("/v2/")))] | @tsv' "${snapshot}" \
+          | while IFS=$'\t' read -r digest readable; do
+              tag=${readable##*/}
+              start=$(date +%s%3N)
+              pulled=$(docker pull "res.micaos.dev/micaoss/mica-build-env@sha256:${digest}" | awk '/^Digest:/{print $2}')
+              elapsed=$(( $(date +%s%3N) - start ))
+              upstream=$(curl -sS -o /dev/null -D- -H "Authorization: Bearer ${token}" \
+                -H 'Accept: application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json' \
+                "https://ghcr.io/v2/micaoss/mica-build-env/manifests/${tag}" | awk 'BEGIN{IGNORECASE=1}/^docker-content-digest:/{print $2}' | tr -d '\r')
+              echo "  ${tag}: mirror pull ${pulled} in ${elapsed} ms, ghcr serves ${upstream}"
+              [ "sha256:${digest}" = "${pulled}" ] || { echo "  digest mismatch against the index"; exit 1; }
+              [ "${pulled}" = "${upstream}" ] || { echo "  digest differs from ghcr"; exit 1; }
+            done
+
       # The registry read paths, timed from a runner, because the development
       # network cannot reach the zone: a tag resolves through the index (now
       # edge-cached) and a digest does not resolve anything.

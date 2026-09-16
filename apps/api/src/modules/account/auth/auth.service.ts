@@ -6,7 +6,7 @@ import type { Logger } from "@/shared/lib/logger";
 import type { AppEnv, User } from "@/shared/lib/types";
 import { Buffer } from "node:buffer";
 import { randomBytes } from "node:crypto";
-import { count as countFn, eq, lte, or } from "drizzle-orm";
+import { eq, lte, or } from "drizzle-orm";
 import { customAlphabet } from "nanoid";
 import { openPkceVerifier, sealPkceVerifier } from "@/modules/account/auth/pkce-secret";
 import { pkceChallenges, sessions } from "@/modules/account/auth/schema";
@@ -131,48 +131,71 @@ export async function upsertUser(
   // instead — the user can still be identified by email/name in the UI.
   const username = (userInfo.preferred_username ?? userInfo.username ?? `u_${nanoid()}`).toLowerCase();
   const email = (userInfo.email ?? "").toLowerCase();
-  // An unverified email is attacker-chosen at many IdPs; only match/bootstrap
-  // on it when the IdP asserts it verified. Username path is left intact.
+  // An unverified email is attacker-chosen at many IdPs; only match on it
+  // when the IdP asserts it verified.
   const emailTrusted = userInfo.email_verified === true && email !== "";
+
+  // DEFAULT_ADMIN is the operator's statement of who administers the
+  // deployment, so a matching login is an admin — on the first login and
+  // every later one, whether or not other admins exist. It grants and never
+  // revokes: an admin promoted in the UI keeps the role when they are not
+  // listed. The flip side is that demoting a listed admin in the UI lasts
+  // only until their next login; remove them from DEFAULT_ADMIN instead.
+  //
+  // An entry containing "@" is an email and matches only a verified email.
+  // Anything else is a username and matches only the username. Usernames are
+  // often self-chosen, so a username spelled like the admin's address must
+  // not be able to claim it.
+  const matchesDefaultAdmin = defaultAdmins.some(entry =>
+    entry.includes("@") ? emailTrusted && entry === email : entry === username,
+  );
+  const roleFor = (current: "admin" | "user"): "admin" | "user" => {
+    if (matchesDefaultAdmin && current !== "admin") {
+      logger.info({ username }, "user granted admin role via DEFAULT_ADMIN");
+      return "admin";
+    }
+    return current;
+  };
 
   const existing = await db.select().from(users).where(eq(users.oauthSub, userInfo.sub)).get();
 
   if (existing) {
+    const role = roleFor(existing.role);
     await db.update(users)
       .set({
         name: userInfo.name ?? existing.name,
         email: userInfo.email ?? existing.email,
         avatar: userInfo.picture ?? existing.avatar,
+        role,
         lastLoginAt: now,
         updatedAt: now,
       })
       .where(eq(users.id, existing.id))
       .run();
 
-    return { ...existing, lastLoginAt: now, updatedAt: now };
+    return { ...existing, role, lastLoginAt: now, updatedAt: now };
   }
 
-  // Bootstrap-admin assignment must be atomic with the insert. Two DEFAULT_ADMIN
-  // callbacks racing on a fresh install would otherwise both observe
-  // `adminCount=0` and both promote themselves — harmless (both are
-  // legitimate DEFAULT_ADMIN entries) but the transaction also covers the
-  // duplicate-sub race below.
+  // The transaction covers the duplicate-sub race below: two callbacks for a
+  // brand-new identity must not both insert it.
   return await db.transaction(async (tx) => {
     // Double-check inside the tx: another concurrent callback could have just
     // created the same user. If so, fall through to update behaviour.
     const dupe = await tx.select().from(users).where(eq(users.oauthSub, userInfo.sub)).get();
     if (dupe) {
+      const role = roleFor(dupe.role);
       await tx.update(users)
         .set({
           name: userInfo.name ?? dupe.name,
           email: userInfo.email ?? dupe.email,
           avatar: userInfo.picture ?? dupe.avatar,
+          role,
           lastLoginAt: now,
           updatedAt: now,
         })
         .where(eq(users.id, dupe.id))
         .run();
-      return { ...dupe, lastLoginAt: now, updatedAt: now };
+      return { ...dupe, role, lastLoginAt: now, updatedAt: now };
     }
 
     // Take-over path: an existing row matches by username or email but not
@@ -181,10 +204,8 @@ export async function upsertUser(
     // the `"single-user"` sentinel, so the next OAuth login can no longer
     // resolve by sub and would otherwise crash on the username/email
     // unique constraint. Rewriting oauth_sub back to the IdP value
-    // re-binds the row to the OAuth identity. Role is preserved
-    // deliberately — if the row was an admin under either flow it stays
-    // an admin; the bootstrap path below only fires for true first-time
-    // logins.
+    // re-binds the row to the OAuth identity. An existing admin role is
+    // preserved, and DEFAULT_ADMIN can still grant one.
     const conflict = emailTrusted
       ? await tx.select().from(users).where(or(eq(users.username, username), eq(users.email, email))).get()
       : await tx.select().from(users).where(eq(users.username, username)).get();
@@ -193,6 +214,7 @@ export async function upsertUser(
         { id: conflict.id, prevSub: conflict.oauthSub, newSub: userInfo.sub },
         "rebinding existing user to new oauth_sub (identity migration)",
       );
+      const role = roleFor(conflict.role);
       await tx.update(users)
         .set({
           oauthSub: userInfo.sub,
@@ -200,6 +222,7 @@ export async function upsertUser(
           name: userInfo.name ?? conflict.name,
           email: userInfo.email ?? conflict.email,
           avatar: userInfo.picture ?? conflict.avatar,
+          role,
           lastLoginAt: now,
           updatedAt: now,
         })
@@ -207,6 +230,7 @@ export async function upsertUser(
         .run();
       return {
         ...conflict,
+        role,
         oauthSub: userInfo.sub,
         username,
         name: userInfo.name ?? conflict.name,
@@ -217,21 +241,6 @@ export async function upsertUser(
       };
     }
 
-    // Gate bootstrap on "no admin exists" rather than "no user exists" so a
-    // non-admin signing up first doesn't lock out the DEFAULT_ADMIN. The
-    // promotion still fires whenever a matching login lands while the
-    // current admin set is empty (including after the only admin is
-    // deleted / demoted), and non-admin users can sign up freely the whole
-    // time.
-    const adminRow = await tx.select({ value: countFn() }).from(users).where(eq(users.role, "admin")).get();
-    const canBootstrapAdmin = (adminRow?.value ?? 0) === 0;
-    const matchesDefaultAdmin = defaultAdmins.includes(username) || (emailTrusted && defaultAdmins.includes(email));
-    const isAdmin = canBootstrapAdmin && matchesDefaultAdmin;
-
-    if (isAdmin) {
-      logger.info({ username }, "user assigned admin role via DEFAULT_ADMIN (no admin existed)");
-    }
-
     const newUser = {
       id: nanoid(),
       oauthSub: userInfo.sub,
@@ -239,7 +248,7 @@ export async function upsertUser(
       name: userInfo.name ?? username,
       email: userInfo.email ?? "",
       avatar: userInfo.picture ?? null,
-      role: isAdmin ? "admin" as const : "user" as const,
+      role: roleFor("user"),
       status: "active" as const,
       lastLoginAt: now,
       createdAt: now,

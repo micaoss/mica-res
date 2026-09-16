@@ -178,6 +178,16 @@ each upstream tag; your fork's `Unreleased` block sits at the top.
 
 ### Fixed
 
+- `DEFAULT_ADMIN` could be silently cancelled. It applied only while no admin
+  existed at all, so any other admin — a single-user account left from an
+  earlier mode, for instance — meant the configured admin logged in as an
+  ordinary user, and nothing would ever promote them afterwards. A matching
+  login is now an admin on every login, whether or not other admins exist,
+  including an account that already exists. The setting grants and never
+  revokes. Matching is also tightened: an entry containing `@` matches only a
+  verified email, never a username, so a self-chosen username spelled like
+  the admin's address can no longer claim the role.
+
 - Every OpenID Connect login in production failed with a 500 at the
   callback. The OAuth state cookie is named `__Secure-oauth_state` in
   production, and it was cleared without `secure` — which Hono refuses for a

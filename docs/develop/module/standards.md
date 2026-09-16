@@ -399,7 +399,7 @@ For each new module **\<module\>**:
   - `ApiClient` from `tests/e2e/lib/api.ts` carries the cookie jar and supports JSON + multipart (`formData`).
   - For ECIES dance (challenge/unlock/rotate-dek/backup-export), import the same helpers the SPA uses from `packages/shared/src/index` via a relative path — `tests/e2e/` is not a workspace member, so the workspace symlink is not reachable.
 - Two pre-seeded dex users are available; both have password `admin`:
-  - `admin@example.com` (matches `DEFAULT_ADMIN`, becomes admin on first login).
+  - `admin@example.com` (matches `DEFAULT_ADMIN`, so it is an admin).
   - `user@example.com` (regular user).
 - Cover the same matrix the integration tests cover, plus what only an HTTP client can hit:
   - **Happy path** for every public route (CRUD, listing, filtering, pagination boundaries).

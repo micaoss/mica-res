@@ -47,7 +47,9 @@ afterEach(() => {
 });
 
 describe("upsertUser DEFAULT_ADMIN bootstrap", () => {
-  test("assigns admin only to the first matching user", async () => {
+  test("every identity listed in DEFAULT_ADMIN is an admin", async () => {
+    // DEFAULT_ADMIN is the operator's declaration of who administers the
+    // deployment. Listing two people makes two admins, not a race for one.
     const first = await upsertUser(
       db,
       { sub: "sub-admin", preferred_username: "admin", email: "admin@example.com", email_verified: true },
@@ -63,29 +65,101 @@ describe("upsertUser DEFAULT_ADMIN bootstrap", () => {
     );
 
     expect(first.role).toBe("admin");
-    expect(second.role).toBe("user");
+    expect(second.role).toBe("admin");
   });
 
-  test("does not promote an existing user after DEFAULT_ADMIN changes", async () => {
+  test("an admin that already exists does not cancel DEFAULT_ADMIN", async () => {
+    // What broke a real deployment: a single-user account (always an admin)
+    // existed before the configured admin's first OIDC login, and the old
+    // "only while no admin exists" gate silently skipped the promotion.
+    const other = await upsertSingleUser(db, { username: "smoke", name: "Smoke", email: "smoke@local" });
+    expect(other.role).toBe("admin");
+
+    const configured = await upsertUser(
+      db,
+      { sub: "sub-roy", preferred_username: "roy", email: "a@roy.me", email_verified: true },
+      authConfig(["a@roy.me"]),
+      logger,
+    );
+
+    expect(configured.role).toBe("admin");
+  });
+
+  test("an existing user is promoted once DEFAULT_ADMIN lists them", async () => {
+    // The configured admin may already have an account — created before the
+    // setting was added, or while another admin blocked the old bootstrap.
+    // Their next login must honour the setting instead of leaving them stuck.
     const created = await upsertUser(
       db,
-      { sub: "sub-user", preferred_username: "alice", email: "alice@example.com" },
+      { sub: "sub-alice", preferred_username: "alice", email: "alice@example.com", email_verified: true },
+      authConfig([]),
+      logger,
+    );
+    expect(created.role).toBe("user");
+
+    const promoted = await upsertUser(
+      db,
+      { sub: "sub-alice", preferred_username: "alice", email: "alice@example.com", email_verified: true },
+      authConfig(["alice@example.com"]),
+      logger,
+    );
+    const row = await db.select().from(users).where(eq(users.id, created.id)).get();
+
+    expect(promoted.role).toBe("admin");
+    expect(row?.role).toBe("admin");
+  });
+
+  test("an unverified email does not match DEFAULT_ADMIN", async () => {
+    // At many IdPs an unverified email is whatever the user typed.
+    const user = await upsertUser(
+      db,
+      { sub: "sub-mallory", preferred_username: "mallory", email: "a@roy.me" },
+      authConfig(["a@roy.me"]),
+      logger,
+    );
+    expect(user.role).toBe("user");
+  });
+
+  test("a username shaped like the admin's email does not match an email entry", async () => {
+    // Usernames are often self-chosen. An email entry is claimed only by a
+    // verified email, never by a username that happens to spell it.
+    const user = await upsertUser(
+      db,
+      { sub: "sub-mallory", preferred_username: "a@roy.me", email: "mallory@example.com", email_verified: true },
+      authConfig(["a@roy.me"]),
+      logger,
+    );
+    expect(user.role).toBe("user");
+  });
+
+  test("a username entry matches the username", async () => {
+    const user = await upsertUser(
+      db,
+      { sub: "sub-ops", preferred_username: "ops" },
+      authConfig(["ops"]),
+      logger,
+    );
+    expect(user.role).toBe("admin");
+  });
+
+  test("removing an identity from DEFAULT_ADMIN does not demote it", async () => {
+    // The setting grants; it does not revoke. Otherwise an admin granted in
+    // the UI would lose the role on their next login.
+    const first = await upsertUser(
+      db,
+      { sub: "sub-alice", preferred_username: "alice", email: "alice@example.com", email_verified: true },
+      authConfig(["alice@example.com"]),
+      logger,
+    );
+    const later = await upsertUser(
+      db,
+      { sub: "sub-alice", preferred_username: "alice", email: "alice@example.com", email_verified: true },
       authConfig([]),
       logger,
     );
 
-    const updated = await upsertUser(
-      db,
-      { sub: "sub-user", preferred_username: "alice", email: "alice@example.com" },
-      authConfig(["alice@example.com"]),
-      logger,
-    );
-
-    const row = await db.select().from(users).where(eq(users.id, created.id)).get();
-
-    expect(created.role).toBe("user");
-    expect(updated.role).toBe("user");
-    expect(row?.role).toBe("user");
+    expect(first.role).toBe("admin");
+    expect(later.role).toBe("admin");
   });
 
   test("promotes DEFAULT_ADMIN even when a non-admin user signed up first", async () => {

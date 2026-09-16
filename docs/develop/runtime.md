@@ -121,7 +121,7 @@ settings table. A deployment needs:
 | `OAUTH_PKCE` | Defaults to `true` |
 | `APP_URL` | Required in production — the callback URL is never inferred from forwarded headers |
 | `CORS_ORIGIN` | Required in production once OAuth is in play |
-| `DEFAULT_ADMIN` | The address promoted to admin when the admin set is empty |
+| `DEFAULT_ADMIN` | Identities that are always admins; an email entry needs the provider's `email_verified` |
 
 Register `${APP_URL}${BASE_PATH}/api/account/auth/callback` with the
 provider. The authorize request asks for `openid profile email`, sends

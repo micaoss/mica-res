@@ -38,7 +38,7 @@ Highlights for a production deploy:
 | `BASE_PATH` | URL prefix the app is mounted under. Leave unset for root mount; set to the reverse-proxy mount (e.g. `/app`) when serving under a prefix |
 | `DB_PATH`, `DB_ENCRYPTION` | Persistent volume for the DB; encryption defaults to off for dev — turn on in prod |
 | `OAUTH_*` | OIDC issuer or full endpoint set, plus client id/secret |
-| `DEFAULT_ADMIN` | Comma-separated emails that get admin role on first login (no-op if users exist) |
+| `DEFAULT_ADMIN` | Comma-separated identities that are always admins (verified email, or username) |
 | `LOG_FILE` / `LOG_TO_STDOUT` | Either rotates on disk or hands lines to the runtime |
 | `AUDIT_RETENTION_DAYS` | `0` (keep forever) by default; set to a finite value in long-running deployments to bound `audit_events` size |
 | `SERVICE_TOKEN_METRICS`, `SERVICE_TOKEN_BACKUP` | Scoped bearers for `/api/metrics` and `/api/backup/export-via-token` |

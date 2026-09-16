@@ -15,7 +15,7 @@ cp .env.example .env       # uncomment the "Bundled dex IdP" block
 bun run dev:all            # starts dex + web + api in one process group
 ```
 
-Open the URL printed by `bun run dev:all` (e.g. `http://app.localhost:3355`). Sign in with `admin@example.com` / `admin` — the bundled dex's static user. The first matching login becomes admin per `DEFAULT_ADMIN`.
+Open the URL printed by `bun run dev:all` (e.g. `http://app.localhost:3355`). Sign in with `admin@example.com` / `admin` — the bundled dex's static user. That login is an admin because it matches `DEFAULT_ADMIN`.
 
 Already have an OAuth/OIDC provider? Point `OAUTH_ISSUER` at it in `.env` and use `bun run dev` instead — `dev:all` detects an external issuer and bows out so it doesn't fight your IdP.
 
@@ -38,7 +38,7 @@ bun run clean:all    # also wipes data/ — DB, uploads, logs, oidc cache
 2. Paste the bootstrap token. It is auto-generated at every boot and surfaced via stderr / `<data dir>/bootstrap-token.txt` while the system is in setup mode; both go away once init succeeds.
 3. Choose a master password — this derives the master keypair that wraps the data-encryption key (DEK).
 4. Save the recovery key file (`<APP_NAME>-master-key.txt`).
-5. Sign in via OAuth. The first user matching `DEFAULT_ADMIN` becomes admin.
+5. Sign in via OAuth. Any login matching `DEFAULT_ADMIN` is an admin.
 
 ## Customize
 

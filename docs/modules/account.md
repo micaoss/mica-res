@@ -46,7 +46,7 @@ Implemented routes:
 | GET | `/api/account/auth/logout-url` | Public | Returns the configured upstream logout URL. |
 | POST | `/api/account/auth/totp/verify` | Public | Completes login-time TOTP verification. |
 
-The callback creates or updates a local user record based on OAuth userinfo. OAuth/OIDC provider settings are read from environment variables at runtime, not from editable database settings. `DEFAULT_ADMIN` is only used while the users table is empty: the first matching login becomes admin, and existing users are never promoted by this value.
+The callback creates or updates a local user record based on OAuth userinfo. OAuth/OIDC provider settings are read from environment variables at runtime, not from editable database settings. `DEFAULT_ADMIN` lists identities that are always admins: a matching login is granted the role on every login, including an account that already exists, and regardless of whether other admins exist. An entry containing `@` matches only an email the provider marks verified; any other entry matches the username. The setting grants and never revokes.
 
 ## Current User
 

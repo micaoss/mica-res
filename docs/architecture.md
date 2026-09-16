@@ -154,7 +154,7 @@ Each session row carries the upstream OAuth `access_token` and `refresh_token` a
 
 For deployments that disable encryption (e.g. local dev, or a single-tenant box where the file is already covered by full-disk encryption) this trade-off is acceptable. If sessions must be defensible even when an attacker can read `app.db`, run with `DB_ENCRYPTION=true` or wrap the columns at the application layer before persisting. Drizzle's `defaultFn` is a reasonable seam.
 
-`DEFAULT_ADMIN` is the bootstrap input: whenever the user table contains no rows with `role=admin`, the next login matching the configured username or email is promoted. Non-admin users may sign up at any time without locking the bootstrap window — the gate is on admin presence, not on user-count zero.
+`DEFAULT_ADMIN` is the operator's declaration of who administers the deployment. A login matching it is granted admin on every login — including an account that already exists — whether or not other admins exist. It used to apply only while no admin existed, which let any other admin, such as a single-user account left from an earlier mode, silently cancel it. An entry containing `@` matches only a verified email; any other entry matches the username, so a self-chosen username spelled like the admin's address cannot claim it. The setting grants and never revokes: an admin promoted in the UI keeps the role, and a listed admin demoted in the UI is granted it again at their next login.
 
 OAuth/OIDC provider configuration is read from environment variables at runtime. The admin settings UI does not own these values, which prevents a bad database setting from breaking login.
 

@@ -1,5 +1,15 @@
 # mica-res - Changelog
 
+## 2026-09-16 07:45 [progress]
+
+Phase 0 of the resource service: the Bun tooling (lock reader, enumeration,
+canonical index v1, site rendering, the dry-run sync), the Worker (blob, index,
+readable download and site routes, the content-addressed write endpoint, the
+cache policy), and the three workflows (`ci.yml` gates, `infra.yml`
+provisioning by hand, `sync.yml` dry run on a schedule). The bucket
+`res-micaos-dev` and the Worker on `res.micaos.dev` exist; nothing is mirrored
+yet, and the write endpoint stays closed until `WRITE_TOKEN` is set.
+
 ## 2026-09-16 07:28 [decision]
 
 The repository becomes the Mica OS resource service: the tooling, the index

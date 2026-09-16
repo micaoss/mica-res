@@ -33,4 +33,4 @@ Each task is a single line linking to its detail file. All detailed information 
 
 ## Tasks
 
-- [-] [**20260916-0728-r2-resource-service-phase-0 R2 resource service, phase 0**](20260916-0728-r2-resource-service-phase-0.md) `P1`
+- [x] [**20260916-0728-r2-resource-service-phase-0 R2 resource service, phase 0**](20260916-0728-r2-resource-service-phase-0.md) `P1`

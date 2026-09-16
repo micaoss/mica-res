@@ -1,0 +1,68 @@
+name: infra
+# Phase 0 provisioning, by hand only: report what the token may do, create the
+# bucket if it does not exist, and deploy the Worker. It publishes no artefact
+# and deletes nothing.
+on:
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: Deploy the Worker as well as reporting and creating the bucket
+        type: boolean
+        default: true
+permissions:
+  contents: read
+concurrency:
+  group: infra
+jobs:
+  provision:
+    runs-on: ubuntu-24.04
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      BUCKET: res-micaos-dev
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+
+      # What the token is allowed to do, printed as policy names only. No
+      # secret value is ever echoed.
+      - name: Report the token
+        run: |
+          set -euo pipefail
+          verify=$(curl -sS -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            https://api.cloudflare.com/client/v4/user/tokens/verify)
+          echo "${verify}" | jq '{success, status: .result.status, messages: [.messages[]?.message]}'
+
+      - name: Create the bucket if it is missing
+        run: |
+          set -euo pipefail
+          base="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/r2/buckets"
+          existing=$(curl -sS -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" "${base}/${BUCKET}")
+          if [ "$(echo "${existing}" | jq -r .success)" = true ]; then
+            echo "bucket ${BUCKET} exists"
+            echo "${existing}" | jq '.result | {name, location, storage_class, creation_date}'
+            exit 0
+          fi
+          echo "${existing}" | jq '{success, errors: [.errors[]?.message]}'
+          created=$(curl -sS -X POST -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            -H 'Content-Type: application/json' --data "{\"name\":\"${BUCKET}\"}" "${base}")
+          echo "${created}" | jq '{success, errors: [.errors[]?.message], result: (.result | {name, location})}'
+          [ "$(echo "${created}" | jq -r .success)" = true ]
+
+      - name: Deploy the Worker
+        if: inputs.deploy
+        working-directory: worker
+        run: bun x wrangler deploy 2>&1 | tee "${RUNNER_TEMP}/deploy.log"
+
+      - name: Report what the credentials would not allow
+        if: always()
+        run: |
+          set -euo pipefail
+          echo 'The design asks for two credentials this workflow does not have:'
+          echo '  - a bucket-scoped R2 token with no delete permission, for CI;'
+          echo '  - a separate delete-capable token held by the user, out of CI.'
+          echo 'The sync uploads through the Worker write endpoint, so it needs'
+          echo 'no R2 credential at all once the Worker holds WRITE_TOKEN.'

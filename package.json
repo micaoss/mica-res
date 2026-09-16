@@ -1,0 +1,23 @@
+{
+  "name": "mica-res",
+  "type": "module",
+  "private": true,
+  "packageManager": "bun@1.4.2",
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "node_modules/typescript7/bin/tsc --noEmit",
+    "test": "bun test src worker",
+    "check": "bun run lint && bun run typecheck && bun run test"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20260916.1",
+    "@eslint/js": "10.0.1",
+    "@stylistic/eslint-plugin": "5.10.0",
+    "@types/bun": "1.4.2",
+    "eslint": "10.10.0",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
+    "typescript-eslint": "8.70.0",
+    "typescript7": "npm:typescript@7.0.2",
+    "wrangler": "4.132.0"
+  }
+}

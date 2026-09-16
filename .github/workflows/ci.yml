@@ -1,0 +1,27 @@
+name: ci
+# Every push to main and pull request: the gates. Publishes nothing and
+# touches no Cloudflare resource.
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - run: bun run check
+      # The dry run reads the producers' locks and releases anonymously and
+      # writes nothing: it is the gate on the enumeration itself.
+      - run: bun src/cli.ts sync --out "${RUNNER_TEMP}/sync"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}

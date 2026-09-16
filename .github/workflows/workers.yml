@@ -120,24 +120,12 @@ jobs:
           bucket="$(grep -oP 'bucket_name = "\K[^"]+' wrangler.toml)"
           bunx wrangler r2 bucket create "$bucket" 2>&1 | tee /tmp/bucket.log ||             grep -qiE "already (exists|owned)" /tmp/bucket.log
 
-      - name: Deploy
-        id: deploy
-        working-directory: apps/api
-        run: |
-          set -euo pipefail
-          bunx wrangler deploy 2>&1 | tee /tmp/deploy.log
-          url="$(grep -oE 'https://[a-z0-9-]+\.[a-z0-9-]+\.workers\.dev' /tmp/deploy.log | head -1)"
-          if [ -z "$url" ]; then
-            echo "::error::could not parse the deployed URL from wrangler output"
-            exit 1
-          fi
-          echo "url=$url" >> "$GITHUB_OUTPUT"
-          echo "Deployed to $url"
-
-      # Single-user credentials for the smoke test, minted per run. The
-      # password is never printed and never committed, so the deployment is
-      # not left reachable with a known login. Rotate it with
-      # `wrangler secret put SINGLE_USER_PASSWORD_HASH` to take it over.
+      # Credentials are minted before the deploy and travel as `vars`, not as
+      # secrets. `wrangler secret` publishes a version of its own, which turns
+      # "deploy, then set secrets" into two versions and a question of which
+      # one serves; a var is part of the same deploy and there is nothing to
+      # sequence. The value here is a password hash, and the password behind
+      # it is random per run and never printed.
       - name: Mint smoke-test credentials
         id: creds
         working-directory: apps/api
@@ -148,8 +136,7 @@ jobs:
           # Written to a file rather than captured from stdout: anything the
           # runtime decides to print would otherwise be appended to the hash,
           # and a hash with trailing junk still passes the format check at
-          # boot while failing every login — which is a long way to walk for
-          # a missing redirect.
+          # boot while failing every login.
           SMOKE_PW="$password" bun -e '
             const mod = await import("./src/modules/account/auth/password.ts");
             const pw = process.env.SMOKE_PW;
@@ -167,67 +154,36 @@ jobs:
           hash="$(cat /tmp/smoke-hash.txt)"
           rm -f /tmp/smoke-hash.txt
           # Structure only — lengths and field count carry no secret material.
-          echo "hash length ${#hash}, fields $(echo "$hash" | awk -F'$' '{print NF}'), prefix ${hash%%\$*}"
+          echo "hash length ${#hash}, fields $(echo "$hash" | awk -F'$' '{print NF}')"
 
-          # A username per run. Failed logins are recorded per username in
-          # `auth_lockouts`, which lives in the Durable Object and therefore
-          # outlives the deploy — a run that failed for any reason would lock
-          # the next one out with a 429 no matter how correct its password is.
-          jq -n --arg h "$hash" --arg u "$username" '{
-            SINGLE_USER_MODE: "true",
-            SINGLE_USER_USERNAME: $u,
-            SINGLE_USER_PASSWORD_HASH: $h
-          }' > /tmp/worker-secrets.json
-          bunx wrangler secret bulk /tmp/worker-secrets.json
-          rm -f /tmp/worker-secrets.json
-          echo "secrets now bound:"
-          bunx wrangler secret list
+          # `[vars]` is the last table in the file, so appending extends it.
+          {
+            echo "SINGLE_USER_MODE = \"true\""
+            echo "SINGLE_USER_USERNAME = \"$username\""
+            echo "SINGLE_USER_PASSWORD_HASH = \"$hash\""
+          } >> wrangler.toml
+
           echo "::add-mask::$password"
           echo "password=$password" >> "$GITHUB_OUTPUT"
           echo "username=$username" >> "$GITHUB_OUTPUT"
 
-      # `wrangler secret bulk` uploads a version carrying the new secrets, but
-      # the version serving traffic is still the one `wrangler deploy` made.
-      # Deploying again is what promotes a version that has both the code and
-      # the secrets.
-      - name: Activate the version carrying the secrets
+      - name: Deploy
+        id: deploy
         working-directory: apps/api
-        run: bunx wrangler deploy
-
-      # The login handler turns a verification error into a 401 after logging
-      # it, so a failure is indistinguishable from a wrong password unless
-      # the Worker's own log is read. One attempt under `wrangler tail`
-      # answers the question that the status code cannot.
-      - name: Probe one login with the Worker log attached
-        working-directory: apps/api
-        env:
-          SMOKE_USERNAME: ${{ steps.creds.outputs.username }}
-          SMOKE_PASSWORD: ${{ steps.creds.outputs.password }}
         run: |
-          url="${{ steps.deploy.outputs.url }}"
-          body="$(jq -n --arg u "$SMOKE_USERNAME" --arg p "$SMOKE_PASSWORD" '{username:$u,password:$p}')"
-          login() {
-            curl -s -o /dev/null -w "%{http_code}" -X POST \
-              -H 'Content-Type: application/json' -H 'X-Requested-With: XMLHttpRequest' \
-              -H "Origin: $url" --data "$body" "$url/api/account/auth/login-local"
-          }
-          # Absorbs the reset that a changed configuration triggers, so the
-          # measured attempt below runs against a settled object.
-          echo "warm-up login -> $(login)"
-          sleep 5
-          bunx wrangler tail --format pretty > /tmp/tail.log 2>&1 &
-          tail_pid=$!
-          sleep 10
-          echo "probe login -> $(login)"
-          sleep 10
-          kill "$tail_pid" 2>/dev/null || true
-          echo "--- worker log ---"
-          head -c 20000 /tmp/tail.log
+          set -euo pipefail
+          bunx wrangler deploy 2>&1 | tee /tmp/deploy.log
+          url="$(grep -oE 'https://[a-z0-9-]+\.[a-z0-9-]+\.workers\.dev' /tmp/deploy.log | head -1)"
+          if [ -z "$url" ]; then
+            echo "::error::could not parse the deployed URL from wrangler output"
+            exit 1
+          fi
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Deployed to $url"
 
-      # The edge takes a moment to serve the new version. Waiting on "the route stopped answering 404" is not enough:
-      # a previous run's secrets already satisfy that while the *new* hash is
-      # still rolling out, which reads as a credential bug. So the gate is the
-      # precondition the suite actually needs — these credentials log in.
+      # The edge takes a moment to serve the new version, and the object has
+      # to notice its configuration changed and reset. The gate is the
+      # precondition the suite needs: these credentials log in.
       - name: Wait for the new credentials to serve
         env:
           SMOKE_USERNAME: ${{ steps.creds.outputs.username }}
@@ -238,9 +194,8 @@ jobs:
           last=""
           # Ten attempts: the single-user lockout trips at ten failures, so
           # hammering past that only turns a diagnosable 401 into an opaque
-          # 429. Each status is logged, which is what tells a wrong password
-          # apart from a runtime that cannot verify one.
-          for _ in $(seq 1 15); do
+          # 429. Each status is logged.
+          for _ in $(seq 1 10); do
             last="$(curl -s -o /dev/null -w '%{http_code}' -X POST \
               -H 'Content-Type: application/json' -H 'X-Requested-With: XMLHttpRequest' \
               -H "Origin: $url" \
@@ -248,7 +203,7 @@ jobs:
               "$url/api/account/auth/login-local")"
             echo "login -> $last"
             [ "$last" = "200" ] && exit 0
-            sleep 3
+            sleep 4
           done
           echo "::error::the minted credentials never logged in (last status $last)"
           exit 1

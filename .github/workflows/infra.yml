@@ -70,9 +70,11 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: worker
           # Bound on every deploy, so the bearer the write endpoint checks is
-          # the one this repository holds. Until the secret exists nothing is
-          # bound and the endpoint stays closed (503).
-          secrets: ${{ secrets.WRITE_TOKEN != '' && 'WRITE_TOKEN' || '' }}
+          # provably the one this repository holds: the user sets the
+          # repository secret once and a deploy pushes it to the Worker. Nobody
+          # runs `wrangler secret put` by hand.
+          secrets: |
+            WRITE_TOKEN
         env:
           WRITE_TOKEN: ${{ secrets.WRITE_TOKEN }}
 

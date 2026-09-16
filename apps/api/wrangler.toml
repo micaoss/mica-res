@@ -5,6 +5,11 @@ compatibility_date = "2026-09-01"
 # codebase (PBKDF2 hashing, base64url encoding, path joins).
 compatibility_flags = ["nodejs_compat"]
 
+# Keep the workers.dev URL even when a custom domain is attached: adding a
+# route otherwise turns it off, which leaves nothing to reach the deployment
+# by while the domain is still being provisioned.
+workers_dev = true
+
 # `bun:sqlite` is imported statically by the encryption module's meta.db
 # reader. That mode is rejected at boot here, so the import resolves to a stub
 # that throws if anything ever reaches it.

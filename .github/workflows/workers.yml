@@ -95,6 +95,10 @@ jobs:
       # is told its own origin, which the OAuth callback and the CSRF guard
       # both need. Unset means workers.dev only.
       CUSTOM_DOMAIN: ${{ vars.WORKER_CUSTOM_DOMAIN }}
+      # The zone the hostname belongs to. Stated rather than inferred:
+      # wrangler cannot always work it out from the hostname, and a public
+      # suffix with two labels would defeat any guess.
+      CUSTOM_DOMAIN_ZONE: ${{ vars.WORKER_CUSTOM_DOMAIN_ZONE }}
     steps:
       # The `secrets` context cannot be read from a job-level `if`, so the
       # credential check is a step. Without it the job would fail deep inside
@@ -218,6 +222,9 @@ jobs:
               echo "[[routes]]"
               echo "pattern = \"$CUSTOM_DOMAIN\""
               echo "custom_domain = true"
+              if [ -n "${CUSTOM_DOMAIN_ZONE:-}" ]; then
+                echo "zone_name = \"$CUSTOM_DOMAIN_ZONE\""
+              fi
             } >> wrangler.toml
           fi
 

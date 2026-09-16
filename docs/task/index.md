@@ -34,3 +34,4 @@ Each task is a single line linking to its detail file. All detailed information 
 ## Tasks
 
 - [x] [**20260916-0728-r2-resource-service-phase-0 R2 resource service, phase 0**](20260916-0728-r2-resource-service-phase-0.md) `P1`
+- [ ] [**20260916-0757-system-status-site System status site**](20260916-0757-system-status-site.md) `P2`

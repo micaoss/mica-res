@@ -16,6 +16,7 @@ import {
 import { audit } from "@/modules/audit/audit.service";
 import { deriveOrigin, getAuthConfig, getOAuthConfig, getOidcLogoutUrl, getSingleUserConfig, isOAuthConfigured, isSingleUserMode } from "@/shared/lib/app-config";
 import { getClientIp } from "@/shared/lib/client-ip";
+import { AppError } from "@/shared/lib/errors";
 import { describeRoute, errors, jsonOk, TAGS } from "@/shared/lib/openapi";
 import { consumeRateLimit } from "@/shared/middleware/rate-limit";
 import {
@@ -651,8 +652,13 @@ export function authRoutes() {
         passwordMatches = await verifyPassword(password, single.passwordHash);
       }
       catch (err) {
-        logger.error({ err: err instanceof Error ? err.message : String(err) }, "single-user password verify failed");
-        passwordMatches = false;
+        // The hash could not be checked — a missing primitive, or one the
+        // runtime refuses at this cost. That is a server fault, not a bad
+        // credential: answering 401 would blame the operator's password,
+        // record a lockout failure against them, and hide the real problem.
+        const reason = err instanceof Error ? err.message : String(err);
+        logger.error({ err: reason }, "single-user password verify failed");
+        throw new AppError("Password verification is unavailable on this runtime", 500, "PASSWORD_VERIFY_UNAVAILABLE");
       }
 
       if (!usernameMatches || !passwordMatches) {

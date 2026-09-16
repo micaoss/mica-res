@@ -40,6 +40,22 @@ body's sha256 and refuses different bytes under an existing key, and there is
 no delete route. A leaked write token can add an unreferenced blob and nothing
 else.
 
+## Reachability, as measured on 2026-09-16
+
+The mirror is proven to serve CI: every upload, the contract gate and the
+presence read-back run from GitHub runners against `res.micaos.dev`. **It is
+not currently usable from the development network**: the zone's addresses
+(`188.114.96.5`, `188.114.97.5`, `2a06:98c1:3120::5`) resolve but do not
+route from here or from the workstation -- IPv4 times out, IPv6 has no route,
+the `micaos.dev` apex behaves the same, and `www.cloudflare.com` and
+`mica-res.cfaa.workers.dev` answer from the same hosts. So it is those
+addresses, not Cloudflare, not the Worker and not the bucket.
+
+Until that is measured again, **nothing here claims that a local offline build
+fetches from the mirror**. The `workers.dev` hostname is deliberately not used
+as a way round it: that would trade a routing problem for a permanent second
+name.
+
 ## Scope
 
 In: third-party Debian archives, sha256-pinned source tarballs, the build-env

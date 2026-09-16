@@ -61,6 +61,23 @@ jobs:
       # commit, fsck. What mica-boards implements is a path verified here.
       - name: Verify a mirrored git pack end to end
         run: bun src/cli.ts verify-pack
+
+      # The registry read paths, timed from a runner, because the development
+      # network cannot reach the zone: a tag resolves through the index (now
+      # edge-cached) and a digest does not resolve anything.
+      - name: Time the registry tag and digest paths
+        run: |
+          set -euo pipefail
+          snapshot=$(ls "${RUNNER_TEMP}"/sync/index-*.json | tail -1)
+          tag=$(jq -r '[.objects[].readable[] | select(startswith("/v2/"))] | .[0] // empty' "${snapshot}")
+          digest=$(jq -r '[.objects[] | select(.mediaType != null) | select(.mediaType | test("manifest.list|image.index"))] | .[0].sha256 // empty' "${snapshot}")
+          [ -n "${tag}" ] || { echo "no registry tag in the index"; exit 0; }
+          for i in 1 2; do
+            curl -sS -o /dev/null -w "  by tag    ${i}: %{time_total}s\n" "https://res.micaos.dev${tag}?cold=${GITHUB_RUN_ID}${i}"
+          done
+          for i in 1 2; do
+            curl -sS -o /dev/null -w "  by digest ${i}: %{time_total}s\n" "https://res.micaos.dev/v2/micaoss/mica-build-env/manifests/sha256:${digest}?cold=${GITHUB_RUN_ID}${i}"
+          done
       - uses: actions/upload-artifact@v7
         with:
           name: sync-${{ github.run_id }}

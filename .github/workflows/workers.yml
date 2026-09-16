@@ -178,6 +178,25 @@ jobs:
           echo "password=$password" >> "$GITHUB_OUTPUT"
           echo "username=$username" >> "$GITHUB_OUTPUT"
 
+      # Closes the loop between what is about to be deployed and what the
+      # suite will send. If these disagree the fault is in this job; if they
+      # agree and the deployment still refuses, it is not.
+      - name: Check the deployed hash against the password the suite will use
+        working-directory: apps/api
+        env:
+          SMOKE_PASSWORD: ${{ steps.creds.outputs.password }}
+        run: |
+          hash="$(grep -oP 'SINGLE_USER_PASSWORD_HASH = "\K[^"]+' wrangler.toml)"
+          echo "hash from wrangler.toml: length ${#hash}"
+          SMOKE_HASH="$hash" bun -e '
+            const mod = await import("./src/modules/account/auth/password.ts");
+            const ok = await mod.verifyPassword(process.env.SMOKE_PASSWORD, process.env.SMOKE_HASH);
+            console.log("deployed hash verifies the suite password:", ok);
+            if (!ok) {
+              process.exit(1);
+            }
+          '
+
       - name: Deploy
         id: deploy
         working-directory: apps/api

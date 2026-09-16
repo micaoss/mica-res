@@ -5,6 +5,8 @@
 //   bun src/cli.ts site [--index <file>] [--out <dir>]
 //   bun src/cli.ts collect [--apply] [--out <dir>]
 //   bun src/cli.ts verify-pack [--name <tree>]    walk the consumer contract
+//   bun src/cli.ts image-pins                     which build-env releases a
+//                                                 published release still names
 //   bun src/cli.ts index --check <file>           read an index snapshot
 //
 // `sync` is a dry run unless `--apply` is given. Uploads go only through the
@@ -24,6 +26,7 @@ import { renderSite } from './site.ts'
 import { resolveSizes } from './sizes.ts'
 import { concluded, listJobs, listRuns, renderCurrent, renderRun, runKey, runSnapshot } from './collect.ts'
 import type { CurrentRun } from './collect.ts'
+import { pinnedImageReleases } from './imagepins.ts'
 import { REPOSITORIES } from './producers.ts'
 import { ghcrToken } from './ghcr.ts'
 import { chunkBytes, chunkNames, manifestName, packObjects, producePack, renderManifest, verifyPack } from './gitpack.ts'
@@ -321,6 +324,13 @@ async function verify(argv: string[]): Promise<void> {
   }
 }
 
+// The objective half of a retention policy: an image release is prunable only
+// if no published lock names it and it is mirrored.
+async function imagePins(): Promise<void> {
+  for (const pinned of await pinnedImageReleases(REPOSITORIES))
+    console.log(`${pinned.release}  named by ${pinned.pinnedBy.length}: ${pinned.pinnedBy.join('; ')}`)
+}
+
 async function index(argv: string[]): Promise<void> {
   const file = argv[argv.indexOf('--check') + 1]
   if (file === undefined)
@@ -333,6 +343,9 @@ const [command, ...argv] = process.argv.slice(2)
 switch (command) {
   case 'sync':
     await sync(argv)
+    break
+  case 'image-pins':
+    await imagePins()
     break
   case 'verify-pack':
     await verify(argv)

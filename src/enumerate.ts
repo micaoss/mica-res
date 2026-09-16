@@ -7,7 +7,8 @@ import { gitRows, parseLock, sourceRows, upstreamRows } from './locks.ts'
 import type { Lock } from './locks.ts'
 import { mergeObjects, objectFromSourceRow } from './objects.ts'
 import type { ResourceObject } from './objects.ts'
-import { GIT_SOURCES, IMAGE_SOURCE, LOCK_SOURCES, PRODUCT_SOURCE } from './producers.ts'
+import { pinnedImageReleases } from './imagepins.ts'
+import { GIT_SOURCES, IMAGE_SOURCE, LOCK_SOURCES, PRODUCT_SOURCE, REPOSITORIES } from './producers.ts'
 import { enumerateReleases } from './releases.ts'
 
 export interface GitTree {
@@ -46,12 +47,27 @@ export async function enumerate(): Promise<Enumeration> {
     }
   }
 
+  // The build-env images every current build pins...
   const imageLock = await readLock(IMAGE_SOURCE.repository, IMAGE_SOURCE.lock)
+  const current = releaseOf(imageLock)
   objects.push(...await enumerateImages(imageLock, {
     repository: IMAGE_SOURCE.images,
     lock: `${IMAGE_SOURCE.repository}:${IMAGE_SOURCE.lock}`,
-    release: releaseOf(imageLock),
+    release: current,
   }, IMAGE_SOURCE.images))
+
+  // ...and every build-env release a PUBLISHED release still names, because
+  // those locks are immutable and ghcr is the only other copy. This is the set
+  // a retention policy may not prune.
+  for (const pinned of await pinnedImageReleases(REPOSITORIES)) {
+    if (pinned.release === current)
+      continue
+    objects.push(...await enumerateImages(pinned.lock, {
+      repository: IMAGE_SOURCE.images,
+      lock: `published:${pinned.pinnedBy.join(', ')}`,
+      release: pinned.release,
+    }, IMAGE_SOURCE.images))
+  }
 
   objects.push(...await enumerateReleases(PRODUCT_SOURCE.repository))
 

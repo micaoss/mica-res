@@ -13,9 +13,17 @@
  *   3. R2 storage    — upload, then read the blob back through the API
  *   4. rate limiting — the platform key/value seam backs the limiter
  *
+ * With `--oidc` it checks a deployment configured for OpenID Connect
+ * instead. Such a deployment has no local password to log in with — the SPA
+ * offers one login method or the other — so the authenticated cases are
+ * replaced by ones that prove the provider wiring: the app reports an
+ * OAuth-configured mode, and starting a login redirects to the issuer
+ * carrying a PKCE challenge.
+ *
  * Usage:
  *   bun tests/workers/smoke.ts                 # spawns `wrangler dev`
  *   bun tests/workers/smoke.ts --url https://… # runs against a deployment
+ *   bun tests/workers/smoke.ts --url … --oidc  # OIDC deployment
  */
 import type { Subprocess } from "bun";
 import { rmSync } from "node:fs";
@@ -190,6 +198,62 @@ const cases: Case[] = [
   },
 ];
 
+const oidcCases: Case[] = [
+  {
+    name: "health endpoint responds",
+    async run() {
+      const res = await call("/api/health");
+      assert(res.status === 200, `health returned ${res.status}`);
+    },
+  },
+  {
+    name: "the SPA is served from the asset pipeline",
+    async run() {
+      const res = await call("/");
+      assert(res.status === 200, `index returned ${res.status}`);
+      const body = await res.text();
+      assert(body.includes("<!doctype html") || body.includes("<!DOCTYPE html"), "index was not HTML");
+    },
+  },
+  {
+    name: "login mode reports a configured OAuth provider",
+    async run() {
+      const res = await call("/api/account/auth/mode");
+      assert(res.status === 200, `mode returned ${res.status}`);
+      const body = await json<{ data: { mode: string; oauthConfigured: boolean } }>(res);
+      assert(body.data.mode === "oauth", `mode was '${body.data.mode}', so the SPA would not offer OAuth`);
+      // False here means discovery did not resolve the endpoints at boot.
+      assert(body.data.oauthConfigured, "the provider's endpoints are not configured");
+    },
+  },
+  {
+    name: "starting a login redirects to the issuer with a PKCE challenge",
+    async run() {
+      const res = await call("/api/account/auth/login");
+      assert(res.status === 302, `login returned ${res.status}, expected a redirect`);
+      const location = res.headers.get("Location");
+      assert(location !== null, "the redirect carried no Location");
+
+      const target = new URL(location);
+      const issuer = process.env.SMOKE_OAUTH_ISSUER;
+      if (issuer)
+        assert(target.host === new URL(issuer).host, `redirected to ${target.host}, not the issuer's host`);
+
+      const clientId = process.env.SMOKE_OAUTH_CLIENT_ID;
+      if (clientId)
+        assert(target.searchParams.get("client_id") === clientId, "the redirect carried a different client_id");
+
+      assert(target.searchParams.get("response_type") === "code", "response_type was not 'code'");
+      assert(target.searchParams.get("code_challenge_method") === "S256", "PKCE is not in use: no S256 challenge method");
+      assert((target.searchParams.get("code_challenge") ?? "").length > 0, "PKCE is not in use: the challenge is empty");
+      assert(
+        target.searchParams.get("redirect_uri") === `${baseUrl}/api/account/auth/callback`,
+        `redirect_uri was ${target.searchParams.get("redirect_uri")}, which the provider must have registered`,
+      );
+    },
+  },
+];
+
 async function waitForBoot(timeoutMs: number): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -239,10 +303,12 @@ async function main(): Promise<void> {
     );
   }
 
+  const suite = process.argv.includes("--oidc") ? oidcCases : cases;
+
   let failures = 0;
   try {
     await waitForBoot(120_000);
-    for (const c of cases) {
+    for (const c of suite) {
       try {
         await c.run();
         console.log(`  ok    ${c.name}`);
@@ -258,7 +324,7 @@ async function main(): Promise<void> {
     dev?.kill();
   }
 
-  console.log(`\n${cases.length - failures}/${cases.length} passed`);
+  console.log(`\n${suite.length - failures}/${suite.length} passed`);
   process.exit(failures === 0 ? 0 : 1);
 }
 

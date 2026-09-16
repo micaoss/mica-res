@@ -99,6 +99,13 @@ jobs:
       # wrangler cannot always work it out from the hostname, and a public
       # suffix with two labels would defeat any guess.
       CUSTOM_DOMAIN_ZONE: ${{ vars.WORKER_CUSTOM_DOMAIN_ZONE }}
+      # When an issuer is configured the deployment logs in through OpenID
+      # Connect. The SPA offers one method or the other, so single-user is
+      # left off in that case and the suite checks the provider wiring
+      # instead of signing in.
+      OAUTH_ISSUER: ${{ vars.OAUTH_ISSUER }}
+      OAUTH_CLIENT_ID: ${{ vars.OAUTH_CLIENT_ID }}
+      DEFAULT_ADMIN: ${{ vars.DEFAULT_ADMIN }}
     steps:
       # The `secrets` context cannot be read from a job-level `if`, so the
       # credential check is a step. Without it the job would fail deep inside
@@ -223,9 +230,19 @@ jobs:
 
           # `[vars]` is the last table in the file, so appending extends it.
           {
-            echo "SINGLE_USER_MODE = \"true\""
-            echo "SINGLE_USER_USERNAME = \"$username\""
-            echo "SINGLE_USER_PASSWORD_HASH = \"$hash\""
+            if [ -z "${OAUTH_ISSUER:-}" ]; then
+              echo "SINGLE_USER_MODE = \"true\""
+              echo "SINGLE_USER_USERNAME = \"$username\""
+              echo "SINGLE_USER_PASSWORD_HASH = \"$hash\""
+            else
+              # The SPA renders a local form or an OAuth button, never both,
+              # and single-user wins — so enabling it here would hide the
+              # provider this deployment exists to use.
+              echo "OAUTH_ISSUER = \"$OAUTH_ISSUER\""
+              echo "OAUTH_CLIENT_ID = \"$OAUTH_CLIENT_ID\""
+              echo "OAUTH_PKCE = \"true\""
+              echo "DEFAULT_ADMIN = \"$DEFAULT_ADMIN\""
+            fi
             # Low enough for the suite to reach in a short burst. The shipped
             # default is 60 a minute, which would take more requests to prove
             # than the property is worth.
@@ -261,6 +278,7 @@ jobs:
       # suite will send. If these disagree the fault is in this job; if they
       # agree and the deployment still refuses, it is not.
       - name: Check the deployed hash against the password the suite will use
+        if: env.OAUTH_ISSUER == ''
         working-directory: apps/api
         env:
           SMOKE_PASSWORD: ${{ steps.creds.outputs.password }}
@@ -300,6 +318,7 @@ jobs:
       # reports what it sent, not what is bound, so this asks the API and
       # compares. Only the comparison and the lengths are printed.
       - name: Compare the bound configuration with what was deployed
+        if: env.OAUTH_ISSUER == ''
         working-directory: apps/api
         run: |
           local_hash="$(grep -oP 'SINGLE_USER_PASSWORD_HASH = "\K[^"]+' wrangler.toml)"
@@ -316,6 +335,7 @@ jobs:
       # to notice its configuration changed and reset. The gate is the
       # precondition the suite needs: these credentials log in.
       - name: Wait for the new credentials to serve
+        if: env.OAUTH_ISSUER == ''
         env:
           SMOKE_USERNAME: ${{ steps.creds.outputs.username }}
           SMOKE_PASSWORD: ${{ steps.creds.outputs.password }}
@@ -339,11 +359,32 @@ jobs:
           echo "::error::the minted credentials never logged in (last status $last)"
           exit 1
 
+      # An OIDC deployment has no local password, so the suite proves the
+      # provider wiring instead of signing in. The authenticated paths stay
+      # covered by the workerd run above.
+      - name: Wait for the deployment to serve
+        run: |
+          url="${{ steps.deploy.outputs.url }}"
+          for _ in $(seq 1 30); do
+            code="$(curl -s -o /dev/null -w '%{http_code}' "$url/api/health")"
+            [ "$code" = "200" ] && exit 0
+            sleep 4
+          done
+          echo "::error::the deployment never answered /api/health"
+          exit 1
+
       - name: Smoke test the deployment
         env:
           SMOKE_USERNAME: ${{ steps.creds.outputs.username }}
           SMOKE_PASSWORD: ${{ steps.creds.outputs.password }}
-        run: bun tests/workers/smoke.ts --url "${{ steps.deploy.outputs.url }}"
+          SMOKE_OAUTH_ISSUER: ${{ vars.OAUTH_ISSUER }}
+          SMOKE_OAUTH_CLIENT_ID: ${{ vars.OAUTH_CLIENT_ID }}
+        run: |
+          if [ -n "${SMOKE_OAUTH_ISSUER:-}" ]; then
+            bun tests/workers/smoke.ts --url "${{ steps.deploy.outputs.url }}" --oidc
+          else
+            bun tests/workers/smoke.ts --url "${{ steps.deploy.outputs.url }}"
+          fi
 
       - name: Summary
         if: always()

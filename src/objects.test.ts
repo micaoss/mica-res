@@ -21,7 +21,10 @@ test('a .deb row becomes a deb object under the deb route', () => {
   const object = objectFromSourceRow(deb, pin)
   expect(object.kind).toBe('deb')
   expect(object.path).toBe(`blob/aa/${'a'.repeat(64)}`)
-  expect(object.readable).toEqual(['/d/upstream/deb/bash/bash_5.3.3-1_amd64.deb'])
+  expect(object.readable).toEqual([
+    '/d/upstream/deb/bash/bash_5.3.3-1_amd64.deb',
+    '/d/upstream/debian/pool/main/b/bash/bash_5.3.3-1_amd64.deb',
+  ])
   expect(object.origin).toBe(deb.url)
   expect(object.pins).toEqual([{ ...pin, row: 'source bash amd64' }])
 })
@@ -43,7 +46,11 @@ test('the same bytes pinned under two names keep both names', () => {
   const renamed = { ...deb, name: 'bash-static' }
   const merged = mergeObjects([objectFromSourceRow(deb, pin), objectFromSourceRow(renamed, pin)])
   expect(merged).toHaveLength(1)
-  expect(merged[0]?.readable).toHaveLength(2)
+  expect(merged[0]?.readable).toHaveLength(3)
+})
+
+test('a Debian archive answers under the pool shape a consumer mirror rewrites to', () => {
+  expect(objectFromSourceRow(deb, pin).readable).toContain('/d/upstream/debian/pool/main/b/bash/bash_5.3.3-1_amd64.deb')
 })
 
 test('two different byte strings under one readable name are refused', () => {

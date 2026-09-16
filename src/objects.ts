@@ -44,14 +44,27 @@ function fileName(url: string): string {
   return new URL(url).pathname.split('/').pop()!
 }
 
+// mica-system-base's existing mirror hook rewrites a Debian URL as
+// `<base>/pool/<tail>` (`MICA_BASE_MIRROR=pool:<base>`, src/cache.ts
+// mirrorUrl), so every Debian archive also answers under that shape. That is
+// what lets a consumer use the mirror with a CI variable and no code change.
+function debianPoolAlias(url: string): string | undefined {
+  const index = url.indexOf('/pool/')
+  return index < 0 ? undefined : `/d/upstream/debian/pool/${url.slice(index + '/pool/'.length)}`
+}
+
 export function objectFromSourceRow(row: SourceRow | UpstreamRow, pin: PinSource): ResourceObject {
   const kind: Kind = row.url.endsWith('.deb') ? 'deb' : 'source'
+  const alias = kind === 'deb' ? debianPoolAlias(row.url) : undefined
   return {
     kind,
     sha256: row.sha256,
     origin: row.url,
     path: blobPath(row.sha256),
-    readable: [`/d/upstream/${kind}/${row.name}/${fileName(row.url)}`],
+    readable: [
+      `/d/upstream/${kind}/${row.name}/${fileName(row.url)}`,
+      ...(alias === undefined ? [] : [alias]),
+    ],
     pins: [{ ...pin, row: `source ${row.name} ${row.arch}` }],
   }
 }

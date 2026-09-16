@@ -71,10 +71,10 @@ async function sync(argv: string[]): Promise<void> {
       const outcome = big ? await pullBlob(object, to) : await ensureBlob(object, to)
       if (big && outcome !== 'exists-identical')
         pulled += 1
-      if (outcome === 'present')
-        present += 1
-      else
+      if (outcome === 'stored')
         stored += 1
+      else
+        present += 1
       if ((stored + present) % 25 === 0)
         console.log(`  ${stored + present}/${wanted.length} (${stored} written, ${present} already held)`)
     }

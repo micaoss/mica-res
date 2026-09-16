@@ -9,6 +9,21 @@ write endpoint answers 401 rather than 503 to an unauthenticated write. The
 status collector ships early, ahead of any page, because the run history it
 snapshots is what the pruning pause only promises to preserve.
 
+## 2026-09-16 09:15 [progress]
+
+Phase A: the product images and update archives of the three newest scoped
+releases are mirrored, so the bucket now holds every pinned object -- 424 of
+424, 4350.7 MiB. Phase 3 measured before implementing: 1.33 GiB of depth-1
+packs for the thirteen pinned trees, about 1.07 GiB deduplicated because the
+two `uefi-*` kernels are the same commit.
+
+## 2026-09-16 09:12 [pitfall]
+
+A scoped release tag is `<scope>.<stamp>`, not the `<scope>/<stamp>` the
+release-lock spec and the workspace `CLAUDE.md` describe. The reader followed
+the spec and silently ignored every new release; it now follows what
+mica-build publishes and refuses the retired form.
+
 ## 2026-09-16 09:05 [progress]
 
 Phase 2: the five build-env images of `20260916-0735` are mirrored (65

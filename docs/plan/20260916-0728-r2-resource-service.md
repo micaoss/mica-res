@@ -203,8 +203,46 @@ Measured after phase 2:
   design, and the fix is to cache the resolved tag map in the Cache API rather
   than per isolate.
 
-Later phases: A the product images with the `mirrors` member proposed to `mica`
-docs, 3 the vendor git trees as depth-1 packfiles.
+Phase A, delivered 2026-09-16: the product images and update archives of
+mica-build's three newest scoped releases per scope -- 6 images (475.4 MiB) and
+6 update archives (494.4 MiB) from `uefi-x64.20260916-0845`,
+`uefi-arm64.20260916-0845` and `cx3576.20260916-0847`. With that the mirror
+holds **424 of 424 pinned objects, 4350.7 MiB**. Verified: a product image
+downloaded from the mirror hashes to exactly the sha256 its release lock's
+`asset` row pins.
+
+- One finding while wiring it: **a scoped release tag is `<scope>.<stamp>`**
+  (`uefi-x64.20260916-0845`), which is what mica-build publishes and what its
+  own lock's `release` row carries, while `mica:docs/design/release-lock.md`
+  1.0 and the workspace `CLAUDE.md` Constraints say `<scope>/<stamp>`. The
+  reader follows what exists; the discrepancy is reported for the records to
+  settle. The retired slash form is refused rather than accepted alongside it.
+- The `mirrors` member for `mica-index.json` is proposed to `mica` through the
+  coordinator, not implemented here: the index that names a product's assets
+  belongs to mica-build, and a mirror URL there is derivable
+  (`https://res.micaos.dev/d/mica/<scope>/<stamp>/<file>`) without reading
+  anything from the mirror.
+
+Phase 3, measured 2026-09-16 before implementing, as the user asked: a depth-1
+fetch of each of the 13 pinned trees, and the size of the packfile it
+produces.
+
+| repository | tree | pack | fetch |
+|---|---|---|---|
+| mica-boards | cx3576-kernel | 293.5 MiB | 13 s |
+| mica-boards | cx3576-rkbin | 25.3 MiB | 3 s |
+| mica-boards | cx3576-uboot | 53.8 MiB | 9 s |
+| mica-boards | s905x5m-kernel | 266.0 MiB | 18 s |
+| mica-boards | s905x5m-uboot | 182.9 MiB | 13 s |
+| mica-boards | uefi-arm64-kernel | 260.0 MiB | 57 s |
+| mica-boards | uefi-x64-kernel | 259.9 MiB | 58 s |
+| mica-podman | podman | 19.8 MiB | 3 s |
+| mica-podman | crun, netavark, aardvark-dns, conmon, catatonit | 0.8 MiB together | 1 s each |
+
+**1.33 GiB for all thirteen**, inside the 1.0-1.5 GB the proposal estimated,
+and every tree fetched without a failure. The two `uefi-*` kernels are the same
+commit of `linux-stable`, so their packs are the same bytes and the bucket
+holds one object, not two: the real figure is about 1.07 GiB once deduplicated.
 
 ## What offline means, and where it stops
 

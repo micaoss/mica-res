@@ -82,3 +82,19 @@ export async function pullBlob(object: Pick<ResourceObject, 'sha256' | 'path'> &
     throw new Error(`pull-unverified: ${object.sha256} is not readable after the pull`)
   return reason === 'exists-identical' ? 'exists-identical' : 'stored'
 }
+
+// The index states what the bucket holds, not what this run touched, so every
+// object's presence is read back before a snapshot is written. A HEAD needs no
+// bearer: the read side is public.
+export async function resolveState(objects: ResourceObject[], base: string, concurrency = 8, fetcher: typeof fetch = fetch): Promise<void> {
+  let next = 0
+  await Promise.all(Array.from({ length: Math.min(concurrency, objects.length) }, async () => {
+    for (;;) {
+      const object = objects[next++]
+      if (object === undefined)
+        return
+      const head = await fetcher(`${base}/${object.path}`, { method: 'HEAD' })
+      object.state = head.ok ? 'mirrored' : 'pending'
+    }
+  }))
+}

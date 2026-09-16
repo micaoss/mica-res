@@ -20,7 +20,7 @@ import { resolveSizes } from './sizes.ts'
 import { concluded, listJobs, listRuns, renderCurrent, renderRun, runKey, runSnapshot } from './collect.ts'
 import type { CurrentRun } from './collect.ts'
 import { REPOSITORIES } from './producers.ts'
-import { ensureBlob, pullBlob, putNamed } from './upload.ts'
+import { ensureBlob, pullBlob, putNamed, resolveState } from './upload.ts'
 import type { Target } from './upload.ts'
 
 const DEFAULT_BASE = 'https://res.micaos.dev'
@@ -71,7 +71,6 @@ async function sync(argv: string[]): Promise<void> {
       const outcome = big ? await pullBlob(object, to) : await ensureBlob(object, to)
       if (big && outcome !== 'exists-identical')
         pulled += 1
-      object.state = 'mirrored'
       if (outcome === 'present')
         present += 1
       else
@@ -81,6 +80,9 @@ async function sync(argv: string[]): Promise<void> {
     }
     console.log(`apply: ${stored} written (${pulled} of them streamed by the Worker from their origin), ${present} already held, 0 deleted`)
   }
+
+  // What the bucket holds, read back from it, whatever this run uploaded.
+  await resolveState(objects, process.env['MICA_RES_BASE'] ?? DEFAULT_BASE)
 
   const document = buildIndex({ version: stamp(), objects })
   const snapshot = renderIndex(document)

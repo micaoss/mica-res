@@ -22,8 +22,11 @@ import { rmSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
 import process from "node:process";
 
-const PASSWORD = "smoke-test-password";
-const USERNAME = "smoke";
+// Local runs use the fixture in apps/api/.dev.vars.example. A run against a
+// real deployment passes freshly generated credentials instead, so a
+// publicly reachable URL never carries a password that is committed here.
+const USERNAME = process.env.SMOKE_USERNAME ?? "smoke";
+const PASSWORD = process.env.SMOKE_PASSWORD ?? "smoke-test-password";
 const PORT = 8787;
 
 interface Case {

@@ -6,9 +6,8 @@ name: workers
 #
 #  - `smoke-local` always runs. It boots the Worker in workerd through
 #    `wrangler dev`, so it needs no Cloudflare account.
-#  - `smoke-preview` uploads a preview version and runs the same suite
-#    against the deployed URL. It is skipped unless the repository has
-#    CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID, so forks stay green.
+#  - `deploy` is manual (workflow_dispatch only). It deploys to Cloudflare
+#    and runs the same suite against the live URL. A push never publishes.
 
 on:
   push:
@@ -76,16 +75,27 @@ jobs:
       - name: Smoke test on workerd
         run: bun run test:workers
 
-  smoke-preview:
-    name: preview deployment smoke
+  deploy:
+    name: deploy to cloudflare
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: smoke-local
-    # Only on the upstream repo's main branch, and only when the account is
-    # configured. `vars` is checked rather than `secrets` so the job is
-    # skipped cleanly instead of failing on a missing token.
-    if: github.event_name != 'pull_request' && vars.CLOUDFLARE_ACCOUNT_ID != ''
+    # Manual only. A push must never publish: this repository is a template,
+    # and the Worker it deploys is a live, publicly reachable app.
+    if: github.event_name == 'workflow_dispatch'
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
+      # The `secrets` context cannot be read from a job-level `if`, so the
+      # credential check is a step. Without it the job would fail deep inside
+      # wrangler with a less obvious message.
+      - name: Require Cloudflare credentials
+        if: env.CLOUDFLARE_API_TOKEN == '' || env.CLOUDFLARE_ACCOUNT_ID == ''
+        run: |
+          echo "::error::CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID must be available to this repository"
+          exit 1
+
       - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v6
@@ -102,28 +112,81 @@ jobs:
       - name: Build the SPA
         run: bun run --filter @app/web build
 
-      # `versions upload` publishes a preview version with its own URL and
-      # does not move production traffic. Promote with `wrangler versions
-      # deploy` once the smoke test is green.
-      - name: Upload a preview version
-        id: upload
+      # The bucket named in wrangler.toml has to exist before the binding
+      # resolves. Creating it twice is not an error worth failing on.
+      - name: Ensure the R2 bucket exists
         working-directory: apps/api
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          bucket="$(grep -oP 'bucket_name = "\K[^"]+' wrangler.toml)"
+          bunx wrangler r2 bucket create "$bucket" 2>&1 | tee /tmp/bucket.log ||             grep -qiE "already (exists|owned)" /tmp/bucket.log
+
+      - name: Deploy
+        id: deploy
+        working-directory: apps/api
         run: |
           set -euo pipefail
-          bunx wrangler versions upload 2>&1 | tee /tmp/upload.log
-          url="$(grep -oE 'https://[a-z0-9-]+\.[a-z0-9-]+\.workers\.dev' /tmp/upload.log | head -1)"
+          bunx wrangler deploy 2>&1 | tee /tmp/deploy.log
+          url="$(grep -oE 'https://[a-z0-9-]+\.[a-z0-9-]+\.workers\.dev' /tmp/deploy.log | head -1)"
           if [ -z "$url" ]; then
-            echo "::error::could not parse the preview URL from wrangler output"
+            echo "::error::could not parse the deployed URL from wrangler output"
             exit 1
           fi
           echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Deployed to $url"
 
-      # The Worker reads its secrets from the deployment, so the single-user
-      # credentials the smoke test logs in with must already be set there:
-      #   wrangler secret put SINGLE_USER_MODE / SINGLE_USER_USERNAME /
-      #   SINGLE_USER_PASSWORD_HASH
-      - name: Smoke test the preview deployment
-        run: bun tests/workers/smoke.ts --url "${{ steps.upload.outputs.url }}"
+      # Single-user credentials for the smoke test, minted per run. The
+      # password is never printed and never committed, so the deployment is
+      # not left reachable with a known login. Rotate it with
+      # `wrangler secret put SINGLE_USER_PASSWORD_HASH` to take it over.
+      - name: Mint smoke-test credentials
+        id: creds
+        working-directory: apps/api
+        run: |
+          set -euo pipefail
+          password="$(openssl rand -hex 24)"
+          hash="$(bun -e '
+            const { hashPassword } = await import("./src/modules/account/auth/password.ts");
+            process.stdout.write(await hashPassword(process.argv[1]));
+          ' "$password")"
+          jq -n --arg h "$hash" '{
+            SINGLE_USER_MODE: "true",
+            SINGLE_USER_USERNAME: "smoke",
+            SINGLE_USER_PASSWORD_HASH: $h
+          }' > /tmp/worker-secrets.json
+          bunx wrangler secret bulk /tmp/worker-secrets.json
+          rm -f /tmp/worker-secrets.json
+          echo "::add-mask::$password"
+          echo "password=$password" >> "$GITHUB_OUTPUT"
+
+      # `secret bulk` rolls out a new version; until it lands the previous one
+      # is still serving and single-user login answers 404.
+      - name: Wait for the new version to serve
+        run: |
+          url="${{ steps.deploy.outputs.url }}"
+          for _ in $(seq 1 60); do
+            code="$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+              -H 'Content-Type: application/json' -H 'X-Requested-With: XMLHttpRequest' \
+              -H "Origin: $url" -d '{"username":"smoke","password":"x"}' \
+              "$url/api/account/auth/login-local")"
+            [ "$code" != "404" ] && exit 0
+            sleep 2
+          done
+          echo "::error::single-user login never came up after the secret rollout"
+          exit 1
+
+      - name: Smoke test the deployment
+        env:
+          SMOKE_USERNAME: smoke
+          SMOKE_PASSWORD: ${{ steps.creds.outputs.password }}
+        run: bun tests/workers/smoke.ts --url "${{ steps.deploy.outputs.url }}"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Cloudflare deployment"
+            echo
+            echo "- URL: ${{ steps.deploy.outputs.url }}"
+            echo "- Durable Object: \`AppDurableObject\` (SQLite)"
+            echo "- Storage: R2"
+          } >> "$GITHUB_STEP_SUMMARY"

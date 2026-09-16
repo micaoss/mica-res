@@ -17,7 +17,7 @@ function hex(bytes: Uint8Array): string {
   return Bun.SHA256.hash(bytes, 'hex')
 }
 
-export async function ensureBlob(object: Pick<ResourceObject, 'sha256' | 'path'> & { origin?: string, mediaType?: string }, target: Target, fetcher: typeof fetch = fetch): Promise<Outcome> {
+export async function ensureBlob(object: Pick<ResourceObject, 'sha256' | 'path'> & { origin?: string, mediaType?: string }, target: Target, fetcher: typeof fetch = fetch, originHeaders: Record<string, string> = {}): Promise<Outcome> {
   const head = await fetcher(`${target.base}/${object.path}`, { method: 'HEAD' })
   if (head.ok)
     return 'present'
@@ -27,7 +27,7 @@ export async function ensureBlob(object: Pick<ResourceObject, 'sha256' | 'path'>
   if (object.origin === undefined)
     throw new Error(`no-origin: ${object.sha256} has no upstream to mirror from`)
 
-  const download = await fetcher(object.origin, { redirect: 'follow' })
+  const download = await fetcher(object.origin, { redirect: 'follow', headers: originHeaders })
   if (!download.ok)
     throw new Error(`origin: ${download.status} for ${object.origin}`)
   const bytes = new Uint8Array(await download.arrayBuffer())
@@ -101,4 +101,18 @@ export async function resolveState(objects: ResourceObject[], base: string, conc
       object.state = head.ok ? 'mirrored' : 'pending'
     }
   }))
+}
+
+// A registry serves a blob by redirecting to a signed URL, and the Worker has
+// no registry credential by design. So the client resolves the redirect with
+// its own token and hands the Worker the resolved URL: the Worker stays a dumb
+// fetcher, and the digest is still what R2 enforces.
+export async function resolveRedirect(url: string, headers: Record<string, string>, fetcher: typeof fetch = fetch): Promise<string> {
+  const answer = await fetcher(url, { method: 'GET', redirect: 'manual', headers })
+  const location = answer.headers.get('location')
+  if (answer.status >= 300 && answer.status <= 399 && location !== null)
+    return new URL(location, url).toString()
+  if (!answer.ok)
+    throw new Error(`origin: ${answer.status} for ${url}`)
+  return url
 }

@@ -50,7 +50,15 @@ export async function ghcrToken(repository: string): Promise<string> {
   return token
 }
 
-export function descriptorObjects(manifest: Manifest, pin: PinSource, row: ImageRow): ResourceObject[] {
+export function blobOrigin(repository: string, sha256: string): string {
+  return `https://ghcr.io/v2/micaoss/${repository}/blobs/sha256:${sha256}`
+}
+
+export function manifestOrigin(repository: string, sha256: string): string {
+  return `https://ghcr.io/v2/micaoss/${repository}/manifests/sha256:${sha256}`
+}
+
+export function descriptorObjects(manifest: Manifest, pin: PinSource, row: ImageRow, repository = pin.repository): ResourceObject[] {
   const descriptors = [...(manifest.manifests ?? []), ...(manifest.config === undefined ? [] : [manifest.config]), ...(manifest.layers ?? [])]
   return descriptors.map(({ digest, size, mediaType }) => {
     const sha256 = digest.replace('sha256:', '')
@@ -59,6 +67,9 @@ export function descriptorObjects(manifest: Manifest, pin: PinSource, row: Image
       sha256,
       size,
       ...(mediaType === undefined ? {} : { mediaType }),
+      // A manifest of an index is read from the manifests endpoint; a config or
+      // a layer from the blobs endpoint.
+      origin: mediaType !== undefined && mediaType.includes('manifest') ? manifestOrigin(repository, sha256) : blobOrigin(repository, sha256),
       path: blobPath(sha256),
       readable: [`/d/build-env/${pin.release}/${row.name}.${row.platform}/${sha256}`],
       pins: [{ ...pin, row: `image ${row.name} ${row.platform}` }],
@@ -76,6 +87,7 @@ export function manifestObject(row: ImageRow, repository: string, bytes: number,
     sha256: row.digest,
     size: bytes,
     mediaType,
+    origin: manifestOrigin(repository, row.digest),
     path: blobPath(row.digest),
     readable: [
       `/d/build-env/${pin.release}/${row.name}.${row.platform}/${row.digest}`,
@@ -97,7 +109,7 @@ export async function enumerateImages(lock: Lock, pin: PinSource, repository: st
     const text = await answer.text()
     const mediaType = answer.headers.get('content-type') ?? 'application/vnd.oci.image.manifest.v1+json'
     objects.push(manifestObject(row, repository, new TextEncoder().encode(text).length, mediaType, pin))
-    objects.push(...descriptorObjects(JSON.parse(text) as Manifest, pin, row))
+    objects.push(...descriptorObjects(JSON.parse(text) as Manifest, pin, row, repository))
   }
   return objects
 }

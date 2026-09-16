@@ -20,7 +20,8 @@ import { resolveSizes } from './sizes.ts'
 import { concluded, listJobs, listRuns, renderCurrent, renderRun, runKey, runSnapshot } from './collect.ts'
 import type { CurrentRun } from './collect.ts'
 import { REPOSITORIES } from './producers.ts'
-import { ensureBlob, pullBlob, putNamed, resolveState } from './upload.ts'
+import { ghcrToken } from './ghcr.ts'
+import { ensureBlob, pullBlob, putNamed, resolveRedirect, resolveState } from './upload.ts'
 import type { Target } from './upload.ts'
 
 const DEFAULT_BASE = 'https://res.micaos.dev'
@@ -65,10 +66,31 @@ async function sync(argv: string[]): Promise<void> {
     console.log(`apply: ${wanted.length} objects of kind ${kinds.join(', ')} to ${to.base}`)
     let stored = 0
     let present = 0
+    // The build-env blobs live in a registry that wants a token. It is a public
+    // anonymous token, and it never leaves this process: for an object small
+    // enough to upload in one request the client reads it with the token, and
+    // for a larger one the client resolves the registry's redirect and hands
+    // the Worker the resolved URL.
+    const registryHeaders = wanted.some(object => object.kind === 'oci-blob')
+      ? { authorization: `Bearer ${await ghcrToken('mica-build-env')}`, accept: 'application/vnd.oci.image.index.v1+json,application/vnd.oci.image.manifest.v1+json,application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.docker.distribution.manifest.v2+json,*/*' }
+      : {}
+
     let pulled = 0
     for (const object of wanted) {
       const big = object.size !== undefined && object.size > MAX_SINGLE_SHOT
-      const outcome = big ? await pullBlob(object, to) : await ensureBlob(object, to)
+      const headers = object.kind === 'oci-blob' ? registryHeaders : {}
+      let outcome: Awaited<ReturnType<typeof ensureBlob>>
+      if (!big) {
+        outcome = await ensureBlob(object, to, fetch, headers)
+      }
+      else {
+        // Only a large object needs the redirect resolved, since only those go
+        // through the Worker's pull route.
+        const origin = object.kind === 'oci-blob' && object.origin !== undefined
+          ? await resolveRedirect(object.origin, headers)
+          : object.origin
+        outcome = await pullBlob(origin === undefined ? object : { ...object, origin }, to)
+      }
       if (big && outcome !== 'exists-identical')
         pulled += 1
       if (outcome === 'stored')

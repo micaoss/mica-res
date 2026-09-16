@@ -9,6 +9,14 @@ write endpoint answers 401 rather than 503 to an unauthenticated write. The
 status collector ships early, ahead of any page, because the run history it
 snapshots is what the pruning pause only promises to preserve.
 
+## 2026-09-16 17:45 [progress]
+
+Mirrored build-env `20260915-0138` as well as `20260916-0735`: 115 OCI
+objects, 2913.1 MiB, and the sync now derives which build-env releases a
+published release still names instead of being told. 536 of 536 pinned
+objects, 8219.2 MiB. Two standing gates added: a real `docker pull` by digest
+compared against ghcr, and the git pack consumer contract.
+
 ## 2026-09-16 17:30 [BUG-P1]
 
 A run given `--kinds product-image,update-archive` published an index with no

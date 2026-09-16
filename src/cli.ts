@@ -5,6 +5,7 @@
 //   bun src/cli.ts site [--index <file>] [--out <dir>]
 //   bun src/cli.ts collect [--apply] [--out <dir>]
 //   bun src/cli.ts verify-pack [--name <tree>]    walk the consumer contract
+//   bun src/cli.ts audit                          the published invariant check
 //   bun src/cli.ts image-pins                     which build-env releases a
 //                                                 published release still names
 //   bun src/cli.ts index --check <file>           read an index snapshot
@@ -26,6 +27,8 @@ import { renderSite } from './site.ts'
 import { resolveSizes } from './sizes.ts'
 import { concluded, listJobs, listRuns, renderCurrent, renderRun, runKey, runSnapshot } from './collect.ts'
 import type { CurrentRun } from './collect.ts'
+import { compare, parsePublished } from './audit.ts'
+import type { BucketEntry } from './audit.ts'
 import { pinnedImageReleases } from './imagepins.ts'
 import { REPOSITORIES } from './producers.ts'
 import { ghcrToken } from './ghcr.ts'
@@ -331,6 +334,50 @@ async function imagePins(): Promise<void> {
     console.log(`${pinned.release}  named by ${pinned.pinnedBy.length}: ${pinned.pinnedBy.join('; ')}`)
 }
 
+// Reads the published index and the bucket, neither of which this process
+// produced, and refuses on any disagreement. It imports the audit module and
+// nothing that built the index.
+async function audit(): Promise<void> {
+  const base = process.env['MICA_RES_BASE'] ?? DEFAULT_BASE
+  const token = process.env['MICA_RES_WRITE_TOKEN']
+  if (token === undefined || token === '')
+    throw new Error('MICA_RES_WRITE_TOKEN is not set; the bucket listing is bearer-gated')
+
+  const pointerText = await (await fetch(`${base}/index/current.json`)).text()
+  const pointer = JSON.parse(pointerText) as { version: string, sha256: string }
+  const snapshotText = await (await fetch(`${base}/index/${pointer.version}.json`)).text()
+  if (Bun.SHA256.hash(new TextEncoder().encode(snapshotText), 'hex') !== pointer.sha256)
+    throw new Error(`pointer-sha256: index/current.json names ${pointer.sha256} and the snapshot hashes differently`)
+  const objects = parsePublished(snapshotText)
+
+  const entries: BucketEntry[] = []
+  let cursor: string | undefined
+  do {
+    const page = await fetch(`${base}/w/list${cursor === undefined ? '' : `?cursor=${encodeURIComponent(cursor)}`}`, {
+      headers: { authorization: `Bearer ${token}` },
+    })
+    if (!page.ok)
+      throw new Error(`list: ${page.status} ${(await page.text()).trim()}`)
+    const answer = await page.json() as { objects: BucketEntry[], cursor?: string }
+    entries.push(...answer.objects)
+    cursor = answer.cursor
+  } while (cursor !== undefined)
+
+  const answer = compare(objects, entries)
+  console.log(`audit: index ${pointer.version} names ${objects.length} objects, the bucket holds ${entries.length} keys`)
+  for (const orphan of answer.orphans)
+    console.log(`  orphan (kept, nothing deletes here): ${orphan.key} ${orphan.size} bytes`)
+  console.log(`  ${answer.orphans.length} orphan(s), ${answer.missing.length} missing, ${answer.sizeMismatches.length} size mismatch(es), ${answer.unexpected.length} unexpected key(s)`)
+
+  const refusals = [
+    ...answer.missing.map(object => `missing from the bucket: ${object.sha256} (${object.kind})`),
+    ...answer.sizeMismatches.map(row => `size disagrees for ${row.sha256}: index ${row.index}, bucket ${row.bucket}`),
+    ...answer.unexpected.map(key => `key outside the design prefixes: ${key}`),
+  ]
+  if (refusals.length > 0)
+    throw new Error(`audit refused:\n  ${refusals.join('\n  ')}`)
+}
+
 async function index(argv: string[]): Promise<void> {
   const file = argv[argv.indexOf('--check') + 1]
   if (file === undefined)
@@ -343,6 +390,9 @@ const [command, ...argv] = process.argv.slice(2)
 switch (command) {
   case 'sync':
     await sync(argv)
+    break
+  case 'audit':
+    await audit()
     break
   case 'image-pins':
     await imagePins()

@@ -17,6 +17,7 @@ export type Route
     | { kind: 'pull', key: string, digest: string }
     | { kind: 'write-named', key: string, immutable: boolean, scope: WriteScope }
     | { kind: 'registry-root' }
+    | { kind: 'list' }
     | { kind: 'not-found' }
 
 const SITE: Record<string, string> = {
@@ -76,6 +77,13 @@ export function route(pathname: string): Route {
     return { kind: 'status', key, immutable: statusImmutable(key) }
   }
 
+  // The audit needs to see what the bucket holds, and the audit is the one
+  // reader that must not trust the index. The listing is therefore behind the
+  // same bearer as a write rather than public: a private bucket still has no
+  // public listing to leak.
+  if (pathname === '/w/list')
+    return { kind: 'list' }
+
   const write = /^\/w\/blob\/([0-9a-f]{64})$/.exec(pathname)
   if (write) {
     const digest = write[1]!
@@ -112,6 +120,8 @@ export function cacheControl(matched: Route): string {
   switch (matched.kind) {
     case 'registry-root':
       return 'public, max-age=300'
+    case 'list':
+      return 'no-store'
     case 'blob':
     case 'download':
       return 'public, max-age=31536000, immutable'

@@ -62,6 +62,15 @@ jobs:
       - name: Verify a mirrored git pack end to end
         run: bun src/cli.ts verify-pack
 
+      # The published invariant check, and it is the last step on purpose: it
+      # reads the published index and the bucket, neither of which this run
+      # produced, and fails the run on any disagreement. A writer cannot catch
+      # an error in its own model of the world.
+      - name: Audit the published index against the bucket
+        run: bun src/cli.ts audit
+        env:
+          MICA_RES_WRITE_TOKEN: ${{ secrets.WRITE_TOKEN }}
+
       # Bit-identity proven by a client that refuses rather than reports: for
       # every mirrored build-env `base` image, pull it by digest from the
       # mirror and compare what docker says it got with what ghcr serves for

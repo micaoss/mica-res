@@ -126,3 +126,8 @@ test('refuses a registry path that is neither a digest nor a tag, and any write'
   expect(route('/v2/micaoss/mica-build-env/blobs/uploads/')).toEqual({ kind: 'not-found' })
   expect(route('/v2/micaoss/mica-build-env/manifests/../../blob/aa/x')).toEqual({ kind: 'not-found' })
 })
+
+test('routes the token-gated bucket listing, and nothing public', () => {
+  expect(route('/w/list')).toEqual({ kind: 'list' })
+  expect(route('/list')).toEqual({ kind: 'not-found' })
+})

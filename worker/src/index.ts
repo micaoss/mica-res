@@ -196,11 +196,32 @@ async function pull(key: string, digest: string, request: Request, env: Env): Pr
   return new Response('stored\n', { status: 200 })
 }
 
+// One page of the bucket's keys, for the audit. Read-only, bearer-gated, and
+// it reveals keys and sizes only.
+async function list(request: Request, env: Env): Promise<Response> {
+  const refusal = authorise('mirror', request, env)
+  if (refusal !== null)
+    return refusal
+
+  const cursor = new URL(request.url).searchParams.get('cursor') ?? undefined
+  const page = await env.BUCKET.list(cursor === undefined ? { limit: 1000 } : { limit: 1000, cursor })
+  return Response.json({
+    objects: page.objects.map(object => ({ key: object.key, size: object.size })),
+    cursor: page.truncated ? page.cursor : undefined,
+  }, { headers: { 'cache-control': 'no-store' } })
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const matched = route(new URL(request.url).pathname)
     if (matched.kind === 'not-found')
       return notFound()
+
+    if (matched.kind === 'list') {
+      return request.method === 'GET'
+        ? list(request, env)
+        : new Response('method not allowed\n', { status: 405, headers: { allow: 'GET' } })
+    }
 
     if (matched.kind === 'pull') {
       return request.method === 'POST'

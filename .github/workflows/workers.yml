@@ -24,6 +24,11 @@ on:
       - "tests/workers/**"
       - ".github/workflows/workers.yml"
   workflow_dispatch:
+    inputs:
+      fresh:
+        description: "Delete the Worker and its Durable Object storage first (discards the deployed database)"
+        type: boolean
+        default: false
 
 concurrency:
   group: workers-${{ github.workflow }}-${{ github.ref }}
@@ -119,6 +124,18 @@ jobs:
         run: |
           bucket="$(grep -oP 'bucket_name = "\K[^"]+' wrangler.toml)"
           bunx wrangler r2 bucket create "$bucket" 2>&1 | tee /tmp/bucket.log ||             grep -qiE "already (exists|owned)" /tmp/bucket.log
+
+      # A Durable Object keeps running the code and configuration it was
+      # constructed with until it is evicted, and this app's alarms keep it
+      # resident. An object created before the reset mechanism existed
+      # therefore cannot notice a new deploy at all — it has no fingerprint to
+      # compare. Deleting the Worker removes the object and its storage, which
+      # is the only way past that one-time state. Objects created from here on
+      # reset themselves.
+      - name: Delete the existing Worker
+        if: inputs.fresh
+        working-directory: apps/api
+        run: bunx wrangler delete --force || true
 
       # A secret shadows a `var` of the same name, so credentials left behind
       # by an earlier run would silently outrank the ones this run deploys.

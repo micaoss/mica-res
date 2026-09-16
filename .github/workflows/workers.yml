@@ -193,6 +193,10 @@ jobs:
             echo "SINGLE_USER_MODE = \"true\""
             echo "SINGLE_USER_USERNAME = \"$username\""
             echo "SINGLE_USER_PASSWORD_HASH = \"$hash\""
+            # Low enough for the suite to reach in a short burst. The shipped
+            # default is 60 a minute, which would take more requests to prove
+            # than the property is worth.
+            echo "CREATE_RATE_LIMIT_PER_MINUTE = \"10\""
           } >> wrangler.toml
 
           echo "::add-mask::$password"

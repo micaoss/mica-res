@@ -144,6 +144,7 @@ jobs:
         run: |
           set -euo pipefail
           password="$(openssl rand -hex 24)"
+          username="smoke-${{ github.run_id }}"
           # Passed through the environment, not argv: `bun -e` argument
           # handling is not worth depending on, and a wrong password here
           # surfaces only as a puzzling 401 after the deploy. The round-trip
@@ -162,15 +163,20 @@ jobs:
             }
             process.stdout.write(hashed);
           ')"
-          jq -n --arg h "$hash" '{
+          # A username per run. Failed logins are recorded per username in
+          # `auth_lockouts`, which lives in the Durable Object and therefore
+          # outlives the deploy — a run that failed for any reason would lock
+          # the next one out with a 429 no matter how correct its password is.
+          jq -n --arg h "$hash" --arg u "$username" '{
             SINGLE_USER_MODE: "true",
-            SINGLE_USER_USERNAME: "smoke",
+            SINGLE_USER_USERNAME: $u,
             SINGLE_USER_PASSWORD_HASH: $h
           }' > /tmp/worker-secrets.json
           bunx wrangler secret bulk /tmp/worker-secrets.json
           rm -f /tmp/worker-secrets.json
           echo "::add-mask::$password"
           echo "password=$password" >> "$GITHUB_OUTPUT"
+          echo "username=$username" >> "$GITHUB_OUTPUT"
 
       # `secret bulk` publishes a new version, and the edge takes a moment to
       # serve it. Waiting on "the route stopped answering 404" is not enough:
@@ -179,16 +185,17 @@ jobs:
       # precondition the suite actually needs — these credentials log in.
       - name: Wait for the new credentials to serve
         env:
+          SMOKE_USERNAME: ${{ steps.creds.outputs.username }}
           SMOKE_PASSWORD: ${{ steps.creds.outputs.password }}
         run: |
           url="${{ steps.deploy.outputs.url }}"
-          echo "password length: ${#SMOKE_PASSWORD}"
+          echo "user $SMOKE_USERNAME, password length ${#SMOKE_PASSWORD}"
           last=""
           for _ in $(seq 1 45); do
             last="$(curl -s -o /dev/null -w '%{http_code}' -X POST \
               -H 'Content-Type: application/json' -H 'X-Requested-With: XMLHttpRequest' \
               -H "Origin: $url" \
-              --data "$(jq -n --arg p "$SMOKE_PASSWORD" '{username:"smoke",password:$p}')" \
+              --data "$(jq -n --arg u "$SMOKE_USERNAME" --arg p "$SMOKE_PASSWORD" '{username:$u,password:$p}')" \
               "$url/api/account/auth/login-local")"
             [ "$last" = "200" ] && exit 0
             sleep 2
@@ -198,7 +205,7 @@ jobs:
 
       - name: Smoke test the deployment
         env:
-          SMOKE_USERNAME: smoke
+          SMOKE_USERNAME: ${{ steps.creds.outputs.username }}
           SMOKE_PASSWORD: ${{ steps.creds.outputs.password }}
         run: bun tests/workers/smoke.ts --url "${{ steps.deploy.outputs.url }}"
 

@@ -18,6 +18,7 @@ import { join } from 'node:path'
 import { enumerate } from './enumerate.ts'
 import { buildIndex, readIndex, renderIndex, renderPointer, summarise } from './index-doc.ts'
 import type { IndexDocument } from './index-doc.ts'
+import { mergeObjects } from './objects.ts'
 import type { Kind, ResourceObject } from './objects.ts'
 import { renderSite } from './site.ts'
 import { resolveSizes } from './sizes.ts'
@@ -184,7 +185,10 @@ async function sync(argv: string[]): Promise<void> {
   // What the bucket holds, read back from it, whatever this run uploaded.
   await resolveState(objects, process.env['MICA_RES_BASE'] ?? DEFAULT_BASE)
 
-  const document = buildIndex({ version: stamp(), objects })
+  // The two uefi kernels are the same commit, so their packs are the same bytes
+  // under two names: merging unions the names onto one object rather than
+  // listing a digest twice.
+  const document = buildIndex({ version: stamp(), objects: mergeObjects(objects) })
   const snapshot = renderIndex(document)
   readIndex(snapshot)
   await refuseRegression(document, process.env['MICA_RES_BASE'] ?? DEFAULT_BASE)

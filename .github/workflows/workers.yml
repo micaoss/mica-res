@@ -120,6 +120,17 @@ jobs:
           bucket="$(grep -oP 'bucket_name = "\K[^"]+' wrangler.toml)"
           bunx wrangler r2 bucket create "$bucket" 2>&1 | tee /tmp/bucket.log ||             grep -qiE "already (exists|owned)" /tmp/bucket.log
 
+      # A secret shadows a `var` of the same name, so credentials left behind
+      # by an earlier run would silently outrank the ones this run deploys.
+      # `secret bulk` deletes a key when its value is null.
+      - name: Clear any credential secrets from earlier runs
+        working-directory: apps/api
+        run: |
+          echo '{"SINGLE_USER_MODE":null,"SINGLE_USER_USERNAME":null,"SINGLE_USER_PASSWORD_HASH":null}' \
+            | bunx wrangler secret bulk 2>&1 | tee /tmp/clear.log || true
+          echo "secrets remaining:"
+          bunx wrangler secret list || true
+
       # Credentials are minted before the deploy and travel as `vars`, not as
       # secrets. `wrangler secret` publishes a version of its own, which turns
       # "deploy, then set secrets" into two versions and a question of which

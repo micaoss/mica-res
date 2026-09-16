@@ -228,6 +228,22 @@ jobs:
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "Deployed to $url"
 
+      # The last unexamined link: what the deployment actually holds. Wrangler
+      # reports what it sent, not what is bound, so this asks the API and
+      # compares. Only the comparison and the lengths are printed.
+      - name: Compare the bound configuration with what was deployed
+        working-directory: apps/api
+        run: |
+          local_hash="$(grep -oP 'SINGLE_USER_PASSWORD_HASH = "\K[^"]+' wrangler.toml)"
+          local_user="$(grep -oP 'SINGLE_USER_USERNAME = "\K[^"]+' wrangler.toml)"
+          resp="$(curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/bun-tpl-api/settings")"
+          echo "$resp" | jq -r '.result.bindings[]? | select(.name | startswith("SINGLE_USER")) | "\(.name) type=\(.type) len=\((.text // "") | length)"'
+          bound_hash="$(echo "$resp" | jq -r '.result.bindings[]? | select(.name=="SINGLE_USER_PASSWORD_HASH") | .text // ""')"
+          bound_user="$(echo "$resp" | jq -r '.result.bindings[]? | select(.name=="SINGLE_USER_USERNAME") | .text // ""')"
+          [ "$bound_hash" = "$local_hash" ] && echo "hash: MATCH" || echo "hash: MISMATCH (bound ${#bound_hash}, local ${#local_hash})"
+          [ "$bound_user" = "$local_user" ] && echo "username: MATCH" || echo "username: MISMATCH (bound '$bound_user', local '$local_user')"
+
       # The edge takes a moment to serve the new version, and the object has
       # to notice its configuration changed and reset. The gate is the
       # precondition the suite needs: these credentials log in.

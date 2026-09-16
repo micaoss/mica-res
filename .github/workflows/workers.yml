@@ -205,18 +205,24 @@ jobs:
           SMOKE_PASSWORD: ${{ steps.creds.outputs.password }}
         run: |
           url="${{ steps.deploy.outputs.url }}"
-          bunx wrangler tail --format json > /tmp/tail.log 2>&1 &
+          body="$(jq -n --arg u "$SMOKE_USERNAME" --arg p "$SMOKE_PASSWORD" '{username:$u,password:$p}')"
+          login() {
+            curl -s -o /dev/null -w "%{http_code}" -X POST \
+              -H 'Content-Type: application/json' -H 'X-Requested-With: XMLHttpRequest' \
+              -H "Origin: $url" --data "$body" "$url/api/account/auth/login-local"
+          }
+          # Absorbs the reset that a changed configuration triggers, so the
+          # measured attempt below runs against a settled object.
+          echo "warm-up login -> $(login)"
+          sleep 5
+          bunx wrangler tail --format pretty > /tmp/tail.log 2>&1 &
           tail_pid=$!
-          sleep 8
-          curl -s -o /dev/null -w 'probe login -> %{http_code}\n' -X POST \
-            -H 'Content-Type: application/json' -H 'X-Requested-With: XMLHttpRequest' \
-            -H "Origin: $url" \
-            --data "$(jq -n --arg u "$SMOKE_USERNAME" --arg p "$SMOKE_PASSWORD" '{username:$u,password:$p}')" \
-            "$url/api/account/auth/login-local"
-          sleep 8
+          sleep 10
+          echo "probe login -> $(login)"
+          sleep 10
           kill "$tail_pid" 2>/dev/null || true
           echo "--- worker log ---"
-          cat /tmp/tail.log | head -60
+          head -c 20000 /tmp/tail.log
 
       # The edge takes a moment to serve the new version. Waiting on "the route stopped answering 404" is not enough:
       # a previous run's secrets already satisfy that while the *new* hash is

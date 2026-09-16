@@ -136,6 +136,18 @@ export const configSchema = z.object({
   // 413 PAYLOAD_TOO_LARGE.
   UPLOADS_TOTAL_BYTES: z.coerce.number().int().nonnegative().default(0),
 
+  // Per-user caps on content creation, counted per resource (issue,
+  // document, comment, attachment) in fixed windows stored in the database
+  // so they survive a restart. The minute window bounds a burst; the hour
+  // window bounds the sustained rate a burst limit alone would still allow.
+  // Either at 0 disables that window.
+  CREATE_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().nonnegative().default(60),
+  CREATE_RATE_LIMIT_PER_HOUR: z.coerce.number().int().nonnegative().default(600),
+  // Resources to leave unthrottled, comma-separated (e.g. `attachment`).
+  // Names are the singular collection names the limiter derives from the
+  // route table — `issue`, `document`, `comment`, `attachment`, ...
+  CREATE_RATE_LIMIT_EXEMPT: z.string().default("").transform(v => v.split(",").map(s => s.trim()).filter(Boolean)),
+
   // ─── File module ─────────────────────────────────────────────────────
   // Storage backend selector. Built-in: `local`. Downstream projects can
   // register additional drivers (e.g. `s3`, `azure-blob`) and switch by

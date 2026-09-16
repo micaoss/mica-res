@@ -11,6 +11,8 @@
  * swap them out for attacker-controlled URLs during the next IdP blip.
  */
 
+import { getPlatform } from "@/platform";
+
 export interface OidcDiscovery {
   authorization_endpoint: string;
   token_endpoint: string;
@@ -110,6 +112,9 @@ export async function readDiscoveryCache(cachePath: string, issuer: string): Pro
   warnings: DiscoveryWarnings;
 }> {
   const blank: DiscoveryWarnings = { tampered: false, stale: false, ageHours: undefined };
+  // No filesystem, no cache: discovery is re-fetched on every boot.
+  if (!getPlatform().capabilities.filesystem)
+    return { discovery: null, warnings: blank };
   try {
     const file = Bun.file(cachePath);
     if (!(await file.exists()))
@@ -138,6 +143,8 @@ export async function readDiscoveryCache(cachePath: string, issuer: string): Pro
 }
 
 export async function writeDiscoveryCache(cachePath: string, issuer: string, discovery: OidcDiscovery): Promise<void> {
+  if (!getPlatform().capabilities.filesystem)
+    return;
   try {
     const tmp = `${cachePath}.tmp`;
     await Bun.write(tmp, JSON.stringify({ issuer, fetchedAt: new Date().toISOString(), discovery } satisfies CachedDiscovery));

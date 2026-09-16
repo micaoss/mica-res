@@ -3,6 +3,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { createConsola, LogLevels } from "consola";
 import pino from "pino";
+import { getPlatform } from "@/platform";
 
 const VALID_LEVELS = new Set(["debug", "info", "warn", "error"]);
 const LEVEL_PRIORITY: Record<string, number> = { debug: 1, info: 2, warn: 3, error: 4, fatal: 5 };
@@ -165,23 +166,33 @@ export function createLogger(config: LoggerConfig) {
       ? null
       : createDevTee(LEVEL_PRIORITY[level] ?? 2, term);
 
-  if (!config.LOG_TO_STDOUT)
+  // A runtime without a filesystem has no file descriptors for pino's
+  // stream backend either, so JSON lines go to the host's console — which
+  // is what `wrangler tail` and the Cloudflare dashboard read.
+  const hasFs = getPlatform().capabilities.filesystem;
+
+  if (hasFs && !config.LOG_TO_STDOUT)
     mkdirSync(dirname(config.LOG_FILE), { recursive: true });
 
-  const dest = pino.destination(
-    config.LOG_TO_STDOUT
-      ? { dest: 1, sync: false, minLength: 4096 }
-      : { dest: config.LOG_FILE, sync: false, minLength: 4096 },
-  );
+  const dest: pino.DestinationStream = hasFs
+    ? pino.destination(
+        config.LOG_TO_STDOUT
+          ? { dest: 1, sync: false, minLength: 4096 }
+          : { dest: config.LOG_FILE, sync: false, minLength: 4096 },
+      )
+    // eslint-disable-next-line no-console
+    : { write: (line: string) => console.log(line.trimEnd()) };
 
   // If the destination errors (disk full, fd closed, etc.) flip a flag so
   // every subsequent log method tees to consola instead of buffering to a
   // dead stream.
   const destState: DestState = { failed: false };
-  dest.on("error", (err: unknown) => {
-    destState.failed = true;
-    term.error("destination error, falling back to console-only:", err);
-  });
+  if (hasFs) {
+    (dest as ReturnType<typeof pino.destination>).on("error", (err: unknown) => {
+      destState.failed = true;
+      term.error("destination error, falling back to console-only:", err);
+    });
+  }
 
   // Redaction is applied by deepRedact in createMethod before the payload
   // reaches pino (or the consola fallback), so pino's own redact.paths is
@@ -207,7 +218,7 @@ export function createLogger(config: LoggerConfig) {
         return;
       try {
         // eslint-disable-next-line react/dom-no-flush-sync
-        dest.flushSync();
+        (dest as Partial<ReturnType<typeof pino.destination>>).flushSync?.();
       }
       catch {
         // Destination already failed/closed — nothing to flush.
@@ -224,7 +235,7 @@ export function createLogger(config: LoggerConfig) {
         return;
       try {
         // eslint-disable-next-line react/dom-no-flush-sync
-        dest.flushSync();
+        (dest as Partial<ReturnType<typeof pino.destination>>).flushSync?.();
       }
       catch {}
       try {

@@ -1,5 +1,6 @@
 import type { ActionExecutor } from "../types";
 import { z } from "zod";
+import { getPlatform } from "@/platform";
 import { DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS, MIN_TIMEOUT_MS } from "./spec";
 
 // Cap captured stdout/stderr per stream. Anything larger lands in the
@@ -49,6 +50,9 @@ function trimStream(buf: ArrayBuffer | Uint8Array | null): { text: string; trunc
  * crontab and review every command before it lands.
  */
 export const execute: ActionExecutor = async (ctx, config) => {
+  if (!getPlatform().capabilities.subprocess) {
+    throw new Error("The shell action needs a runtime that can spawn processes; this one cannot.");
+  }
   const cfg = parseConfig(config);
   // Per-job timeout is clamped by the operator-level
   // `SHELL_ACTION_TIMEOUT_SECONDS` ceiling so a single misbehaving job

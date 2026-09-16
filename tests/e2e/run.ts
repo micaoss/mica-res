@@ -153,6 +153,12 @@ function spawnApi(dataDir: string): Subprocess {
       OAUTH_CLIENT_SECRET: "app-secret",
       OAUTH_PKCE: "true",
       DEFAULT_ADMIN: "admin@example.com",
+      // Keep the creation throttle wired up (a middleware that crashed or
+      // rejected everything must still fail the suite) but well clear of the
+      // burst a fast functional run produces. The throttle's own behaviour is
+      // covered by its unit tests and the workers smoke suite.
+      CREATE_RATE_LIMIT_PER_MINUTE: "1000",
+      CREATE_RATE_LIMIT_PER_HOUR: "10000",
       // Cron defaults to off; the orchestrator's e2e suite covers the
       // catalog routes, so flip it on for every API spawn.
       CRON_ENABLED: "true",

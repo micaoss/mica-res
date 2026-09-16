@@ -20,7 +20,11 @@
     "typecheck": "tsc --noEmit",
     "test": "bun --env-file=/dev/null test",
     "test:coverage": "bun --env-file=/dev/null test --coverage",
-    "db:generate": "drizzle-kit generate",
+    "db:generate": "drizzle-kit generate && bun scripts/gen-do-migrations.ts",
+    "db:check-migrations": "bun scripts/gen-do-migrations.ts --check",
+    "workers:dev": "wrangler dev",
+    "workers:build": "wrangler deploy --dry-run --outdir dist-workers",
+    "workers:deploy": "wrangler deploy",
     "db:studio": "drizzle-kit studio",
     "gen:api-docs": "bun scripts/gen-api-docs.ts",
     "check:api-docs": "bun scripts/gen-api-docs.ts --check"
@@ -45,9 +49,11 @@
   },
   "devDependencies": {
     "@app/tsconfig": "workspace:*",
+    "@cloudflare/workers-types": "5.20260915.1",
     "@types/bun": "1.4.2",
     "@types/qrcode": "1.5.6",
     "drizzle-kit": "0.31.10",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "wrangler": "4.132.0"
   }
 }

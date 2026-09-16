@@ -157,6 +157,8 @@ A new module's routes default to `protected.ts`. Use `public.ts` only when the r
 - Do not add new global middleware; module-specific needs go into route-level `app.use(...)` inside `<name>.routes.ts`.
 - Cross-module reusable middleware lives under `apps/api/src/shared/middleware/`.
 - Read context via `c.get("db" | "config" | "logger" | "user")`; do not inject new singletons inside the service layer.
+- Creating routes go on the collection path (`POST /things`, `POST /things/:id/parts`) alongside the `GET` that lists it. The per-user creation quota finds them by that shape — a `POST` whose path also answers `GET` — so a module mounted this way is throttled with no wiring, while an action posted at a member (`POST /things/:id/publish`) is correctly left alone. A create that does not list, or a `POST` used as a read, will be classified wrongly; put such a route on a path with no sibling `GET`, or name it in `CREATE_RATE_LIMIT_EXEMPT`. See *Rate Limiting* in `docs/architecture.md`.
+- Host access goes through the runtime seam, `getPlatform()` from `@/platform`: read env via `platform.env`, keep short-lived shared state (tokens, counters) in `platform.kv.namespace("<module>:<purpose>")` with a TTL, and schedule background sweeps with `platform.scheduler.every(...)`. Do not reach for `Bun.env`, module-level `Map`s, or raw `setInterval` in module code — those are what make a module Bun-only. Bun-only features (subprocess, argon2, at-rest DB encryption, local filesystem) are declared in `platform.capabilities`; check the flag before depending on one.
 
 ### 2.6 Schema sharding (mandatory)
 

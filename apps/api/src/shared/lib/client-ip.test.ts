@@ -4,7 +4,11 @@ import { getClientIp } from "./client-ip";
 
 function ctx(headers: Record<string, string | undefined>, env?: Record<string, unknown>): Context {
   return {
-    req: { header: () => headers as Record<string, string> },
+    req: {
+      // Mirrors Hono: no argument returns every header, a name returns that
+      // one. Several call sites read a single header by name.
+      header: (name?: string) => (name === undefined ? headers : headers[name.toLowerCase()]),
+    },
     env,
   } as unknown as Context;
 }
@@ -43,6 +47,10 @@ describe("getClientIp (default — TRUST_PROXY=false)", () => {
 
   test("returns 'unknown' when neither headers nor peer IP are available", () => {
     expect(getClientIp(ctx({}, {}))).toBe("unknown");
+  });
+
+  test("falls back to CF-Connecting-IP when the runtime exposes no socket", () => {
+    expect(getClientIp(ctx({ "cf-connecting-ip": "198.51.100.7" }, {}))).toBe("198.51.100.7");
   });
 
   test("explicit TRUST_PROXY=false has the same effect as omitting config", () => {
@@ -100,5 +108,11 @@ describe("getClientIp (TRUST_PROXY=true)", () => {
 
   test("returns 'unknown' when neither headers nor peer IP are available", () => {
     expect(getClientIp(ctx({}, {}), cfg)).toBe("unknown");
+  });
+
+  test("uses CF-Connecting-IP as the peer when the runtime exposes no socket", () => {
+    // Cloudflare Workers: there is no `c.env.IP`, and the edge overwrites
+    // CF-Connecting-IP on every request, so it is the trustworthy peer.
+    expect(getClientIp(ctx({ "cf-connecting-ip": "198.51.100.7" }, {}), cfg)).toBe("198.51.100.7");
   });
 });

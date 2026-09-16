@@ -16,11 +16,19 @@ function detectRootDir(): string {
     return resolve(process.env.ROOT_DIR);
   }
 
-  // import.meta.url is always available (works in Bun, Node, Vite)
-  const thisDir = dirname(fileURLToPath(import.meta.url));
+  // `import.meta.url` is present on Bun, Node and Vite, but a runtime that
+  // bundles the app into one non-file module (Cloudflare Workers) leaves it
+  // undefined. Nothing on such a runtime reads the filesystem, so any stable
+  // path satisfies the callers that only join onto ROOT_DIR.
+  const metaUrl = import.meta.url as string | undefined;
+  if (!metaUrl) {
+    return "/";
+  }
+
+  const thisDir = dirname(fileURLToPath(metaUrl));
 
   // Packaged lode artifact: index.js + dist/ + drizzle/ are siblings.
-  if (existsSync(resolve(thisDir, "dist/index.html")) || existsSync(resolve(thisDir, "drizzle/meta/_journal.json"))) {
+  if (exists(resolve(thisDir, "dist/index.html")) || exists(resolve(thisDir, "drizzle/meta/_journal.json"))) {
     return thisDir;
   }
 
@@ -31,6 +39,20 @@ function detectRootDir(): string {
 
   // Dev or Vite: this file is at apps/api/src/root.ts → go up 3 levels
   return resolve(thisDir, "../../..");
+}
+
+// This module is evaluated before any platform adapter is installed, so it
+// cannot ask `platform.capabilities.filesystem` whether probing is safe. On
+// a runtime without a real filesystem the probe simply reports "not found"
+// and detection falls through to the source-tree layout, which is only ever
+// used to resolve paths that such a runtime does not read anyway.
+function exists(path: string): boolean {
+  try {
+    return existsSync(path);
+  }
+  catch {
+    return false;
+  }
 }
 
 export const ROOT_DIR = detectRootDir();

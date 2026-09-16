@@ -269,3 +269,11 @@ CREATE TABLE `settings` (
 	`updated_at` text NOT NULL,
 	FOREIGN KEY (`updated_by`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE set null
 );
+--> statement-breakpoint
+CREATE TABLE `rate_limits` (
+	`key` text PRIMARY KEY NOT NULL,
+	`count` integer DEFAULT 0 NOT NULL,
+	`reset_at` integer NOT NULL
+);
+--> statement-breakpoint
+CREATE INDEX `idx_rate_limits_reset_at` ON `rate_limits` (`reset_at`);

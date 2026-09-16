@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer";
 import { pbkdf2, randomBytes, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
+import { getPlatform } from "@/platform";
 
 /**
  * Password hashing for SINGLE_USER_PASSWORD_HASH.
@@ -35,6 +36,16 @@ const RE_BCRYPT = /^\$2[aby]\$/;
 
 export async function verifyPassword(password: string, stored: string): Promise<boolean> {
   if (stored.startsWith("$argon2") || RE_BCRYPT.test(stored)) {
+    // argon2 and bcrypt need a native implementation. `Bun.password`
+    // provides one; a runtime without it (Cloudflare Workers) cannot verify
+    // these hashes at all, so say so loudly instead of rejecting a correct
+    // password. `assertPasswordHashSupported` catches this at boot.
+    if (!getPlatform().capabilities.argon2) {
+      throw new Error(
+        "This runtime cannot verify argon2/bcrypt password hashes. "
+        + `Re-hash SINGLE_USER_PASSWORD_HASH as ${PBKDF2_PREFIX}.`,
+      );
+    }
     // Bun.password.verify auto-detects argon2{i,d,id} and bcrypt by prefix.
     try {
       return await Bun.password.verify(password, stored);
@@ -80,4 +91,17 @@ async function verifyPbkdf2(password: string, stored: string): Promise<boolean> 
   if (computed.length !== expected.length)
     return false;
   return timingSafeEqual(computed, expected);
+}
+
+/**
+ * Boot guard: fail fast when the configured hash format needs a primitive
+ * the active runtime does not have, rather than turning every login into a
+ * 500. Returns the reason when unsupported, `undefined` when fine.
+ */
+export function passwordHashUnsupportedReason(stored: string): string | undefined {
+  if (!stored.startsWith("$argon2") && !RE_BCRYPT.test(stored))
+    return undefined;
+  if (getPlatform().capabilities.argon2)
+    return undefined;
+  return `SINGLE_USER_PASSWORD_HASH is argon2/bcrypt, which this runtime cannot verify. Use a ${PBKDF2_PREFIX} hash instead.`;
 }

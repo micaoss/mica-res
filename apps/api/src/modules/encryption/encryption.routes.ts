@@ -12,6 +12,7 @@ import { getClientIp } from "@/shared/lib/client-ip";
 import { AppError } from "@/shared/lib/errors";
 import { describeRoute, errors, jsonOk, SECURITY, TAGS, validator } from "@/shared/lib/openapi";
 import { adminRequired, authRequired } from "@/shared/middleware/auth";
+import { __resetRateLimitForTests, consumeRateLimit } from "@/shared/middleware/rate-limit";
 import { changeMasterKey, initEncryption, rotateDek, unlockSystem } from "./encryption.service";
 import { readEncryptionMeta } from "./meta";
 
@@ -43,30 +44,27 @@ const changeMasterSchema = dekChallengeSchema.extend({
   kdfSalt: z.string().length(64).regex(/^[0-9a-f]{64}$/).optional(),
 });
 
-// --- Per-IP rate limiter for the unlock flow ---
-// Both /encryption/unlock-challenge (which mints an ECIES keypair and exposes
-// kdfSalt + encryptedDek) and /encryption/unlock (which actually consumes a
-// challenge) share a single bucket per IP, so an attacker cannot rotate
-// between the two endpoints. The anonymous-IP fallback uses a single shared
-// bucket so callers behind a misconfigured proxy cannot evade the gate by
-// churning through `unknown`.
+// --- Per-IP rate limiters for the encryption flows ---
+// /unlock-challenge (which mints an ECIES keypair and exposes kdfSalt +
+// encryptedDek) and /unlock (which consumes a challenge) share one bucket
+// per IP, so an attacker cannot rotate between the two endpoints. The
+// anonymous-IP fallback shares a single bucket so callers behind a
+// misconfigured proxy cannot evade the gate by churning through `unknown`.
+//
+// Counting is the shared fixed-window implementation in
+// `shared/middleware/rate-limit.ts`; these wrappers only turn a refusal
+// into the 429 shape this module's routes return.
 
 const UNLOCK_WINDOW_MS = 15 * 60 * 1000;
 const UNLOCK_MAX_ATTEMPTS = 10;
-const unlockAttempts = new Map<string, { count: number; resetAt: number }>();
-
-// Hard cap on tracked IPs per bucket — memory-DoS backstop.
-const MAX_BUCKET_ENTRIES = 1000;
 
 // /encryption/init rate limit: 5 attempts per 15 minutes per IP.
 const INIT_WINDOW_MS = 15 * 60 * 1000;
 const INIT_MAX_ATTEMPTS = 5;
-const initAttempts = new Map<string, { count: number; resetAt: number }>();
 
 // /encryption/status rate limit: 60 requests per minute per IP.
 const STATUS_WINDOW_MS = 60 * 1000;
 const STATUS_MAX_ATTEMPTS = 60;
-const statusAttempts = new Map<string, { count: number; resetAt: number }>();
 
 function rateLimitKey(c: Context<AppEnv>): string {
   // Defers to `getClientIp`, which honours `TRUST_PROXY=true` (X-Real-IP /
@@ -76,68 +74,40 @@ function rateLimitKey(c: Context<AppEnv>): string {
 }
 
 /**
- * Test-only: drop the in-memory unlock-attempt buckets. Without this, the
+ * Test-only: drop the in-memory attempt buckets. Without this, the
  * 10/15-min cap leaks across tests that share the `anon` fallback bucket.
  */
-export function __resetUnlockRateLimitForTests(): void {
-  unlockAttempts.clear();
-  initAttempts.clear();
-  statusAttempts.clear();
+export function __resetUnlockRateLimitForTests(): Promise<void> {
+  return __resetRateLimitForTests();
 }
 
-function bumpBucket(
-  bucket: Map<string, { count: number; resetAt: number }>,
+async function guard(
   c: Context<AppEnv>,
+  bucket: string,
   ip: string,
   windowMs: number,
   max: number,
   message: string,
-): void {
-  const now = Date.now();
-  const entry = bucket.get(ip);
-
-  if (entry && now < entry.resetAt) {
-    if (entry.count >= max) {
-      // RFC 9110 §10.2.3 — surface seconds until reset so the SPA can
-      // render an unlock countdown instead of inviting click-spam.
-      c.header("Retry-After", String(Math.max(1, Math.ceil((entry.resetAt - now) / 1000))));
-      throw new AppError(message, 429, "RATE_LIMITED");
-    }
-    entry.count++;
-  }
-  else {
-    bucket.set(ip, { count: 1, resetAt: now + windowMs });
-  }
-
-  if (bucket.size > 100) {
-    for (const [key, val] of bucket) {
-      if (now >= val.resetAt)
-        bucket.delete(key);
-    }
-  }
-
-  // The prune above only drops expired entries; a flood of distinct IPs
-  // stays unbounded. Evict soonest-to-reset first so an IP under active
-  // abuse (far-future resetAt) survives and the limiter stays effective.
-  if (bucket.size > MAX_BUCKET_ENTRIES) {
-    const victims = [...bucket.entries()]
-      .sort((a, b) => a[1].resetAt - b[1].resetAt)
-      .slice(0, bucket.size - MAX_BUCKET_ENTRIES);
-    for (const [key] of victims)
-      bucket.delete(key);
-  }
+): Promise<void> {
+  const retryAfter = await consumeRateLimit({ bucket, key: ip, windowMs, max });
+  if (retryAfter === 0)
+    return;
+  // RFC 9110 SS10.2.3 - surface seconds until reset so the SPA can render an
+  // unlock countdown instead of inviting click-spam.
+  c.header("Retry-After", String(retryAfter));
+  throw new AppError(message, 429, "RATE_LIMITED");
 }
 
-function checkUnlockRateLimit(c: Context<AppEnv>, ip: string): void {
-  bumpBucket(unlockAttempts, c, ip, UNLOCK_WINDOW_MS, UNLOCK_MAX_ATTEMPTS, "Too many unlock attempts. Try again later.");
+function checkUnlockRateLimit(c: Context<AppEnv>, ip: string): Promise<void> {
+  return guard(c, "encryption-unlock", ip, UNLOCK_WINDOW_MS, UNLOCK_MAX_ATTEMPTS, "Too many unlock attempts. Try again later.");
 }
 
-function checkInitRateLimit(c: Context<AppEnv>, ip: string): void {
-  bumpBucket(initAttempts, c, ip, INIT_WINDOW_MS, INIT_MAX_ATTEMPTS, "Too many init attempts. Try again later.");
+function checkInitRateLimit(c: Context<AppEnv>, ip: string): Promise<void> {
+  return guard(c, "encryption-init", ip, INIT_WINDOW_MS, INIT_MAX_ATTEMPTS, "Too many init attempts. Try again later.");
 }
 
-function checkStatusRateLimit(c: Context<AppEnv>, ip: string): void {
-  bumpBucket(statusAttempts, c, ip, STATUS_WINDOW_MS, STATUS_MAX_ATTEMPTS, "Too many status requests. Try again later.");
+function checkStatusRateLimit(c: Context<AppEnv>, ip: string): Promise<void> {
+  return guard(c, "encryption-status", ip, STATUS_WINDOW_MS, STATUS_MAX_ATTEMPTS, "Too many status requests. Try again later.");
 }
 
 /**
@@ -214,8 +184,8 @@ export function encryptionStatusRoute() {
         ...errors(429),
       },
     }),
-    (c) => {
-      checkStatusRateLimit(c, rateLimitKey(c));
+    async (c) => {
+      await checkStatusRateLimit(c, rateLimitKey(c));
 
       const enc = c.get("encryption");
       const status = enc.getStatus();
@@ -272,7 +242,7 @@ export function encryptionPublicRoutes() {
         ...errors(409, 429, 500, 503),
       },
     }),
-    (c) => {
+    async (c) => {
       const enc = c.get("encryption");
       const status = enc.getStatus();
       if (status !== "locked") {
@@ -282,7 +252,7 @@ export function encryptionPublicRoutes() {
         throw new AppError("Database is in an error state", 503, "DB_ERROR");
       }
 
-      checkUnlockRateLimit(c, rateLimitKey(c));
+      await checkUnlockRateLimit(c, rateLimitKey(c));
 
       const config = c.get("config");
       const meta = readEncryptionMeta(config.DB_PATH);
@@ -336,7 +306,7 @@ export function encryptionPublicRoutes() {
         throw new AppError("Encryption already initialized", 409, "ALREADY_INITIALIZED");
       }
 
-      checkInitRateLimit(c, rateLimitKey(c));
+      await checkInitRateLimit(c, rateLimitKey(c));
 
       const config = c.get("config");
       const body = c.req.valid("json");
@@ -417,7 +387,7 @@ export function encryptionPublicRoutes() {
       // The previous order let an anonymous attacker grab the latch by
       // submitting malformed JSON: every failed parse left the lock held until
       // the next handler ran `endOperation()`.
-      checkUnlockRateLimit(c, rateLimitKey(c));
+      await checkUnlockRateLimit(c, rateLimitKey(c));
       const config = c.get("config");
       const body = unlockSchema.parse(await c.req.json());
 

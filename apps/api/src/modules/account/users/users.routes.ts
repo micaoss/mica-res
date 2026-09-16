@@ -266,7 +266,7 @@ export function userRoutes() {
       const alreadyHasTotp = await hasVerifiedTotp(db, user.id);
       if (alreadyHasTotp) {
         const header = c.req.header("x-totp-token");
-        if (!header || !validateStepUpToken(header, user.id)) {
+        if (!header || !(await validateStepUpToken(header, user.id))) {
           throw new UnauthorizedError("STEP_UP_REQUIRED");
         }
       }
@@ -324,7 +324,7 @@ export function userRoutes() {
       // allow plain deletion so a botched setup can be cleaned up.
       if (await hasVerifiedTotp(db, user.id)) {
         const header = c.req.header("x-totp-token");
-        if (!header || !validateStepUpToken(header, user.id)) {
+        if (!header || !(await validateStepUpToken(header, user.id))) {
           throw new UnauthorizedError("STEP_UP_REQUIRED");
         }
       }
@@ -367,7 +367,7 @@ export function userRoutes() {
       const ok = await verifyTotpCode(db, user.id, body.code);
       if (!ok)
         throw new AppError("Invalid TOTP code", 400, "TOTP_VERIFY_FAILED");
-      const token = issueStepUpToken(user.id);
+      const token = await issueStepUpToken(user.id);
       return c.json({ success: true, data: { token } });
     },
   );

@@ -31,7 +31,9 @@ function generateCodeVerifier(): string {
 }
 
 async function generateCodeChallenge(verifier: string): Promise<string> {
-  const digest = new Bun.CryptoHasher("sha256").update(verifier).digest();
+  // WebCrypto rather than `Bun.CryptoHasher`: the same primitive exists on
+  // every runtime the app targets.
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
   return Buffer.from(digest).toString("base64url");
 }
 

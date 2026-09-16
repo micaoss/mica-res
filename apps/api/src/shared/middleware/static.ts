@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import { existsSync, statSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
+import { getPlatform } from "@/platform";
 import { ROOT_DIR } from "../../root";
 
 // Vite emits hashed filenames for JS/CSS/asset bundles (e.g. `app-d4a91f.js`,
@@ -12,7 +13,18 @@ import { ROOT_DIR } from "../../root";
 const HASHED_ASSET_RE = /\.[a-f0-9]{8,}\.(?:js|css|woff2?|ttf|otf|svg|png|jpe?g|gif|ico|webp|map)$/i;
 const IMMUTABLE_CACHE = "public, max-age=31536000, immutable";
 const REVALIDATE_CACHE = "no-cache";
-const STATIC_ROOT = resolveStaticRoot();
+// Resolved on first use, not at module load: a runtime without a
+// filesystem (Cloudflare Workers, where the SPA is served by the platform's
+// own asset pipeline) must be able to import this module without touching
+// `node:fs`.
+let staticRoot: string | null | undefined;
+
+function getStaticRoot(): string | null {
+  if (staticRoot === undefined) {
+    staticRoot = getPlatform().capabilities.filesystem ? resolveStaticRoot() : null;
+  }
+  return staticRoot;
+}
 
 export function serveStaticAssets(basePath: string) {
   return async (c: Context) => {
@@ -35,7 +47,8 @@ export function serveStaticAssets(basePath: string) {
 }
 
 export function hasStaticAssets(): boolean {
-  return isFile(resolve(STATIC_ROOT, "index.html"));
+  const root = getStaticRoot();
+  return root !== null && isFile(resolve(root, "index.html"));
 }
 
 function resolveStaticRoot(): string {
@@ -62,8 +75,11 @@ function requestPathToAsset(path: string, basePath: string): string {
 }
 
 function resolveStaticAsset(assetPath: string): string | null {
-  const candidate = resolve(STATIC_ROOT, assetPath);
-  const rel = relative(STATIC_ROOT, candidate);
+  const root = getStaticRoot();
+  if (root === null)
+    return null;
+  const candidate = resolve(root, assetPath);
+  const rel = relative(root, candidate);
   if (rel.startsWith("..") || isAbsolute(rel))
     return null;
   return isFile(candidate) ? candidate : null;

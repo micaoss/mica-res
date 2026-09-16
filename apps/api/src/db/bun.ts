@@ -1,0 +1,98 @@
+import type { AppDatabase } from "./types";
+import { existsSync, mkdirSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { createClient } from "@libsql/client";
+import { drizzle } from "drizzle-orm/libsql";
+import { migrate } from "drizzle-orm/libsql/migrator";
+import { ROOT_DIR } from "../root";
+import * as schema from "./schema";
+import { validateEncryptionKey } from "./validate";
+
+/**
+ * Open the local libsql database. Bun-only: it needs a filesystem, a
+ * native binding, and PRAGMA-level tuning. Reached through
+ * `createDb()` in `db/index.ts` when the active platform does not
+ * override `openDatabase`.
+ */
+export async function createLibsqlDb(path: string, encryptionKey?: string): Promise<AppDatabase> {
+  const dir = dirname(path);
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+
+  if (encryptionKey) {
+    validateEncryptionKey(encryptionKey);
+  }
+
+  const client = createClient(
+    encryptionKey
+      ? { url: `file:${path}`, encryptionKey }
+      : { url: `file:${path}` },
+  );
+
+  await client.execute("PRAGMA journal_mode = WAL");
+  await client.execute("PRAGMA foreign_keys = ON");
+  await client.execute("PRAGMA busy_timeout = 5000");
+
+  // Performance / footprint tuning. Some PRAGMAs are no-ops on libsql with
+  // encryption enabled — swallow the error and continue rather than aborting
+  // the whole bootstrap.
+  for (const pragma of [
+    "PRAGMA synchronous = NORMAL",
+    "PRAGMA cache_size = -65536",
+    // Never memory-map an encrypted database. libsql's page-level
+    // encryption and mmap I/O do not mix: with mmap on, a long-lived
+    // encrypted WAL was observed to become "database disk image is
+    // malformed" after an ordinary fresh-page append (reproduced end-to-end
+    // by the e2e suite; deterministic per write sequence; clean with mmap
+    // off). Plaintext databases keep the mapping.
+    ...(encryptionKey ? [] : ["PRAGMA mmap_size = 268435456"]),
+    "PRAGMA temp_store = MEMORY",
+  ]) {
+    try {
+      await client.execute(pragma);
+    }
+    catch (err) {
+      // eslint-disable-next-line no-console
+      console.debug(`[db] ${pragma} skipped:`, err);
+    }
+  }
+
+  const db = drizzle(client, { schema });
+
+  await runMigrations(db);
+
+  return Object.assign(db, {
+    close: () => client.close(),
+    // Used by encryption.service.rotateDek to flush WAL before the libsql
+    // copy-client opens the same file.
+    checkpoint: () => client.execute("PRAGMA wal_checkpoint(TRUNCATE)"),
+  }) as AppDatabase;
+}
+
+async function runMigrations(db: ReturnType<typeof drizzle>) {
+  const fsMigrationsFolder = resolveMigrationsFolder();
+  const journalPath = resolve(fsMigrationsFolder, "meta/_journal.json");
+
+  if (!existsSync(journalPath)) {
+    throw new Error(
+      `No migrations available: expected ${journalPath}. `
+      + "Packaged releases must ship drizzle/ alongside index.js. "
+      + "Run `bun run package` to rebuild the lode artifact.",
+    );
+  }
+
+  await migrate(db, { migrationsFolder: fsMigrationsFolder });
+}
+
+/**
+ * Locate the Drizzle migrations folder for both layouts: a packaged lode
+ * artifact ships `drizzle/` at ROOT_DIR (next to index.js); the dev/source
+ * tree keeps it under `apps/api/drizzle`.
+ */
+function resolveMigrationsFolder(): string {
+  const packaged = resolve(ROOT_DIR, "drizzle");
+  if (existsSync(resolve(packaged, "meta/_journal.json")))
+    return packaged;
+  return resolve(ROOT_DIR, "apps/api/drizzle");
+}

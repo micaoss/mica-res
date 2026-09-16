@@ -1,23 +1,17 @@
 import type { Config } from "@/config";
 import type { AppDatabase } from "@/db";
+import type { ScheduledHandle } from "@/platform";
 import type { Logger } from "@/shared/lib/logger";
+import { getPlatform } from "@/platform";
 import { deleteUnreferencedFile, listUnreferencedFiles } from "./file.service";
 import { runOrphanSweepOnce } from "./orphan-sweep";
 
 const SWEEP_BATCH = 500;
 const FIRST_RUN_DELAY_MS = 30 * 1000;
 
-let timer: ReturnType<typeof setInterval> | undefined;
-/**
- * The sweep currently executing, if any. Shutdown must wait for it: a
- * sweep cut off mid-statement while `closeDb` closes the client underneath
- * it can leave the (encrypted) database file malformed on the next open.
- */
-let inFlight: Promise<void> | undefined;
-let stopped = false;
-let firstRunTimer: ReturnType<typeof setTimeout> | undefined;
+let task: ScheduledHandle | undefined;
 // Mutable: DEK rotation rebuilds the app with a new db handle. The
-// long-lived timer reads this ref so it doesn't outlive the previous
+// long-lived task reads this ref so it doesn't outlive the previous
 // connection.
 let currentDb: AppDatabase | undefined;
 
@@ -44,10 +38,16 @@ export async function runFileGcOnce(db: AppDatabase, limit = SWEEP_BATCH): Promi
  * Start the periodic sweep. Idempotent — calling twice updates the live
  * `db` reference (so a DEK rotation can swap the handle) and otherwise
  * no-ops. Pass `intervalSeconds = 0` (or `FILE_GC_MODE=sync`) to disable.
+ *
+ * Scheduling goes through the platform seam: timers on Bun, a Cron
+ * Trigger on Workers. The seam guarantees runs never overlap and that
+ * `stop()` waits for a run already in progress — a sweep cut off
+ * mid-statement while `closeDb` closes the client underneath it can leave
+ * the (encrypted) database file malformed on the next open.
  */
 export function startFileGcSweep(db: AppDatabase, config: Config, logger: Logger): void {
   currentDb = db;
-  if (timer || firstRunTimer)
+  if (task)
     return;
   if (config.FILE_GC_INTERVAL_SECONDS <= 0 || config.FILE_GC_MODE === "sync")
     return;
@@ -56,7 +56,7 @@ export function startFileGcSweep(db: AppDatabase, config: Config, logger: Logger
 
   const run = async () => {
     const live = currentDb;
-    if (!live || stopped)
+    if (!live)
       return;
     try {
       // First, release file_references rows whose owner row has gone
@@ -75,23 +75,8 @@ export function startFileGcSweep(db: AppDatabase, config: Config, logger: Logger
     }
   };
 
-  // Track the running sweep so stopFileGcSweep() can drain it. Sweeps do
-  // not overlap: a tick that fires while one is still running is skipped.
-  const launch = () => {
-    if (inFlight)
-      return;
-    inFlight = run().finally(() => {
-      inFlight = undefined;
-    });
-  };
-
-  stopped = false;
   // Defer the first sweep so it doesn't fight startup work.
-  firstRunTimer = setTimeout(() => {
-    firstRunTimer = undefined;
-    launch();
-    timer = setInterval(launch, intervalMs);
-  }, FIRST_RUN_DELAY_MS);
+  task = getPlatform().scheduler.every("file-gc", { delayMs: FIRST_RUN_DELAY_MS, intervalMs }, run);
 }
 
 /**
@@ -99,14 +84,7 @@ export function startFileGcSweep(db: AppDatabase, config: Config, logger: Logger
  * shutdown (before the DB is closed) and by tests.
  */
 export async function stopFileGcSweep(): Promise<void> {
-  stopped = true;
-  if (timer) {
-    clearInterval(timer);
-    timer = undefined;
-  }
-  if (firstRunTimer) {
-    clearTimeout(firstRunTimer);
-    firstRunTimer = undefined;
-  }
-  await inFlight;
+  const t = task;
+  task = undefined;
+  await t?.stop();
 }

@@ -1,7 +1,7 @@
 import type { AppEnv } from "@/shared/lib/types";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Hono } from "hono";
-import { __resetRateLimitForTests, rateLimit } from "./rate-limit";
+import { __resetRateLimitForTests, consumeRateLimit, rateLimit } from "./rate-limit";
 
 beforeEach(() => __resetRateLimitForTests());
 afterEach(() => __resetRateLimitForTests());
@@ -72,5 +72,42 @@ describe("rateLimit", () => {
       await app.request("/p", { headers: { "x-real-ip": `10.0.${Math.floor(i / 256)}.${i % 256}` } });
     const res = await app.request("/p", { headers: { "x-real-ip": "10.99.99.99" } });
     expect(res.status).toBe(200);
+  });
+});
+
+describe("consumeRateLimit", () => {
+  // The shared counter behind both `rateLimit()` and the auth / encryption
+  // route guards, so its semantics are pinned here rather than three times.
+  const opts = { bucket: "shared", key: "1.2.3.4", windowMs: 60_000, max: 2 };
+
+  test("returns 0 while under the cap, then seconds until reset", async () => {
+    expect(await consumeRateLimit(opts)).toBe(0);
+    expect(await consumeRateLimit(opts)).toBe(0);
+    const retryAfter = await consumeRateLimit(opts);
+    expect(retryAfter).toBeGreaterThan(0);
+    expect(retryAfter).toBeLessThanOrEqual(60);
+  });
+
+  test("a caller at the cap is not counted again, so the window cannot be pushed out", async () => {
+    for (let i = 0; i < 2; i++)
+      await consumeRateLimit(opts);
+    const first = await consumeRateLimit(opts);
+    await Bun.sleep(1100);
+    const later = await consumeRateLimit(opts);
+    expect(later).toBeLessThan(first);
+  });
+
+  test("keys and buckets are independent", async () => {
+    for (let i = 0; i < 3; i++)
+      await consumeRateLimit(opts);
+    expect(await consumeRateLimit({ ...opts, key: "5.6.7.8" })).toBe(0);
+    expect(await consumeRateLimit({ ...opts, bucket: "other" })).toBe(0);
+  });
+
+  test("an elapsed window starts a fresh count", async () => {
+    const short = { ...opts, windowMs: 1, max: 1 };
+    expect(await consumeRateLimit(short)).toBe(0);
+    await Bun.sleep(10);
+    expect(await consumeRateLimit(short)).toBe(0);
   });
 });

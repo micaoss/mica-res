@@ -169,6 +169,69 @@ document:abc123#viewer@group:dev-team#member
 group:dev-team#member@user:user123
 ```
 
+## Rate Limiting
+
+Two limiters, chosen by whether the window has to outlive the process.
+
+**In-memory, IP-keyed** — `shared/middleware/rate-limit.ts`, backed by the
+platform key/value seam. Free per request, so it suits short windows on
+unauthenticated surfaces. `consumeRateLimit` is the single implementation of
+the fixed-window counter: `rateLimit()` wraps it as middleware for TOTP
+step-up, and the auth and encryption routes call it directly where they need
+to gate part of a handler rather than the whole route. State is lost on
+restart, which is acceptable for these windows because the control that
+actually stops credential brute force is `auth_lockouts`, below.
+
+**Durable, user-keyed** — `shared/middleware/creation-rate-limit.ts`,
+backed by the `rate_limits` table. Creation is the surface where an
+authenticated caller can grow the database without bound, and a counter that
+dies with the process would let a caller pace requests around a restart — or,
+on a runtime that evicts the app when idle, around the eviction.
+
+The middleware is mounted once and finds the creating routes itself, rather
+than being wired into each one. The rule is the REST invariant the whole
+route table already follows: a collection answers `GET` with a list and
+`POST` with a create, so a `POST` whose path also has a `GET` creates a
+member of that collection, while an action posted at a member
+(`/cron/jobs/:id/trigger`, `/policy/check`) has no matching `GET` and is left
+alone. A new module is therefore throttled the moment it mounts, with
+nothing to remember and no central list to maintain — and
+`creation-rate-limit.test.ts` pins the discovered set, so a route entering or
+leaving it has to be acknowledged.
+
+Budgets are per resource, not global: `issue`, `document`, `comment`,
+`attachment` and the rest each carry their own counter, so a burst of
+comments does not spend the budget for opening issues and a runaway loop in
+one module cannot lock a user out of the rest of the app. All three
+attachment endpoints land on `attachment` because they create the same kind
+of thing. `CREATE_RATE_LIMIT_EXEMPT` lists resources to leave alone.
+
+Two windows apply together. `CREATE_RATE_LIMIT_PER_MINUTE` bounds a burst;
+`CREATE_RATE_LIMIT_PER_HOUR` bounds the sustained rate that a burst limit
+alone would still allow — at 60/minute, an unbounded hour is 3600 creates.
+Rejected requests keep counting, so a caller hammering the minute limit
+escalates into the hour window instead of settling into a comfortable rhythm
+just under the burst cap. A 429 reports the longest tripped window in
+`Retry-After`.
+
+Both windows are bumped by one upsert, so concurrent requests cannot lose an
+increment and the two cannot drift apart. Keying on the user id bounds the
+table to users × resources × windows, one row each, overwritten in place, so
+no sweep is needed.
+
+Login has a third control that is neither: `auth_lockouts` records failures
+per username in the database, which is what actually stops credential
+stuffing from a rotating set of addresses. The same table backs the TOTP
+verification lockout.
+
+The two long windows — `/encryption/unlock` at 10 per 15 minutes and
+`/encryption/init` at 5 per 15 minutes — are the only ones where losing
+in-memory state would matter, and they are reachable only on an encrypted
+deployment, which needs the `encryptionAtRest` capability and therefore a
+long-lived process. Every window reachable on a runtime that evicts the app
+when idle is either a minute long or has a database-backed control beneath
+it.
+
 ## Encryption Lifecycle
 
 The app can start in a locked mode. Setup and unlock routes are available before the full protected app is mounted. After unlock, protected routes are mounted and guarded by `requireUnlocked`.

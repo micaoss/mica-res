@@ -18,6 +18,15 @@ firing ticks.
 | `false` (default) | `app.ts` calls `initCronActions()` (populates the in-memory action catalog + the create-time validator) and **skips** `startCron` entirely. Baker is never allocated, no DB rows are seeded, and `getScheduler()` returns `null`. Route handlers use the null-safe paths — writes still land, Baker side effects no-op. |
 | `true` | `app.ts` calls `initCronActions()` then `startCron`, which allocates Baker, seeds the default `log-cleanup` row (idempotent), loads every `enabled && !is_deleted` row, and starts the timer. Rows created while the flag was off begin running immediately. |
 
+**Runtime requirement.** Baker holds a timer per job and needs the app to
+stay resident between firings, so `CRON_ENABLED=true` is refused at boot on a
+runtime that is evicted when idle — Cloudflare Workers, where the app lives
+in a Durable Object. The check reads the `residentTimers` platform capability
+(`assertCronSchedulerSupported`). Everything below still works there; drive
+the schedule from an external trigger calling
+`POST /api/cron/jobs/:id/trigger`. See
+[`develop/runtime.md`](../develop/runtime.md).
+
 What stays on either way:
 
 - All `/api/cron/*` routes are mounted and admin-gated. Admins can

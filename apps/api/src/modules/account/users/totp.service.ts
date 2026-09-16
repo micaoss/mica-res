@@ -6,6 +6,7 @@ import { Secret, TOTP } from "otpauth";
 import * as QRCode from "qrcode";
 import { clearAllLockouts, clearFailures, isLocked, recordFailure } from "@/modules/account/auth/lockout.service";
 import { totpChallenges, userTotpDevices } from "@/modules/account/users/schema";
+import { getPlatform } from "@/platform";
 import { nanoid } from "@/shared/lib/id";
 
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
@@ -240,34 +241,33 @@ async function cleanExpiredChallenges(db: AppDatabase) {
 // ── Step-up challenge token (for sensitive ops) ──
 
 const STEP_UP_TTL_MS = 10 * 60 * 1000;
-const STEP_UP_PRUNE_THRESHOLD = 1000;
-const stepUpTokens = new Map<string, { userId: string; expiresAt: number }>();
 
-function pruneExpiredStepUpTokens(): void {
-  if (stepUpTokens.size <= STEP_UP_PRUNE_THRESHOLD)
-    return;
-  const now = Date.now();
-  for (const [token, entry] of stepUpTokens) {
-    if (entry.expiresAt <= now)
-      stepUpTokens.delete(token);
-  }
+interface StepUpEntry {
+  userId: string;
+  expiresAt: number;
 }
 
-export function issueStepUpToken(userId: string): string {
-  pruneExpiredStepUpTokens();
+// Platform kv: in-process on Bun, a KV binding on Workers. TTL handles
+// expiry on both.
+function stepUpTokens() {
+  return getPlatform().kv.namespace("step-up");
+}
+
+export async function issueStepUpToken(userId: string): Promise<string> {
   const token = randomBytes(32).toString("hex");
-  stepUpTokens.set(token, { userId, expiresAt: Date.now() + STEP_UP_TTL_MS });
+  await stepUpTokens().set(token, { userId, expiresAt: Date.now() + STEP_UP_TTL_MS } satisfies StepUpEntry, STEP_UP_TTL_MS);
   return token;
 }
 
-export function validateStepUpToken(token: string, userId: string): boolean {
-  const entry = stepUpTokens.get(token);
+export async function validateStepUpToken(token: string, userId: string): Promise<boolean> {
+  const store = stepUpTokens();
+  const entry = await store.get<StepUpEntry>(token);
   if (!entry || entry.userId !== userId || entry.expiresAt <= Date.now()) {
     if (entry)
-      stepUpTokens.delete(token);
+      await store.delete(token);
     return false;
   }
   // Single-use: consume on first successful validation.
-  stepUpTokens.delete(token);
+  await store.delete(token);
   return true;
 }

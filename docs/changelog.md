@@ -11,7 +11,61 @@ each upstream tag; your fork's `Unreleased` block sits at the top.
 
 ## Unreleased
 
+### Added
+
+- Runtime seam under `apps/api/src/platform/` (`getPlatform()`): `env`,
+  a TTL key/value store (`kv.namespace(...)`), a background `scheduler`,
+  an `openDatabase` override, and a `capabilities` flag set. The rate
+  limiter, TOTP step-up tokens, the file GC and audit retention sweeps, and
+  config env reads go through the seam instead of touching `Bun.env` /
+  `setInterval` / module-level maps directly. No behaviour change on Bun.
+- Cloudflare Workers as a second runtime target, selectable without forking
+  the app. The whole API runs inside one Durable Object that owns its SQLite
+  database (not D1: D1 is auto-commit only and cannot express this app's
+  interactive read-then-write transactions); blobs go to R2 through a new
+  storage driver; background sweeps run off a Durable Object alarm; the SPA
+  is served by the asset pipeline. Configuration is `apps/api/wrangler.toml`,
+  entry point `apps/api/src/workers/`, and migrations are bundled into
+  `src/db/migrations.generated.ts` by `bun run db:generate`. See
+  `docs/develop/runtime.md`.
+- `bun run test:workers` — a smoke suite that boots the app in workerd and
+  covers boot, login, transaction commit, transaction rollback and an R2
+  round trip. Runs in the new `workers` CI workflow, which also smoke-tests a
+  preview deployment when Cloudflare credentials are configured.
+- Per-user rate limits on creating content, held in a new `rate_limits`
+  table. The middleware is mounted once and discovers the creating routes
+  from the router table — a `POST` whose path also answers `GET` creates a
+  member of that collection — so a new module is covered as soon as it
+  mounts and an action route like `POST /cron/jobs/:id/trigger` is left
+  alone. `CREATE_RATE_LIMIT_EXEMPT` opts a resource out. Budgets are per
+  resource — `issue`, `document`, `comment`, `attachment`, ... — so a burst
+  of one does not spend the budget for another,
+  and two windows apply together: `CREATE_RATE_LIMIT_PER_MINUTE` (default
+  60) bounds a burst and `CREATE_RATE_LIMIT_PER_HOUR` (default 600) bounds
+  the sustained rate; either at 0 disables that window. Rejected requests
+  keep counting, so sustained abuse escalates from the minute window into
+  the hour one. The counters are stored rather than in-memory because
+  creation is where an authenticated caller can grow the database without
+  bound, and a counter that dies with the process can be defeated by pacing
+  requests around a restart or, on Cloudflare Workers, around an eviction.
+  Both windows are bumped by a single upsert so concurrent requests cannot
+  lose an increment. Like `auth_lockouts`, the table is deliberately excluded
+  from backups.
+- Runtime capability gates: `DB_ENCRYPTION=true`, `CRON_ENABLED=true`,
+  argon2/bcrypt password hashes and the cron `shell` action are refused on a
+  runtime that cannot support them, at boot rather than at request time. The
+  cron gate exists because the scheduler holds its own per-job timers and a
+  host that evicts the app when idle would drop jobs silently; such
+  deployments drive jobs through `POST /api/cron/jobs/:id/trigger` instead.
+
 ### Changed
+
+- The auth and encryption routes no longer carry their own fixed-window
+  counters. All in-memory rate limiting now goes through one implementation,
+  `consumeRateLimit` in `shared/middleware/rate-limit.ts`, so there is a
+  single eviction policy (evict the entry closest to expiry, keeping an
+  address under active abuse) and one behaviour on every runtime. The
+  thresholds, bucket sharing and 429 shapes are unchanged.
 
 - Replaced the single-binary build (`scripts/compile.ts`) with a
   [lode](https://github.com/dotns/lode)-compatible release asset

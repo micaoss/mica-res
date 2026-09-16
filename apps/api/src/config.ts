@@ -7,6 +7,7 @@ import { resolveOidcDiscovery } from "./config/oidc-discovery";
 import { configSchema } from "./config/schema";
 import { assertProductionNetworkGuards, assertProductionSentinels } from "./config/sentinels";
 import { oauthInPlay, resolveSingleUserConfig } from "./config/single-user";
+import { getPlatform } from "./platform";
 
 import { ROOT_DIR } from "./root";
 
@@ -41,7 +42,7 @@ function resolvePath(p: string): string {
 function resolveDataDir(value: string | undefined): string {
   if (value)
     return resolvePath(value);
-  return resolve(Bun.env.LODE_DIR ?? ROOT_DIR, "data");
+  return resolve(getPlatform().env.get("LODE_DIR") ?? ROOT_DIR, "data");
 }
 
 // Anchor a writable path under dataDir; an absolute value overrides. The
@@ -64,7 +65,7 @@ function resolveMutablePath(value: string, dataDir: string): string {
 export async function loadConfigStrict(
   warn: (msg: string) => void = msg => console.warn(msg),
 ): Promise<Config> {
-  const result = configSchema.safeParse(Bun.env);
+  const result = configSchema.safeParse(getPlatform().env.all());
   if (!result.success) {
     const formatted = result.error.flatten().fieldErrors;
     throw new ConfigError(`Invalid configuration: ${JSON.stringify(formatted)}`);

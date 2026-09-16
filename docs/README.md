@@ -26,6 +26,7 @@ Plus three top-level documents that don't belong in any of the buckets:
 **Adding a new module** → [`develop/module/`](develop/module/) (start with
 `playbook.md`, reach for `standards.md` when you need the rationale)
 **Deploying to production** → [`develop/deployment.md`](develop/deployment.md)
+**Bun vs Cloudflare Workers** → [`develop/runtime.md`](develop/runtime.md)
 **Day-2 operations** → [`develop/operations.md`](develop/operations.md)
 **HTTP surface** → [`reference/api.md`](reference/api.md)
 **Env vars** → [`reference/env-reference.md`](reference/env-reference.md)

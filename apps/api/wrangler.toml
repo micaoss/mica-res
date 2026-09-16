@@ -1,0 +1,51 @@
+name = "bun-tpl-api"
+main = "src/workers/entry.ts"
+compatibility_date = "2026-09-01"
+# node:crypto / node:buffer / node:path / node:util are used across the shared
+# codebase (PBKDF2 hashing, base64url encoding, path joins).
+compatibility_flags = ["nodejs_compat"]
+
+# `bun:sqlite` is imported statically by the encryption module's meta.db
+# reader. That mode is rejected at boot here, so the import resolves to a stub
+# that throws if anything ever reaches it.
+[alias]
+"bun:sqlite" = "./src/workers/stub-bun-sqlite.ts"
+
+# One Durable Object class holds the SQLite database and runs the app.
+[[durable_objects.bindings]]
+name = "APP"
+class_name = "AppDurableObject"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["AppDurableObject"]
+
+# Blob storage for the file module (FILE_STORAGE_DRIVER=r2).
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "bun-tpl-files"
+
+# The SPA is served by the asset pipeline; only /api/* reaches the Worker.
+[assets]
+directory = "../web/dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]
+
+[observability]
+enabled = true
+
+# Non-secret configuration. Secrets (SESSION_SECRET, OAUTH_CLIENT_SECRET,
+# SINGLE_USER_PASSWORD_HASH, ...) go through `wrangler secret put` — never in
+# this file.
+[vars]
+NODE_ENV = "production"
+LOG_TO_STDOUT = "true"
+# Durable Object storage is encrypted by the host; libsql page encryption has
+# no counterpart here and is rejected at boot.
+DB_ENCRYPTION = "false"
+FILE_STORAGE_DRIVER = "r2"
+# Presigning needs the R2 S3 API and a key pair, which a bucket binding does
+# not carry; downloads stream through the Worker instead.
+FILE_PRESIGN_ENABLED = "false"
+TRUST_PROXY = "false"

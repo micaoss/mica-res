@@ -1,0 +1,129 @@
+name: workers
+
+# Cloudflare Workers is the secondary runtime: the app also runs on a single
+# Durable Object that owns its SQLite database (see docs/develop/runtime.md).
+# This workflow proves that target still works.
+#
+#  - `smoke-local` always runs. It boots the Worker in workerd through
+#    `wrangler dev`, so it needs no Cloudflare account.
+#  - `smoke-preview` uploads a preview version and runs the same suite
+#    against the deployed URL. It is skipped unless the repository has
+#    CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID, so forks stay green.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/api/**"
+      - "apps/web/**"
+      - "tests/workers/**"
+      - ".github/workflows/workers.yml"
+  pull_request:
+    paths:
+      - "apps/api/**"
+      - "apps/web/**"
+      - "tests/workers/**"
+      - ".github/workflows/workers.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: workers-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  BUN_VERSION: "1.4.2"
+  NODE_VERSION: "24.21.0"
+
+jobs:
+  smoke-local:
+    name: workerd smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # The migrations bundle is committed; a stale one would make the
+      # Worker run a different schema than the Bun build.
+      - name: Check the Durable Object migrations bundle is current
+        working-directory: apps/api
+        run: bun run db:check-migrations
+
+      # `wrangler.jsonc` points the asset pipeline at apps/web/dist.
+      - name: Build the SPA
+        run: bun run --filter @app/web build
+
+      - name: Build the Worker bundle
+        working-directory: apps/api
+        run: bun run workers:build
+
+      - name: Configure smoke-test variables
+        run: cp apps/api/.dev.vars.example apps/api/.dev.vars
+
+      - name: Smoke test on workerd
+        run: bun run test:workers
+
+  smoke-preview:
+    name: preview deployment smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: smoke-local
+    # Only on the upstream repo's main branch, and only when the account is
+    # configured. `vars` is checked rather than `secrets` so the job is
+    # skipped cleanly instead of failing on a missing token.
+    if: github.event_name != 'pull_request' && vars.CLOUDFLARE_ACCOUNT_ID != ''
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build the SPA
+        run: bun run --filter @app/web build
+
+      # `versions upload` publishes a preview version with its own URL and
+      # does not move production traffic. Promote with `wrangler versions
+      # deploy` once the smoke test is green.
+      - name: Upload a preview version
+        id: upload
+        working-directory: apps/api
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          bunx wrangler versions upload 2>&1 | tee /tmp/upload.log
+          url="$(grep -oE 'https://[a-z0-9-]+\.[a-z0-9-]+\.workers\.dev' /tmp/upload.log | head -1)"
+          if [ -z "$url" ]; then
+            echo "::error::could not parse the preview URL from wrangler output"
+            exit 1
+          fi
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      # The Worker reads its secrets from the deployment, so the single-user
+      # credentials the smoke test logs in with must already be set there:
+      #   wrangler secret put SINGLE_USER_MODE / SINGLE_USER_USERNAME /
+      #   SINGLE_USER_PASSWORD_HASH
+      - name: Smoke test the preview deployment
+        run: bun tests/workers/smoke.ts --url "${{ steps.upload.outputs.url }}"

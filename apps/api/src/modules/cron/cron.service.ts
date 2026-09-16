@@ -6,6 +6,7 @@ import type { Logger } from "@/shared/lib/logger";
 import Baker from "cronbake";
 import { and, eq, isNull } from "drizzle-orm";
 import { cronJobLogs, cronJobs } from "@/modules/cron/schema";
+import { getPlatform } from "@/platform";
 import { nanoid } from "@/shared/lib/id";
 import { __resetAndReinitActionsForTests, getAction, getActionExecutor, getDefaultActions } from "./actions";
 import { normalizeCron } from "./cron-format";
@@ -183,6 +184,30 @@ async function syncJobInternal(
  * helper). Callers that skip both will hit "Unknown action" errors at
  * registration time.
  */
+/**
+ * Refuse to start the scheduler on a host that cannot keep it running.
+ *
+ * cronbake arms a timer per job and relies on the process staying resident
+ * between firings. On a runtime that evicts the app when idle, those timers
+ * stop without any error and jobs silently never run — worse than not
+ * offering the feature. Called from `buildFullApp` before `startCron`, so
+ * the failure lands at boot with the misconfiguration in hand.
+ *
+ * Such deployments drive jobs externally instead: a platform cron trigger
+ * (or any outside scheduler) calling `POST /api/cron/jobs/:id/trigger`,
+ * which executes a job without the in-process scheduler.
+ */
+export function assertCronSchedulerSupported(): void {
+  if (getPlatform().capabilities.residentTimers)
+    return;
+  throw new Error(
+    "CRON_ENABLED=true needs a runtime that keeps the app resident between "
+    + "requests; this one evicts it when idle, so scheduled jobs would stop "
+    + "firing silently. Set CRON_ENABLED=false and drive jobs from an "
+    + "external scheduler via POST /api/cron/jobs/:id/trigger.",
+  );
+}
+
 export async function startCron(deps: SchedulerDeps): Promise<void> {
   if (_scheduler)
     return;

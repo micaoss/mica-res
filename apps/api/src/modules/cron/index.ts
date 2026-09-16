@@ -7,6 +7,6 @@ import { cronBackupContribution } from "./cron.backup";
 // the cron gate is off.
 export { initActions as initCronActions } from "./actions";
 export { cronRoutes } from "./cron.routes";
-export { startCron, stopCron } from "./cron.service";
+export { assertCronSchedulerSupported, startCron, stopCron } from "./cron.service";
 
 registerBackupContribution(cronBackupContribution);

@@ -17,6 +17,7 @@ import { audit } from "@/modules/audit/audit.service";
 import { deriveOrigin, getAuthConfig, getOAuthConfig, getOidcLogoutUrl, getSingleUserConfig, isOAuthConfigured, isSingleUserMode } from "@/shared/lib/app-config";
 import { getClientIp } from "@/shared/lib/client-ip";
 import { describeRoute, errors, jsonOk, TAGS } from "@/shared/lib/openapi";
+import { consumeRateLimit } from "@/shared/middleware/rate-limit";
 import {
   consumePkceEntry,
   createPkceChallenge,
@@ -112,14 +113,6 @@ function oauthStateCookieName(env: "production" | "development" | "test"): strin
 // any one peer in a sliding minute.
 const AUTH_RATE_WINDOW_MS = 60_000;
 const AUTH_RATE_MAX = 120;
-const AUTH_RATE_MAX_BUCKETS = 10_000;
-
-interface RateBucket {
-  count: number;
-  resetAt: number;
-}
-
-const authRateBuckets = new Map<string, RateBucket>();
 
 /**
  * Rate-limit key. Defers to `getClientIp` so `TRUST_PROXY=true` deployments
@@ -131,23 +124,8 @@ export function rateLimitKey(c: Context<AppEnv>): string {
 }
 
 /** Returns 0 when allowed, else seconds remaining until the bucket resets. */
-function checkAuthRateLimit(ip: string): number {
-  const now = Date.now();
-  const bucket = authRateBuckets.get(ip);
-  if (bucket && now < bucket.resetAt) {
-    if (bucket.count >= AUTH_RATE_MAX) {
-      return Math.max(1, Math.ceil((bucket.resetAt - now) / 1000));
-    }
-    bucket.count++;
-    return 0;
-  }
-  if (authRateBuckets.size >= AUTH_RATE_MAX_BUCKETS) {
-    const firstKey = authRateBuckets.keys().next().value;
-    if (firstKey !== undefined)
-      authRateBuckets.delete(firstKey);
-  }
-  authRateBuckets.set(ip, { count: 1, resetAt: now + AUTH_RATE_WINDOW_MS });
-  return 0;
+function checkAuthRateLimit(ip: string): Promise<number> {
+  return consumeRateLimit({ bucket: "auth", key: ip, windowMs: AUTH_RATE_WINDOW_MS, max: AUTH_RATE_MAX });
 }
 
 // --- Per-username lockout for single-user login ---
@@ -259,7 +237,7 @@ export function authRoutes() {
     }),
     async (c) => {
       {
-        const retryAfter = checkAuthRateLimit(rateLimitKey(c));
+        const retryAfter = await checkAuthRateLimit(rateLimitKey(c));
         if (retryAfter > 0) {
           c.header("Retry-After", String(retryAfter));
           return c.json({ success: false, error: { code: "RATE_LIMITED", message: "Too many requests" } }, 429);
@@ -323,7 +301,7 @@ export function authRoutes() {
     }),
     async (c) => {
       {
-        const retryAfter = checkAuthRateLimit(rateLimitKey(c));
+        const retryAfter = await checkAuthRateLimit(rateLimitKey(c));
         if (retryAfter > 0) {
           c.header("Retry-After", String(retryAfter));
           return c.json({ success: false, error: { code: "RATE_LIMITED", message: "Too many requests" } }, 429);
@@ -618,7 +596,7 @@ export function authRoutes() {
     }),
     async (c) => {
       {
-        const retryAfter = checkAuthRateLimit(rateLimitKey(c));
+        const retryAfter = await checkAuthRateLimit(rateLimitKey(c));
         if (retryAfter > 0) {
           c.header("Retry-After", String(retryAfter));
           return c.json({ success: false, error: { code: "RATE_LIMITED", message: "Too many requests" } }, 429);
@@ -746,7 +724,7 @@ export function authRoutes() {
     }),
     async (c) => {
       {
-        const retryAfter = checkAuthRateLimit(rateLimitKey(c));
+        const retryAfter = await checkAuthRateLimit(rateLimitKey(c));
         if (retryAfter > 0) {
           c.header("Retry-After", String(retryAfter));
           return c.json({ success: false, error: { code: "RATE_LIMITED", message: "Too many requests" } }, 429);

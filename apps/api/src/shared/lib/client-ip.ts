@@ -13,7 +13,8 @@ interface ClientIpConfig {
  *
  * Default behaviour (`TRUST_PROXY=false`): forwarding headers are
  * IGNORED to prevent header-spoofing attacks; only the connection peer
- * IP from the Bun runtime (`c.env.IP.address`) is used.
+ * IP is used: Bun's `c.env.IP.address`, or `CF-Connecting-IP` on
+ * Cloudflare, which the edge always overwrites.
  *
  * When `TRUST_PROXY=true` the function honours the rightmost entry of
  * `X-Forwarded-For` (the hop closest to our process — the one controlled
@@ -28,7 +29,11 @@ interface ClientIpConfig {
  * behaviour.
  */
 export function getClientIp(c: Context, config?: ClientIpConfig): string {
-  const peerIp = c.env?.IP?.address;
+  // `c.env.IP.address` is Bun's connection peer. On Cloudflare the edge
+  // sets `CF-Connecting-IP` and overwrites any client-supplied value, so it
+  // plays the same role: an unspoofable peer identity that does not depend
+  // on TRUST_PROXY.
+  const peerIp = c.env?.IP?.address ?? c.req.header("cf-connecting-ip");
 
   if (!config?.TRUST_PROXY) {
     return peerIp ?? "unknown";

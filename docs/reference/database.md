@@ -243,13 +243,28 @@ different purposes; neither derives the other. Document sharing is also
 expressed as policy tuples (`viewer` / `editor`), not as a dedicated
 shares table.
 
+### Shared infrastructure
+
+Tables that no single module owns. They live in `apps/api/src/shared/schema.ts`
+rather than under a module.
+
+#### `rate_limits`
+Fixed-window counters for the durable per-user limiter. `key`, `count`,
+`reset_at` (epoch ms). `key` is `<resource>:<window>:<user-id>` — e.g.
+`issue:minute:u_123`, `attachment:hour:u_123` — so each resource carries its
+own budget in each window. Bumped with one upsert so concurrent requests
+cannot lose an increment, and the row is overwritten in place on the next
+window, so cardinality is bounded by users × resources × windows and no
+sweep is needed. Excluded from backups, like `auth_lockouts` — transient
+security state, not user data.
+
 ## Schema scope
 
 The current schema covers: accounts (users / groups / group memberships /
 sessions / TOTP / preferences / PKCE state / auth lockouts), audit,
 settings, Zanzibar tuples, items + item comments, files + file
-references, and the two sub-type detail tables (`issue_details`,
-`document_details`).
+references, the two sub-type detail tables (`issue_details`,
+`document_details`), and the shared `rate_limits` counters.
 
 Group membership lives in a dedicated `group_members` table owned by the
 account module — separating it from `relation_tuples` lets a deployment

@@ -10,7 +10,7 @@ import { secureHeaders } from "hono/secure-headers";
 import { loadConfig } from "./config";
 import { logDefaultAdmins } from "./modules/account/auth/auth.service";
 import { startAuditRetentionSweep } from "./modules/audit";
-import { initCronActions, startCron } from "./modules/cron";
+import { assertCronSchedulerSupported, initCronActions, startCron } from "./modules/cron";
 import { docsCspRelax, mountDocs } from "./modules/docs";
 import { bootstrapEncryption } from "./modules/encryption";
 import { EncryptionState as EncryptionStateCtor } from "./modules/encryption/state";
@@ -19,6 +19,7 @@ import { getAllRouteBindings, policyMiddleware } from "./modules/policy";
 import { protectedRoutes, publicRoutes, setupRoutes } from "./routes";
 import { getAuthConfig, seedSettingsFromEnv } from "./shared/lib/app-config";
 import { createLogger } from "./shared/lib/logger";
+import { creationRateLimit } from "./shared/middleware/creation-rate-limit";
 import { csrfGuard } from "./shared/middleware/csrf";
 import { errorHandler } from "./shared/middleware/error-handler";
 import { loggingMiddleware } from "./shared/middleware/logging";
@@ -147,6 +148,10 @@ function installCommonMiddleware(
   // through; admin actors bypass before any DB query. See
   // docs/develop/module/policy-standard.md.
   api.use("*", policyMiddleware({ basePath: `${config.BASE_PATH}/api` }));
+  // Per-user creation quota. Mounted once and self-discovering: it reads the
+  // router table to find the routes that create something, so a new module
+  // is covered as soon as it mounts. See shared/middleware.
+  api.use("*", creationRateLimit({ app: api, basePath: `${config.BASE_PATH}/api` }));
 }
 
 // ─── Full App (unlocked) ───
@@ -167,6 +172,9 @@ export async function buildFullApp({ config, db, logger, encryption }: AppDeps) 
   // via `CRON_ACTIONS_ENABLED`.
   initCronActions({ enabledActions: config.CRON_ACTIONS_ENABLED });
   if (config.CRON_ENABLED) {
+    // Fails the boot rather than letting a host that evicts the app between
+    // requests pretend it is running a scheduler.
+    assertCronSchedulerSupported();
     await startCron({ db, logger, config });
   }
 

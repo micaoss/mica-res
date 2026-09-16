@@ -7,6 +7,7 @@ import { chmodSync, closeSync, mkdirSync, openSync, rmSync, statSync, writeFileS
 import { dirname, resolve } from "node:path";
 import process from "node:process";
 import { createDb } from "@/db";
+import { getPlatform } from "@/platform";
 import { readEncryptionMeta } from "./meta";
 
 /**
@@ -62,8 +63,19 @@ export async function bootstrapEncryption(
   logger: Logger,
   onDbReady: (db: AppDatabase) => Promise<void>,
 ): Promise<EncryptionBootResult> {
+  const { capabilities } = getPlatform();
+  if (config.DB_ENCRYPTION && !capabilities.encryptionAtRest) {
+    throw new Error(
+      "DB_ENCRYPTION=true is not supported on this runtime: it relies on libsql "
+      + "page-level encryption and a local database file. Set DB_ENCRYPTION=false "
+      + "and rely on the host's encryption at rest.",
+    );
+  }
+
   if (!config.DB_ENCRYPTION) {
-    const meta = readEncryptionMeta(config.DB_PATH);
+    // `meta.db` is a local artefact. A runtime without a filesystem never
+    // wrote one, so there is no previously-encrypted database to detect.
+    const meta = capabilities.filesystem ? readEncryptionMeta(config.DB_PATH) : null;
     if (meta) {
       throw new Error(
         "DB_ENCRYPTION is disabled but the database was previously encrypted. "

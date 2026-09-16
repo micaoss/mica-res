@@ -108,6 +108,44 @@ about 332,000 GB-s, so a continuously warm single-instance deployment fits
 inside the included allowance. Request billing is $0.15 per million after the
 first million.
 
+## OpenID Connect on Workers
+
+Everything the flow needs is runtime configuration; nothing is stored in the
+settings table. A deployment needs:
+
+| Setting | Notes |
+| --- | --- |
+| `OAUTH_ISSUER` | Discovery fills the authorize, token, userinfo and end-session endpoints |
+| `OAUTH_CLIENT_ID` | |
+| `OAUTH_CLIENT_SECRET` | Omit for a public client; PKCE then carries the proof |
+| `OAUTH_PKCE` | Defaults to `true` |
+| `APP_URL` | Required in production — the callback URL is never inferred from forwarded headers |
+| `CORS_ORIGIN` | Required in production once OAuth is in play |
+| `DEFAULT_ADMIN` | The address promoted to admin when the admin set is empty |
+
+Register `${APP_URL}${BASE_PATH}/api/account/auth/callback` with the
+provider. The authorize request asks for `openid profile email`, sends
+`response_type=code`, and adds `code_challenge` with `code_challenge_method=S256`
+when PKCE is on.
+
+Single-user mode and OpenID Connect are mutually exclusive in practice: the
+login page renders a local form or a provider button, never both, and
+single-user wins. A deployment meant to use a provider must leave
+`SINGLE_USER_MODE` unset, or the provider it exists for is hidden.
+
+Two Workers-specific consequences:
+
+- **Discovery is fetched on every boot.** The cache is a file, and there is
+  no filesystem here, so each Durable Object start re-reads the provider's
+  `.well-known/openid-configuration`. A provider that is unreachable at that
+  moment leaves the endpoints unset and the login route answers
+  `oauth_not_configured`. Setting `OAUTH_AUTHORIZE_URL`, `OAUTH_TOKEN_URL`
+  and `OAUTH_USERINFO_URL` explicitly removes the dependency — they take
+  precedence over discovery.
+- **A login in flight does not survive a reset.** The PKCE verifier is sealed
+  with a key held only in memory, so an eviction or a configuration change
+  mid-login fails it with `oauth_state_invalid` and the user retries.
+
 ## Scheduled jobs on Workers
 
 The cron module delegates scheduling to cronbake, which arms a timer per job
@@ -146,6 +184,18 @@ bun run workers:deploy               # wrangler deploy
 Configuration lives in `apps/api/wrangler.toml`: the Durable Object binding
 and its SQLite migration tag, the R2 bucket for blobs, the asset directory,
 and the non-secret `vars`. Real secrets go through `wrangler secret put`.
+
+A secret outranks a `var` of the same name, and `wrangler secret` publishes a
+version of its own — so setting one after a deploy leaves two versions and a
+question of which serves. Prefer deploying configuration as `vars` in the
+same version as the code, and keep secrets for values that must not be
+readable from the dashboard.
+
+Attaching a custom domain needs the zone on the same account; state it with
+`zone_name` rather than relying on inference. Adding any route disables the
+workers.dev URL unless `workers_dev = true` is explicit, and a newly attached
+hostname routes before its certificate is issued — HTTP answers while HTTPS
+fails the handshake for a few minutes.
 
 Migrations are bundled into `src/db/migrations.generated.ts` because a Worker
 has no filesystem to read `drizzle/` from. `bun run db:generate` regenerates

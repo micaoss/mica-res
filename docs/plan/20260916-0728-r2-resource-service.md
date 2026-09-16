@@ -179,9 +179,12 @@ registry route.
 - The pull route is bounded as the coordinator asked: the origin is a hint and
   never a trust anchor (the digest is enforced, so a wrong origin can only
   fail), only `https://` is accepted, redirects are followed by hand with every
-  hop re-checked as https and the chain capped at five, and the response never
-  echoes what was fetched -- so the route cannot be used to read a URL, only to
-  store bytes whose hash is already known.
+  hop re-checked as https and the chain capped at five, and **the response
+  never echoes what was fetched -- that last property is the one that turns it
+  from an open fetcher into a store-only endpoint, and it is the one a later
+  reader will be tempted to relax.** It must not be relaxed: returning the
+  fetched bytes, or even their length or status detail, would make a bearer
+  token a way to read any URL the Worker can reach.
 
 Measured after phase 2:
 

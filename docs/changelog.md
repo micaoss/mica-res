@@ -9,6 +9,15 @@ write endpoint answers 401 rather than 503 to an unauthenticated write. The
 status collector ships early, ahead of any page, because the run history it
 snapshots is what the pruning pause only promises to preserve.
 
+## 2026-09-16 17:00 [progress]
+
+Phase 3: the thirteen vendor trees are mirrored as depth-1 packs (44 objects,
+1351.0 MiB), stored as ordered content-addressed chunks with a manifest, and
+`sync.yml` now walks the consumer contract end to end on every run. The
+release reader refuses an unmatched release set instead of returning empty,
+and the index snapshot is cached at the edge so resolving a registry tag no
+longer reads the index from R2.
+
 ## 2026-09-16 09:15 [progress]
 
 Phase A: the product images and update archives of the three newest scoped

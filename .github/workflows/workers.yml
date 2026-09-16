@@ -91,6 +91,10 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      # Optional. When set, the Worker is bound to this hostname and the app
+      # is told its own origin, which the OAuth callback and the CSRF guard
+      # both need. Unset means workers.dev only.
+      CUSTOM_DOMAIN: ${{ vars.WORKER_CUSTOM_DOMAIN }}
     steps:
       # The `secrets` context cannot be read from a job-level `if`, so the
       # credential check is a step. Without it the job would fail deep inside
@@ -197,7 +201,25 @@ jobs:
             # default is 60 a minute, which would take more requests to prove
             # than the property is worth.
             echo "CREATE_RATE_LIMIT_PER_MINUTE = \"10\""
+            if [ -n "${CUSTOM_DOMAIN:-}" ]; then
+              # In production the app refuses to guess its own origin from
+              # forwarded headers, and the CSRF guard has nothing to compare
+              # against until one of these is set.
+              echo "APP_URL = \"https://$CUSTOM_DOMAIN\""
+              echo "CORS_ORIGIN = \"https://$CUSTOM_DOMAIN\""
+            fi
           } >> wrangler.toml
+
+          # Last: a top-level array-of-tables closes the [vars] table, so
+          # anything appended after this would land in the route, not in vars.
+          if [ -n "${CUSTOM_DOMAIN:-}" ]; then
+            {
+              echo ""
+              echo "[[routes]]"
+              echo "pattern = \"$CUSTOM_DOMAIN\""
+              echo "custom_domain = true"
+            } >> wrangler.toml
+          fi
 
           echo "::add-mask::$password"
           echo "password=$password" >> "$GITHUB_OUTPUT"
@@ -228,7 +250,13 @@ jobs:
         run: |
           set -euo pipefail
           bunx wrangler deploy 2>&1 | tee /tmp/deploy.log
-          url="$(grep -oE 'https://[a-z0-9-]+\.[a-z0-9-]+\.workers\.dev' /tmp/deploy.log | head -1)"
+          if [ -n "${CUSTOM_DOMAIN:-}" ]; then
+            # The suite must target the same origin the app was told it has,
+            # or the CSRF guard rejects every mutating request.
+            url="https://$CUSTOM_DOMAIN"
+          else
+            url="$(grep -oE 'https://[a-z0-9-]+\.[a-z0-9-]+\.workers\.dev' /tmp/deploy.log | head -1)"
+          fi
           if [ -z "$url" ]; then
             echo "::error::could not parse the deployed URL from wrangler output"
             exit 1

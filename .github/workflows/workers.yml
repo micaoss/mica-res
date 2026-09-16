@@ -133,6 +133,31 @@ jobs:
           bucket="$(grep -oP 'bucket_name = "\K[^"]+' wrangler.toml)"
           bunx wrangler r2 bucket create "$bucket" 2>&1 | tee /tmp/bucket.log ||             grep -qiE "already (exists|owned)" /tmp/bucket.log
 
+      # Attaching a custom domain fails late, after the code has been
+      # uploaded, and leaves the Worker's triggers half-updated. Checking the
+      # zone first turns that into an early failure that names the zones the
+      # credentials can actually see.
+      - name: Check the custom domain's zone is reachable
+        if: env.CUSTOM_DOMAIN != ''
+        run: |
+          set -euo pipefail
+          zone="${CUSTOM_DOMAIN_ZONE:-}"
+          if [ -z "$zone" ]; then
+            echo "::error::WORKER_CUSTOM_DOMAIN is set but WORKER_CUSTOM_DOMAIN_ZONE is not"
+            exit 1
+          fi
+          zones="$(curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/zones?account.id=$CLOUDFLARE_ACCOUNT_ID&per_page=50")"
+          if echo "$zones" | jq -e --arg z "$zone" '.result[]? | select(.name == $z)' >/dev/null; then
+            echo "zone $zone is on this account"
+            exit 0
+          fi
+          echo "::error::the zone '$zone' is not on the account these credentials belong to"
+          echo "zones this token can see:"
+          echo "$zones" | jq -r '.result[]?.name // empty' | sed 's/^/  - /'
+          echo "$zones" | jq -r '.errors[]?.message // empty' | sed 's/^/  api: /'
+          exit 1
+
       # A Durable Object keeps running the code and configuration it was
       # constructed with until it is evicted, and this app's alarms keep it
       # resident. An object created before the reset mechanism existed

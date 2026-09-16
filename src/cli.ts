@@ -1,6 +1,7 @@
 // mica-res CLI.
 //
 //   bun src/cli.ts sync [--sizes] [--out <dir>]   enumerate; write nothing
+//   bun src/cli.ts site [--index <file>] [--out <dir>]
 //   bun src/cli.ts index --check <file>           read an index snapshot
 //
 // `sync` is a dry run: phase 0 uploads nothing. The uploader arrives with
@@ -43,6 +44,21 @@ async function sync(argv: string[]): Promise<void> {
   console.log(`  ${'git-tree'.padEnd(14)} ${String(gitTrees.length).padStart(4)} trees    (phase 3, not packed yet)`)
 }
 
+// The pages are a rendering of an index snapshot. With no snapshot -- before
+// the first upload -- they render an empty bucket rather than a promise.
+async function site(argv: string[]): Promise<void> {
+  const out = argv.includes('--out') ? argv[argv.indexOf('--out') + 1]! : 'tmp/site'
+  const file = argv.includes('--index') ? argv[argv.indexOf('--index') + 1]! : undefined
+  const document = file === undefined
+    ? buildIndex({ version: stamp(), objects: [] })
+    : readIndex(await Bun.file(file).text())
+
+  await mkdir(out, { recursive: true })
+  for (const page of renderSite(document))
+    await Bun.write(`${out}/${page.key.replace('site/', '')}`, page.body)
+  console.log(`site: ${document.objects.length} objects rendered into ${out}`)
+}
+
 async function index(argv: string[]): Promise<void> {
   const file = argv[argv.indexOf('--check') + 1]
   if (file === undefined)
@@ -56,10 +72,13 @@ switch (command) {
   case 'sync':
     await sync(argv)
     break
+  case 'site':
+    await site(argv)
+    break
   case 'index':
     await index(argv)
     break
   default:
-    console.error('usage: bun src/cli.ts sync [--sizes] [--out <dir>] | index --check <file>')
+    console.error('usage: bun src/cli.ts sync [--sizes] [--out <dir>] | site [--index <file>] [--out <dir>] | index --check <file>')
     process.exit(2)
 }

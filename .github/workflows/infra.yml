@@ -57,6 +57,19 @@ jobs:
         working-directory: worker
         run: bun x wrangler deploy 2>&1 | tee "${RUNNER_TEMP}/deploy.log"
 
+      # The site skeleton. It renders an empty bucket: phase 0 uploads no
+      # mirrored bytes, and the pages must not claim otherwise.
+      - name: Upload the site skeleton
+        if: inputs.deploy
+        run: |
+          set -euo pipefail
+          bun src/cli.ts site --out "${RUNNER_TEMP}/site"
+          for page in index upstream; do
+            bun x wrangler r2 object put "${BUCKET}/site/${page}.html" \
+              --file "${RUNNER_TEMP}/site/${page}.html" \
+              --content-type text/html --remote
+          done
+
       - name: Report what the credentials would not allow
         if: always()
         run: |

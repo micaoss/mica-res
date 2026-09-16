@@ -201,6 +201,18 @@ jobs:
             fi
             while IFS= read -r key; do
               [ -z "$key" ] && continue
+              # This app only writes `<ab>/<cd>/<sha256>` keys. The quoted
+              # expansion below is not re-parsed by the shell, but a
+              # destructive loop should still refuse anything outside a plain
+              # character set — a key holding a newline would otherwise be
+              # split by `read` and delete the wrong objects. The key itself
+              # is not echoed: it could carry workflow-command syntax.
+              case "$key" in
+                *[!A-Za-z0-9._/-]*)
+                  echo "::error::refusing to delete an object whose key has unexpected characters; remove it by hand"
+                  exit 1
+                  ;;
+              esac
               bunx wrangler r2 object delete "$bucket/$key" --remote >/dev/null
               deleted=$((deleted + 1))
             done < <(echo "$page" | jq -r '.result[]?.key')
@@ -383,7 +395,7 @@ jobs:
               -H 'Content-Type: application/json' -H 'X-Requested-With: XMLHttpRequest' \
               -H "Origin: $url" \
               --data "$(jq -n --arg u "$SMOKE_USERNAME" --arg p "$SMOKE_PASSWORD" '{username:$u,password:$p}')" \
-              "$url/api/account/auth/login-local")"
+              "$url/api/account/auth/login-local" || true)"
             echo "login -> $last"
             [ "$last" = "200" ] && exit 0
             sleep 4
@@ -403,7 +415,11 @@ jobs:
         run: |
           url="${{ steps.deploy.outputs.url }}"
           for _ in $(seq 1 90); do
-            code="$(curl -s -o /dev/null -w '%{http_code}' "$url/api/health")"
+            # `|| true`: under `bash -e` a transport failure — the hostname not
+            # resolving yet, a handshake before the certificate exists — would
+            # otherwise abort the step on the first attempt instead of
+            # retrying. curl still prints 000 for it.
+            code="$(curl -s -o /dev/null -w '%{http_code}' "$url/api/health" || true)"
             [ "$code" = "200" ] && { echo "serving"; exit 0; }
             sleep 8
           done

@@ -56,6 +56,11 @@ jobs:
           SIZES: ${{ inputs.sizes || false }}
           GITHUB_TOKEN: ${{ github.token }}
           MICA_RES_WRITE_TOKEN: ${{ secrets.WRITE_TOKEN }}
+      # The consumer contract for a git pack, walked against the live mirror:
+      # fetch the manifest, join the chunks, import, check out the pinned
+      # commit, fsck. What mica-boards implements is a path verified here.
+      - name: Verify a mirrored git pack end to end
+        run: bun src/cli.ts verify-pack
       - uses: actions/upload-artifact@v7
         with:
           name: sync-${{ github.run_id }}

@@ -118,3 +118,68 @@ export async function producePack(tree: GitTree): Promise<Uint8Array> {
     await rm(work, { recursive: true, force: true })
   }
 }
+
+export interface Manifest {
+  schema: string
+  repository: string
+  name: string
+  url: string
+  commit: string
+  pack: Piece
+  chunks: Piece[]
+}
+
+export function readManifest(text: string): Manifest {
+  const manifest = JSON.parse(text) as Manifest
+  if (manifest.schema !== SCHEMA)
+    throw new Error(`schema: ${manifest.schema} is not ${SCHEMA}`)
+  if (!/^[0-9a-f]{40}$/.test(manifest.commit))
+    throw new Error(`field-value: ${manifest.commit} is not a commit`)
+  if (manifest.chunks.length === 0)
+    throw new Error('field-value: a manifest names no chunk')
+  return manifest
+}
+
+// The consumer contract, run as a gate here so that what mica-boards is asked
+// to implement is a path this repository has already walked: fetch the
+// manifest, fetch its chunks in order, concatenate them into
+// `git index-pack --stdin`, write the one-line shallow file, and check out the
+// pinned commit. Git verifies every object it imports, so a wrong byte fails
+// the import rather than producing a wrong tree.
+export async function verifyPack(base: string, tree: { name: string, commit: string }, work: string): Promise<{ pack: number, chunks: number }> {
+  const manifest = readManifest(await (await fetch(`${base}${manifestName(tree as GitTree)}`)).text())
+  const names = chunkNames(tree as GitTree, manifest.chunks.length)
+  const packFile = join(work, 'joined.pack')
+  const writer = Bun.file(packFile).writer()
+  for (const [index, name] of names.entries()) {
+    const answer = await fetch(`${base}${name}`)
+    if (!answer.ok)
+      throw new Error(`chunk: ${answer.status} for ${name}`)
+    const bytes = new Uint8Array(await answer.arrayBuffer())
+    const expected = manifest.chunks[index]!
+    const digest = Bun.SHA256.hash(bytes, 'hex')
+    if (digest !== expected.sha256)
+      throw new Error(`chunk-sha256: ${name} is ${digest}, the manifest says ${expected.sha256}`)
+    writer.write(bytes)
+  }
+  await writer.end()
+
+  const whole = Bun.SHA256.hash(await Bun.file(packFile).bytes(), 'hex')
+  if (whole !== manifest.pack.sha256)
+    throw new Error(`pack-sha256: the joined chunks are ${whole}, the manifest says ${manifest.pack.sha256}`)
+
+  const repository = join(work, 'import')
+  await run(['git', 'init', '-q', repository])
+  const importer = Bun.spawn(['git', '-C', repository, 'index-pack', '--stdin'], { stdin: Bun.file(packFile), stdout: 'ignore', stderr: 'pipe' })
+  if (await importer.exited !== 0)
+    throw new Error(`index-pack refused the pack of ${tree.name}`)
+  await Bun.write(join(repository, '.git/shallow'), `${tree.commit}\n`)
+  await run(['git', '-C', repository, 'checkout', '-q', '--detach', tree.commit])
+
+  const head = Bun.spawn(['git', '-C', repository, 'rev-parse', 'HEAD'], { stdout: 'pipe', stderr: 'pipe' })
+  const got = (await new Response(head.stdout).text()).trim()
+  if (got !== tree.commit)
+    throw new Error(`commit-mismatch: the imported tree is at ${got}, the lock pins ${tree.commit}`)
+  await run(['git', '-C', repository, 'fsck', '--no-dangling'])
+  return { pack: manifest.pack.size, chunks: manifest.chunks.length }
+}

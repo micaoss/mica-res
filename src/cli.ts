@@ -4,6 +4,7 @@
 //   bun src/cli.ts sync --apply [--kinds deb,source] [--limit <n>]
 //   bun src/cli.ts site [--index <file>] [--out <dir>]
 //   bun src/cli.ts collect [--apply] [--out <dir>]
+//   bun src/cli.ts verify-pack [--name <tree>]    walk the consumer contract
 //   bun src/cli.ts index --check <file>           read an index snapshot
 //
 // `sync` is a dry run unless `--apply` is given. Uploads go only through the
@@ -11,7 +12,9 @@
 // key that is not its digest; the index, the pointer and the site pages go
 // through the named write routes. Nothing here deletes anything.
 
-import { mkdir } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { enumerate } from './enumerate.ts'
 import { buildIndex, readIndex, renderIndex, renderPointer, summarise } from './index-doc.ts'
 import type { Kind, ResourceObject } from './objects.ts'
@@ -21,7 +24,7 @@ import { concluded, listJobs, listRuns, renderCurrent, renderRun, runKey, runSna
 import type { CurrentRun } from './collect.ts'
 import { REPOSITORIES } from './producers.ts'
 import { ghcrToken } from './ghcr.ts'
-import { chunkBytes, chunkNames, manifestName, packObjects, producePack, renderManifest } from './gitpack.ts'
+import { chunkBytes, chunkNames, manifestName, packObjects, producePack, renderManifest, verifyPack } from './gitpack.ts'
 import type { GitTree } from './enumerate.ts'
 import { ensureBlob, pullBlob, putNamed, resolveRedirect, resolveState, writeBlob } from './upload.ts'
 import type { Target } from './upload.ts'
@@ -243,6 +246,39 @@ async function collect(argv: string[]): Promise<void> {
   console.log(`collect: ${written} snapshots ${to === undefined ? 'rendered' : 'written'}, ${held} already held, ${inFlight} in flight, 0 deleted`)
 }
 
+// Walks the contract a consumer implements, against the live mirror.
+async function verify(argv: string[]): Promise<void> {
+  const base = process.env['MICA_RES_BASE'] ?? DEFAULT_BASE
+  const wanted = argv.includes('--name') ? argv[argv.indexOf('--name') + 1] : undefined
+  const pointer = await fetch(`${base}/index/current.json`)
+  if (!pointer.ok)
+    throw new Error(`index: ${pointer.status} for ${base}/index/current.json`)
+  const snapshot = readIndex(await (await fetch(`${base}/index/${(await pointer.json() as { version: string }).version}.json`)).text())
+
+  const manifests = snapshot.objects.filter(object => object.kind === 'git-pack' && object.mediaType === 'application/json')
+  const trees = manifests.map((object) => {
+    const readable = object.readable.find(name => name.endsWith('.json'))!
+    const parts = readable.split('/')
+    return { name: parts[4]!, commit: parts[5]!.replace('.json', ''), size: object.size ?? 0 }
+  })
+  const chosen = wanted === undefined
+    ? trees.sort((a, b) => a.size - b.size)[0]
+    : trees.find(tree => tree.name === wanted)
+  if (chosen === undefined) {
+    console.log(`verify-pack: no git pack to verify${wanted === undefined ? '' : ` for ${wanted}`}`)
+    return
+  }
+
+  const work = await mkdtemp(join(tmpdir(), 'mica-res-verify-'))
+  try {
+    const answer = await verifyPack(base, chosen, work)
+    console.log(`verify-pack: ${chosen.name} at ${chosen.commit} imported from ${answer.chunks} chunk(s), ${(answer.pack / 1048576).toFixed(1)} MiB, checked out and fsck clean`)
+  }
+  finally {
+    await rm(work, { recursive: true, force: true })
+  }
+}
+
 async function index(argv: string[]): Promise<void> {
   const file = argv[argv.indexOf('--check') + 1]
   if (file === undefined)
@@ -255,6 +291,9 @@ const [command, ...argv] = process.argv.slice(2)
 switch (command) {
   case 'sync':
     await sync(argv)
+    break
+  case 'verify-pack':
+    await verify(argv)
     break
   case 'collect':
     await collect(argv)

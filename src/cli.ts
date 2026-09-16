@@ -57,13 +57,21 @@ function mib(bytes: number): string {
 }
 
 // A tree already mirrored is recognised by its manifest, which names the pack
-// and its ordered chunks, so a second run fetches no git history at all.
+// and its ordered chunks, so a second run fetches no git history at all. The
+// lookup runs in a dry run too, so the index and the site state what the bucket
+// holds rather than only what an apply touched.
+async function heldTree(tree: GitTree, base: string): Promise<ResourceObject[] | undefined> {
+  const held = await fetch(`${base}${manifestName(tree)}`)
+  if (!held.ok)
+    return undefined
+  const manifest = await held.json() as { pack: { sha256: string, size: number }, chunks: { sha256: string, size: number }[] }
+  return packObjects(tree, manifest.pack, manifest.chunks, renderManifest(tree, manifest.pack, manifest.chunks))
+}
+
 async function mirrorTree(tree: GitTree, to: Target): Promise<{ objects: ResourceObject[], produced: boolean }> {
-  const held = await fetch(`${to.base}${manifestName(tree)}`)
-  if (held.ok) {
-    const manifest = await held.json() as { pack: { sha256: string, size: number }, chunks: { sha256: string, size: number }[] }
-    return { objects: packObjects(tree, manifest.pack, manifest.chunks, renderManifest(tree, manifest.pack, manifest.chunks)), produced: false }
-  }
+  const held = await heldTree(tree, to.base)
+  if (held !== undefined)
+    return { objects: held, produced: false }
 
   const pack = await producePack(tree)
   const pieces = chunkBytes(pack)
@@ -129,6 +137,13 @@ async function sync(argv: string[]): Promise<void> {
         console.log(`  ${stored + present}/${wanted.length} (${stored} written, ${present} already held)`)
     }
     console.log(`apply: ${stored} written (${pulled} of them streamed by the Worker from their origin), ${present} already held, 0 deleted`)
+  }
+
+  if (!apply) {
+    // Dry run: report the packs the bucket already holds, produce none.
+    const base = process.env['MICA_RES_BASE'] ?? DEFAULT_BASE
+    for (const tree of gitTrees)
+      objects.push(...(await heldTree(tree, base) ?? []))
   }
 
   if (apply && kinds.includes('git-pack')) {

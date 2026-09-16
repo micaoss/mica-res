@@ -9,6 +9,16 @@ write endpoint answers 401 rather than 503 to an unauthenticated write. The
 status collector ships early, ahead of any page, because the run history it
 snapshots is what the pruning pause only promises to preserve.
 
+## 2026-09-16 08:40 [pitfall]
+
+Cloudflare rejects a request body past the plan limit at the edge, before the
+Worker runs: a 129.3 MB archive answered 413. Large objects are therefore
+streamed by the Worker from their origin (`POST /w/pull/<sha256>`) with the
+pinned digest handed to R2 as the expected checksum. Two reporting bugs were
+caught the same way: the index took its state from what a run uploaded rather
+than from the bucket, and an object the Worker already held was counted as
+written.
+
 ## 2026-09-16 08:20 [decision]
 
 The status site lives on one host with the mirror (user): `res.micaos.dev`,

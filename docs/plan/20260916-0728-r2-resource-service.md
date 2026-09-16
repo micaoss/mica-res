@@ -128,7 +128,36 @@ routes, and the `state` member of an index entry.
   mirrored blob.
 - An index entry carries `state`: `mirrored` when the bucket holds the bytes,
   `pending` otherwise, so neither the index nor the site ever claims a byte
-  that is not there.
+  that is not there. Presence is **read back from the bucket** before a
+  snapshot is written, not inferred from what the run uploaded.
+- Cloudflare refuses a request body past its plan's limit **at the edge**: a
+  129.3 MB archive answered `413 Payload Too Large` before the Worker ran. So
+  an object above 95 MiB is not uploaded in one request; instead
+  `POST /w/pull/<sha256>` asks the Worker to stream it from its origin into
+  R2, handing R2 the pinned digest as the expected checksum, so R2 refuses the
+  object unless the bytes hash to it. The bytes never pass through a request
+  body or the Worker's 128 MB memory, and the route grants no capability the
+  blob write does not: the key is still the digest, so the worst a bearer
+  holder can do is store content under its own hash.
+- Debian archives also answer under `/d/upstream/debian/pool/<tail>`, the
+  shape mica-system-base's existing hook rewrites to
+  (`MICA_BASE_MIRROR=pool:<base>`, `src/cache.ts mirrorUrl`), which is what
+  lets that repository use the mirror with a CI variable and no code change.
+
+Phase 1 result, 2026-09-16: **347 of 347 third-party objects mirrored,
+1638.0 MiB** -- 324 Debian archives (102.9 MiB) and 23 source archives
+(1535.0 MiB), the seven largest streamed by the Worker. Verified from outside:
+a 112 MiB Worker-pulled archive reads back with exactly its pinned sha256, a
+blob serves `cache-control: public, max-age=31536000, immutable` with an
+`etag`, both readable shapes resolve to the same bytes, and a range request
+answers 206.
+
+Still to wire, in other repositories and therefore requested through the
+coordinator: `MICA_BASE_MIRROR=pool:https://res.micaos.dev/d/upstream/debian`
+in mica-system-base's CI (no code change), and a fetch-time hook in
+mica-boards that tries `<mirror>/blob/<sha256[0:2]>/<sha256>` before a row's
+URL -- boards knows the sha256 from its own lock, so the canonical blob path
+needs no readable names and no lock rewrite.
 
 Later phases: 2 the build-env images plus the read-only registry route, A the
 product images with the `mirrors` member proposed to `mica` docs, 3 the vendor

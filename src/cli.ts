@@ -191,10 +191,17 @@ async function sync(argv: string[]): Promise<void> {
   // What the bucket holds, read back from it, whatever this run uploaded.
   await resolveState(objects, process.env['MICA_RES_BASE'] ?? DEFAULT_BASE)
 
-  // The two uefi kernels are the same commit, so their packs are the same bytes
-  // under two names: merging unions the names onto one object rather than
-  // listing a digest twice.
-  const document = buildIndex({ version: stamp(), objects: mergeObjects(objects) })
+
+  // The two uefi kernels are the same commit, so their packs can be the same
+  // bytes under two names: merging unions the names onto one object rather
+  // than listing a digest twice. The count below is the DOCUMENT's, not the
+  // pre-merge array's -- reporting the array's was a figure that disagreed
+  // with the published index by the number of merged duplicates, which the
+  // audit caught.
+  const merged = mergeObjects(objects)
+  if (merged.length !== objects.length)
+    console.log(`merged ${objects.length - merged.length} duplicate entr${objects.length - merged.length === 1 ? 'y' : 'ies'} onto objects already named`)
+  const document = buildIndex({ version: stamp(), objects: merged })
   const snapshot = renderIndex(document)
   readIndex(snapshot)
   await refuseRegression(document, process.env['MICA_RES_BASE'] ?? DEFAULT_BASE)
@@ -214,8 +221,8 @@ async function sync(argv: string[]): Promise<void> {
       console.log(`${page.key}: ${await putNamed(page.key, page.body, to)}`)
   }
 
-  console.log(`${apply ? 'applied' : 'dry run'}: ${objects.length} objects pinned, snapshot written to ${out}`)
-  for (const row of summarise(objects))
+  console.log(`${apply ? 'applied' : 'dry run'}: ${document.objects.length} objects pinned, snapshot written to ${out}`)
+  for (const row of summarise(document.objects))
     console.log(`  ${row.kind.padEnd(14)} ${String(row.mirrored).padStart(4)}/${String(row.count).padEnd(4)} mirrored  ${mib(row.mirroredBytes).padStart(10)} of ${mib(row.bytes).padStart(10)}${row.sizesUnknown > 0 ? `  (${row.sizesUnknown} without a stated size)` : ''}`)
   console.log(`  ${'git-tree'.padEnd(14)} ${String(gitTrees.length).padStart(4)} trees    (phase 3, not packed yet)`)
 }

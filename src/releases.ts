@@ -22,23 +22,25 @@ interface Release {
   assets: ReleaseAsset[]
 }
 
-// Scoped release tags are `<scope>/<YYYYMMDD-HHMM>`. The index release scope
-// `mica` is skipped: a `mica/<stamp>` release carries only its lock and
+// A scoped release tag is `<scope>.<YYYYMMDD-HHMM>`, the form mica-build
+// publishes and its own lock's release row carries (`uefi-x64.20260916-0845`);
+// the `<scope>/<stamp>` form in the spec text is not what exists. The index
+// scope `mica` is skipped: a `mica.<stamp>` release carries only its lock and
 // `mica-index.json`, and copies the indexed products' `asset` rows without
 // publishing those bytes again (mica:docs/design/mica-index.md 1).
 export function keptReleases(tags: string[], keptPerScope = KEPT_PER_SCOPE): string[] {
   const byScope = new Map<string, string[]>()
   for (const tag of tags) {
-    const [scope, stamp] = tag.split('/')
-    if (scope === undefined || scope === 'mica' || stamp === undefined || !/^[0-9]{8}-[0-9]{4}$/.test(stamp))
+    const match = /^([a-z0-9][a-z0-9-]*)\.([0-9]{8}-[0-9]{4})$/.exec(tag)
+    if (match === null || match[1] === 'mica')
       continue
-    byScope.set(scope, [...(byScope.get(scope) ?? []), tag])
+    byScope.set(match[1]!, [...(byScope.get(match[1]!) ?? []), tag])
   }
   return [...byScope.values()].flatMap(tags => tags.sort().reverse().slice(0, keptPerScope)).sort()
 }
 
 export function assetObjects(tag: string, rows: AssetRow[], sizes: Map<string, number>, repository: string): ResourceObject[] {
-  const [scope, stamp] = tag.split('/')
+  const [scope, stamp] = tag.split('.')
   return rows.map((row) => {
     const size = sizes.get(row.file)
     if (size === undefined)

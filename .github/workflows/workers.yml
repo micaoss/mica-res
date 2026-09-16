@@ -194,6 +194,30 @@ jobs:
         working-directory: apps/api
         run: bunx wrangler deploy
 
+      # The login handler turns a verification error into a 401 after logging
+      # it, so a failure is indistinguishable from a wrong password unless
+      # the Worker's own log is read. One attempt under `wrangler tail`
+      # answers the question that the status code cannot.
+      - name: Probe one login with the Worker log attached
+        working-directory: apps/api
+        env:
+          SMOKE_USERNAME: ${{ steps.creds.outputs.username }}
+          SMOKE_PASSWORD: ${{ steps.creds.outputs.password }}
+        run: |
+          url="${{ steps.deploy.outputs.url }}"
+          bunx wrangler tail --format json > /tmp/tail.log 2>&1 &
+          tail_pid=$!
+          sleep 8
+          curl -s -o /dev/null -w 'probe login -> %{http_code}\n' -X POST \
+            -H 'Content-Type: application/json' -H 'X-Requested-With: XMLHttpRequest' \
+            -H "Origin: $url" \
+            --data "$(jq -n --arg u "$SMOKE_USERNAME" --arg p "$SMOKE_PASSWORD" '{username:$u,password:$p}')" \
+            "$url/api/account/auth/login-local"
+          sleep 8
+          kill "$tail_pid" 2>/dev/null || true
+          echo "--- worker log ---"
+          cat /tmp/tail.log | head -60
+
       # The edge takes a moment to serve the new version. Waiting on "the route stopped answering 404" is not enough:
       # a previous run's secrets already satisfy that while the *new* hash is
       # still rolling out, which reads as a credential bug. So the gate is the

@@ -172,20 +172,28 @@ jobs:
           echo "::add-mask::$password"
           echo "password=$password" >> "$GITHUB_OUTPUT"
 
-      # `secret bulk` rolls out a new version; until it lands the previous one
-      # is still serving and single-user login answers 404.
-      - name: Wait for the new version to serve
+      # `secret bulk` publishes a new version, and the edge takes a moment to
+      # serve it. Waiting on "the route stopped answering 404" is not enough:
+      # a previous run's secrets already satisfy that while the *new* hash is
+      # still rolling out, which reads as a credential bug. So the gate is the
+      # precondition the suite actually needs — these credentials log in.
+      - name: Wait for the new credentials to serve
+        env:
+          SMOKE_PASSWORD: ${{ steps.creds.outputs.password }}
         run: |
           url="${{ steps.deploy.outputs.url }}"
-          for _ in $(seq 1 60); do
-            code="$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+          echo "password length: ${#SMOKE_PASSWORD}"
+          last=""
+          for _ in $(seq 1 45); do
+            last="$(curl -s -o /dev/null -w '%{http_code}' -X POST \
               -H 'Content-Type: application/json' -H 'X-Requested-With: XMLHttpRequest' \
-              -H "Origin: $url" -d '{"username":"smoke","password":"x"}' \
+              -H "Origin: $url" \
+              --data "$(jq -n --arg p "$SMOKE_PASSWORD" '{username:"smoke",password:$p}')" \
               "$url/api/account/auth/login-local")"
-            [ "$code" != "404" ] && exit 0
+            [ "$last" = "200" ] && exit 0
             sleep 2
           done
-          echo "::error::single-user login never came up after the secret rollout"
+          echo "::error::the minted credentials never logged in (last status $last)"
           exit 1
 
       - name: Smoke test the deployment

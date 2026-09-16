@@ -69,8 +69,14 @@ export async function enumerateReleases(repository: string): Promise<ResourceObj
   const objects: ResourceObject[] = []
   for (const release of releases.filter(release => kept.has(release.tag_name))) {
     const lock = release.assets.find(asset => asset.name === `${repository}.lock`)
-    if (lock === undefined)
-      throw new Error(`release-without-lock: ${release.tag_name}`)
+    // A release whose publish job is still attaching assets is not a defect
+    // and not mirrorable yet: it is skipped loudly and picked up by the next
+    // run. Matching no release at all stays a refusal -- that is the invisible
+    // case; this one announces itself.
+    if (lock === undefined) {
+      console.log(`  skipped ${release.tag_name}: no ${repository}.lock attached yet`)
+      continue
+    }
     const rows = assetRows(parseLock(await fetchText(lock.browser_download_url, githubHeaders())))
     const sizes = new Map(release.assets.map(asset => [asset.name, asset.size]))
     objects.push(...assetObjects(release.tag_name, rows, sizes, repository))

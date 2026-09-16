@@ -46,6 +46,15 @@ Workers-specific consequences:
 - **The SPA** is served by Cloudflare's asset pipeline, not by the app's
   static middleware.
 - **Scheduled jobs** do not run in-process. See below.
+- **A configuration change resets the object.** A Durable Object keeps the
+  `env` it was constructed with for as long as it stays resident, and this
+  app schedules alarms, so it can stay resident indefinitely. Without
+  intervention `wrangler secret put` would appear to do nothing: the new
+  value binds to the stateless Worker while the object serving every request
+  still holds the old one. The Worker therefore sends a digest of its
+  bindings with each request, and the object resets itself when that digest
+  stops matching the one it booted with. The request that detects it is
+  answered with 503; the next one boots against the current bindings.
 - **Rate limits that matter survive eviction.** The per-user creation cap is
   stored in the `rate_limits` table precisely because an in-memory window
   could be reset by pacing requests around an eviction. The in-memory,

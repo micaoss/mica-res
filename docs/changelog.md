@@ -65,6 +65,13 @@ each upstream tag; your fork's `Unreleased` block sits at the top.
 
 ### Changed
 
+- On Cloudflare Workers, a configuration change now resets the Durable
+  Object. It keeps the `env` it was constructed with while resident, and the
+  app's alarms keep it resident, so `wrangler secret put` otherwise appeared
+  to do nothing — the object kept serving with the values it booted with.
+  The stateless Worker sends a digest of its bindings and the object resets
+  when the digest stops matching.
+
 - The auth and encryption routes no longer carry their own fixed-window
   counters. All in-memory rate limiting now goes through one implementation,
   `consumeRateLimit` in `shared/middleware/rate-limit.ts`, so there is a

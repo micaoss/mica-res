@@ -2,7 +2,7 @@
 // Canonical JSON, immutable snapshots, one `current` pointer. No build reads it
 // to decide trust -- verification stays each consumer's own lock.
 
-import type { Kind, Pin, ResourceObject } from './objects.ts'
+import type { Kind, Pin, ResourceObject, State } from './objects.ts'
 
 export const SCHEMA = 'mica/resource-index/v1'
 
@@ -16,6 +16,7 @@ export interface IndexDocument {
 const STAMP = /^[0-9]{8}-[0-9]{4}$/
 const SHA256 = /^[0-9a-f]{64}$/
 const KINDS: Kind[] = ['deb', 'source', 'oci-blob', 'product-image', 'update-archive', 'git-pack']
+const STATES: State[] = ['mirrored', 'pending']
 
 function refuse(rule: string, detail: string): never {
   throw new Error(`${rule}: ${detail}`)
@@ -29,6 +30,7 @@ function canonicalPin(pin: Pin): Pin {
 function canonicalObject(object: ResourceObject): ResourceObject {
   return {
     kind: object.kind,
+    state: object.state ?? 'pending',
     sha256: object.sha256,
     ...(object.size === undefined ? {} : { size: object.size }),
     ...(object.origin === undefined ? {} : { origin: object.origin }),
@@ -73,6 +75,8 @@ export function readIndex(text: string): IndexDocument {
       refuse('field-value', `${object.sha256} is not a lowercase sha256`)
     if (!KINDS.includes(object.kind))
       refuse('kind-unknown', object.kind)
+    if (object.state === undefined || !STATES.includes(object.state))
+      refuse('field-value', `${object.sha256} has state ${String(object.state)}`)
     if (object.path !== `blob/${object.sha256.slice(0, 2)}/${object.sha256}`)
       refuse('field-value', `${object.path} is not the blob path of ${object.sha256}`)
     if (seen.has(object.sha256))
@@ -85,14 +89,17 @@ export function readIndex(text: string): IndexDocument {
   return document
 }
 
-export function summarise(objects: ResourceObject[]): { kind: Kind, count: number, bytes: number, sizesUnknown: number }[] {
+export function summarise(objects: ResourceObject[]): { kind: Kind, count: number, bytes: number, sizesUnknown: number, mirrored: number, mirroredBytes: number }[] {
   return KINDS.map((kind) => {
     const of = objects.filter(object => object.kind === kind)
+    const mirrored = of.filter(object => object.state === 'mirrored')
     return {
       kind,
       count: of.length,
       bytes: of.reduce((total, object) => total + (object.size ?? 0), 0),
       sizesUnknown: of.filter(object => object.size === undefined).length,
+      mirrored: mirrored.length,
+      mirroredBytes: mirrored.reduce((total, object) => total + (object.size ?? 0), 0),
     }
   }).filter(row => row.count > 0)
 }

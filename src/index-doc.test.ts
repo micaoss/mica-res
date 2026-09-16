@@ -16,6 +16,7 @@ test('renders canonical JSON with a final LF and no insignificant whitespace', (
   expect(text.endsWith('}\n')).toBe(true)
   expect(text).not.toContain('\n  ')
   expect(text.startsWith('{"schema":"mica/resource-index/v1","version":"20260916-0728"')).toBe(true)
+  expect(text).toContain('"state":"pending"')
 })
 
 test('sorts objects by sha256 regardless of input order', () => {

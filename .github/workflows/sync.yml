@@ -1,15 +1,28 @@
 name: sync
-# The mirror sync. Dry run on a schedule and by hand; it enumerates what the
-# bucket should hold from the producers' locks and releases, and in phase 0 it
-# uploads nothing.
+# The mirror sync. On a schedule and by hand it enumerates what the bucket
+# should hold from the producers' locks and releases; with `apply` it uploads
+# the missing bytes through the Worker's content-addressed write endpoint and
+# writes the index, the pointer and the site pages. It never deletes anything.
 on:
   schedule:
     # Daily, after the usual release hours.
     - cron: '17 4 * * *'
   workflow_dispatch:
     inputs:
+      apply:
+        description: Upload the missing objects instead of only enumerating them
+        type: boolean
+        default: false
+      kinds:
+        description: Object kinds to upload (phase 1 is deb and source)
+        type: string
+        default: deb,source
+      limit:
+        description: Upload at most this many objects (blank for all)
+        type: string
+        default: ''
       sizes:
-        description: Ask every origin for the size of each object (slow)
+        description: Ask every origin for the size of each object (implied by apply)
         type: boolean
         default: false
 permissions:
@@ -17,18 +30,33 @@ permissions:
 concurrency:
   group: sync
 jobs:
-  dry-run:
+  sync:
     runs-on: ubuntu-24.04
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: package.json
       - run: bun install --frozen-lockfile
-      - run: bun src/cli.ts sync ${{ inputs.sizes && '--sizes' || '' }} --out "${RUNNER_TEMP}/sync"
+      - name: Enumerate and, when asked, upload
+        run: |
+          set -euo pipefail
+          args=(sync --out "${RUNNER_TEMP}/sync")
+          [ "${SIZES}" = true ] && args+=(--sizes)
+          if [ "${APPLY}" = true ]; then
+            args+=(--apply --kinds "${KINDS}")
+            [ -n "${LIMIT}" ] && args+=(--limit "${LIMIT}")
+          fi
+          bun src/cli.ts "${args[@]}"
         env:
+          APPLY: ${{ inputs.apply || false }}
+          KINDS: ${{ inputs.kinds || 'deb,source' }}
+          LIMIT: ${{ inputs.limit }}
+          SIZES: ${{ inputs.sizes || false }}
           GITHUB_TOKEN: ${{ github.token }}
+          MICA_RES_WRITE_TOKEN: ${{ secrets.WRITE_TOKEN }}
       - uses: actions/upload-artifact@v7
         with:
-          name: sync-dry-run
+          name: sync-${{ github.run_id }}
           path: ${{ runner.temp }}/sync

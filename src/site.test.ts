@@ -18,7 +18,7 @@ const document = buildIndex({
 test('renders the two pages from the index', () => {
   const pages = renderSite(document)
   expect(pages.map(page => page.key)).toEqual(['site/index.html', 'site/upstream.html'])
-  expect(pages[0]?.body).toContain('1 objects, 1.0 MiB')
+  expect(pages[0]?.body).toContain('0 of 1 objects mirrored, 0.0 MiB of 1.0 MiB')
   expect(pages[1]?.body).toContain('/d/upstream/deb/bash/bash_5.3.3-1_amd64.deb')
 })
 

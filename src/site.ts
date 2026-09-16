@@ -41,12 +41,14 @@ function mib(bytes: number): string {
 export function renderSite(document: IndexDocument): { key: string, body: string }[] {
   const rows = summarise(document.objects)
   const total = rows.reduce((sum, row) => sum + row.bytes, 0)
+  const held = rows.reduce((sum, row) => sum + row.mirroredBytes, 0)
+  const mirrored = rows.reduce((sum, row) => sum + row.mirrored, 0)
   const summary = [
     '<h1>Mica OS resources</h1>',
-    `<p>Index <code>${escape(document.version)}</code>, ${document.objects.length} objects, ${mib(total)}.</p>`,
+    `<p>Index <code>${escape(document.version)}</code>: ${mirrored} of ${document.objects.length} objects mirrored, ${mib(held)} of ${mib(total)}.</p>`,
     '<p>Every object is stored once under its sha256 and is already pinned by that hash in the repository that consumes it. This host is a source, not a trust anchor: verify against your own lock.</p>',
-    '<table><thead><tr><th>kind</th><th>objects</th><th>bytes</th></tr></thead><tbody>',
-    ...rows.map(row => `<tr><td>${escape(TITLES[row.kind])}</td><td>${row.count}</td><td>${mib(row.bytes)}</td></tr>`),
+    '<table><thead><tr><th>kind</th><th>mirrored</th><th>pinned</th><th>bytes mirrored</th><th>bytes pinned</th></tr></thead><tbody>',
+    ...rows.map(row => `<tr><td>${escape(TITLES[row.kind])}</td><td>${row.mirrored}</td><td>${row.count}</td><td>${mib(row.mirroredBytes)}</td><td>${mib(row.bytes)}</td></tr>`),
     '</tbody></table>',
     '<p><a href="/upstream">Third-party inputs</a> &middot; <a href="/index/current.json">index/current.json</a></p>',
   ].join('\n')
@@ -54,10 +56,10 @@ export function renderSite(document: IndexDocument): { key: string, body: string
   const upstream = [
     '<h1>Third-party inputs</h1>',
     '<p>Mirrored because a build needs them offline. Each row keeps its upstream origin; the bytes are identical.</p>',
-    '<table><thead><tr><th>file</th><th>kind</th><th>bytes</th><th>origin</th></tr></thead><tbody>',
+    '<table><thead><tr><th>file</th><th>kind</th><th>state</th><th>bytes</th><th>origin</th></tr></thead><tbody>',
     ...document.objects
       .filter(object => object.kind === 'deb' || object.kind === 'source')
-      .map(object => `<tr><td><a href="${escape(object.readable[0]!)}">${escape(object.readable[0]!.split('/').pop()!)}</a></td><td>${escape(object.kind)}</td><td>${object.size ?? ''}</td><td>${escape(object.origin ?? '')}</td></tr>`),
+      .map(object => `<tr><td><a href="${escape(object.readable[0]!)}">${escape(object.readable[0]!.split('/').pop()!)}</a></td><td>${escape(object.kind)}</td><td>${escape(object.state ?? 'pending')}</td><td>${object.size ?? ''}</td><td>${escape(object.origin ?? '')}</td></tr>`),
     '</tbody></table>',
     '<p><a href="/">Back</a></p>',
   ].join('\n')

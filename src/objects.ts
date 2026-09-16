@@ -13,8 +13,13 @@ export interface Pin {
   row: string
 }
 
+export type State = 'mirrored' | 'pending'
+
 export interface ResourceObject {
   kind: Kind
+  // Whether the bucket holds these bytes. A pinned object the sync has not
+  // uploaded yet is `pending`, so the index and the site never claim it.
+  state?: State
   sha256: string
   size?: number
   origin?: string

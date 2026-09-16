@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { cacheControl, route, writeDecision } from './routes.ts'
+import { cacheControl, namedWriteDecision, route, writeDecision } from './routes.ts'
 
 const digest = 'a'.repeat(64)
 
@@ -56,4 +56,49 @@ test('immutable content is cached forever and the pointer is revalidated', () =>
   expect(cacheControl({ kind: 'index', key: 'index/current.json', immutable: false })).toBe('public, max-age=60, must-revalidate')
   expect(cacheControl({ kind: 'index', key: 'index/20260916-0728.json', immutable: true })).toBe('public, max-age=31536000, immutable')
   expect(cacheControl({ kind: 'site', key: 'site/index.html' })).toBe('public, max-age=300')
+})
+
+test('routes a named index snapshot write as immutable', () => {
+  expect(route('/w/index/20260916-0728.json')).toEqual({ kind: 'write-named', key: 'index/20260916-0728.json', immutable: true, scope: 'mirror' })
+})
+
+test('routes the index pointer and the site pages as replaceable mirror writes', () => {
+  expect(route('/w/index/current.json')).toEqual({ kind: 'write-named', key: 'index/current.json', immutable: false, scope: 'mirror' })
+  expect(route('/w/site/upstream.html')).toEqual({ kind: 'write-named', key: 'site/upstream.html', immutable: false, scope: 'mirror' })
+})
+
+test('routes status writes to the status scope, run snapshots immutable', () => {
+  expect(route('/w/status/runs/mica-boards/35071472865.json')).toEqual({ kind: 'write-named', key: 'status/runs/mica-boards/35071472865.json', immutable: true, scope: 'status' })
+  expect(route('/w/status/current.json')).toEqual({ kind: 'write-named', key: 'status/current.json', immutable: false, scope: 'status' })
+  expect(route('/w/status/daily/2026-09-16.json')).toEqual({ kind: 'write-named', key: 'status/daily/2026-09-16.json', immutable: false, scope: 'status' })
+})
+
+test('refuses a named write outside the declared prefixes', () => {
+  expect(route('/w/blob/../index/current.json')).toEqual({ kind: 'not-found' })
+  expect(route('/w/other/thing.json')).toEqual({ kind: 'not-found' })
+  expect(route('/w/index/../site/index.html')).toEqual({ kind: 'not-found' })
+  expect(route('/w/status/../index/current.json')).toEqual({ kind: 'not-found' })
+})
+
+test('serves the status pages and snapshots with a short cache', () => {
+  expect(route('/status')).toEqual({ kind: 'site', key: 'site/status.html' })
+  expect(route('/status/current.json')).toEqual({ kind: 'status', key: 'status/current.json', immutable: false })
+  expect(route('/status/runs/mica-boards/35071472865.json')).toEqual({ kind: 'status', key: 'status/runs/mica-boards/35071472865.json', immutable: true })
+  expect(cacheControl({ kind: 'status', key: 'status/current.json', immutable: false })).toBe('public, max-age=60, must-revalidate')
+  expect(cacheControl({ kind: 'status', key: 'status/runs/x/1.json', immutable: true })).toBe('public, max-age=31536000, immutable')
+})
+
+test('a named immutable write refuses different bytes and no-ops identical ones', () => {
+  expect(namedWriteDecision({ immutable: true, existing: 'a'.repeat(64), bodyDigest: 'b'.repeat(64) })).toEqual({ status: 409, reason: 'exists-different' })
+  expect(namedWriteDecision({ immutable: true, existing: 'a'.repeat(64), bodyDigest: 'a'.repeat(64) })).toEqual({ status: 200, reason: 'exists-identical' })
+  expect(namedWriteDecision({ immutable: true, existing: null, bodyDigest: 'a'.repeat(64) })).toEqual({ status: 200, reason: 'stored' })
+})
+
+test('a named replaceable write replaces, and an unknown existing digest does not block it', () => {
+  expect(namedWriteDecision({ immutable: false, existing: 'a'.repeat(64), bodyDigest: 'b'.repeat(64) })).toEqual({ status: 200, reason: 'replaced' })
+  expect(namedWriteDecision({ immutable: false, existing: null, bodyDigest: 'b'.repeat(64) })).toEqual({ status: 200, reason: 'stored' })
+})
+
+test('an immutable named object whose stored digest is unknown is refused rather than overwritten', () => {
+  expect(namedWriteDecision({ immutable: true, existing: 'unknown', bodyDigest: 'a'.repeat(64) })).toEqual({ status: 409, reason: 'exists-unverifiable' })
 })

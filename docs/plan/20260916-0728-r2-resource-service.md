@@ -109,8 +109,28 @@ Phase 0 deliverables, this plan's scope:
    `wrangler.jsonc`, the Worker secret bound at deploy time, and publishing
    kept manual.
 
-Later phases, unchanged from the accepted proposal: 1 the Debian archives and
-tarballs, 2 the build-env images plus the read-only registry route, A the
+Phase 1, delivered 2026-09-16: the uploader (`src/upload.ts`), the named write
+routes, and the `state` member of an index entry.
+
+- `ensureBlob` HEADs the mirror, fetches from the origin only what is missing,
+  **verifies the sha256 before any upload**, and writes through
+  `PUT /w/blob/<sha256>`, which hashes the body again and refuses a key that is
+  not its digest -- so the after-check is the condition of storing, not a
+  second opinion. A refusal is an error, never a skip.
+- Named writes (`PUT /w/index/...`, `/w/site/...`, `/w/status/...`) carry the
+  index snapshot, the pointer, the site pages and the status snapshots. Every
+  write stores the body's sha256 as object metadata; an immutable key with
+  different bytes is refused (409), an identical one is a no-op, and an
+  existing object whose stored digest cannot be read is refused rather than
+  clobbered. There is no delete route in any scope.
+- Every write goes through a Worker, never an R2 token (user, 2026-09-16), and
+  the status scope has its own bearer so a status writer can never name a
+  mirrored blob.
+- An index entry carries `state`: `mirrored` when the bucket holds the bytes,
+  `pending` otherwise, so neither the index nor the site ever claims a byte
+  that is not there.
+
+Later phases: 2 the build-env images plus the read-only registry route, A the
 product images with the `mirrors` member proposed to `mica` docs, 3 the vendor
 git trees as depth-1 packfiles.
 

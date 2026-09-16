@@ -26,12 +26,36 @@ on `micaoss`) or a GitHub App installation.
 
 ## Proposal
 
-Its own bucket `status-micaos-dev`, its own read-only Worker `mica-status` on
-`status.micaos.dev`, and a scheduled collector in this repository that writes
-named snapshots with a bucket-scoped R2 token. No write route exists on the
-status Worker, and no status credential can name an object of the mirror
-bucket: a binding is a capability, where a prefix check would be a line of
-code that can regress.
+**One host (user, 2026-09-16).** `res.micaos.dev` serves everything: one
+Worker, one bucket, the status objects under the `status/` prefix and the
+pages under `/status`. The earlier recommendation of a second Worker on its
+own hostname is withdrawn -- the user prefers one thing to operate, the routes
+already compute cache policy per kind so an immutable blob and a
+sixty-second status page cannot leak into each other, and a build falls back
+to upstream when the mirror does not answer. The residual cost, recorded so it
+is not a surprise: one deploy is one version for both, so rolling back a bad
+status deploy rolls the mirror back too. The mitigation is that the status code
+path is independent of the blob path and does nothing at module scope.
+
+**Every write goes through the Worker, never an R2 token (user,
+2026-09-16).** So the status prefix does get a write route, against the earlier
+recommendation, and it is built defensively: its own bearer
+(`STATUS_WRITE_TOKEN`, not the mirror's), a prefix its route refuses to write
+outside, no delete route, and immutability where it belongs -- a concluded
+run's snapshot is refused if it already exists with different bytes, while
+`status/current.json` and the daily roll-up are replaceable. `R2_STATUS_TOKEN`
+is dropped from the design.
+
+**No PAT (user, 2026-09-16).** Every `micaoss` repository is public, so runs
+and jobs are public data; the collector reads with the workflow
+`GITHUB_TOKEN`, which raises the rate limit to 5000 per hour, and falls back
+to unauthenticated. If a cross-repository call is ever refused with the
+workflow token, the endpoint and status are reported rather than a PAT being
+assumed.
+
+**The pruning is paused (user, 2026-09-16)**: nothing is deleted until the
+collector has been running and a retention policy is agreed, so the seven-day
+window proposed here is not in force.
 
 ### 1. The job-name grammar
 
@@ -407,7 +431,26 @@ and mica-boards builds its multi-architecture pool inside `pools`. Its
 `boards` job took the separate word `inputs` for fetching and validating
 already published ones.
 
-### 5. Pages
+### 5. The collector, delivered 2026-09-16
+
+`src/collect.ts` plus `.github/workflows/collect.yml` on a thirty-minute
+schedule. It lists each repository's runs, snapshots every **concluded** run it
+does not already hold as `status/runs/<repository>/<id>.json`, and writes
+`status/current.json` with every run it saw, in flight included. A run in
+flight is never written immutably, so a run's snapshot is written exactly once,
+when it is final.
+
+**It applies no stage mapping.** A snapshot holds the API's own words -- job
+names and step names verbatim -- so correcting the map never means collecting
+again, and the failure-signature labels can be declared later against data
+already in the bucket.
+
+Measured on its first CI run (35072989390): 126 snapshots from 129 runs across
+eight repositories, 3 in flight. Until `STATUS_WRITE_TOKEN` exists the
+collector still renders every snapshot and keeps it as a 90-day workflow
+artifact, so no cycle is lost while the secret is being set.
+
+### 6. Pages
 
 Everything renders from snapshots; nothing polls the API on page load. The
 per-board and per-product stage table, per-repository status (`main` commit,
@@ -416,7 +459,7 @@ view and the release timeline all read `status/current.json` and the daily
 roll-ups. A job in flight renders as in flight with its start time. Each
 stage cell expands to the jobs that carry it.
 
-### 6. Must not
+### 7. Must not
 
 Read-only credentials everywhere; the site is never an input to a build or a
 release; and it never claims a state it did not read. A duration whose meaning

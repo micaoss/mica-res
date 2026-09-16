@@ -1,5 +1,24 @@
 # mica-res - Changelog
 
+## 2026-09-16 08:20 [progress]
+
+Phase 1 of the mirror: the uploader, the named write routes (index, site and
+status, each with its own scope and bearer), and the `state` member that keeps
+the index from claiming a byte it does not hold. `WRITE_TOKEN` is live, so the
+write endpoint answers 401 rather than 503 to an unauthenticated write. The
+status collector ships early, ahead of any page, because the run history it
+snapshots is what the pruning pause only promises to preserve.
+
+## 2026-09-16 08:20 [decision]
+
+The status site lives on one host with the mirror (user): `res.micaos.dev`,
+one Worker, one bucket, the status objects under `status/` and the pages under
+`/status`. Every write goes through the Worker rather than an R2 token, so the
+status prefix has a write route with its own bearer, a prefix it refuses to
+leave and no delete. No PAT: the repositories are public and the collector
+reads with the workflow token. Actions-run pruning is paused until a retention
+policy is agreed.
+
 ## 2026-09-16 07:52 [decision]
 
 The Worker deployment follows the shape of `mica`'s website Worker (user,

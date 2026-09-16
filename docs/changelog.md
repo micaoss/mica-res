@@ -1,5 +1,16 @@
 # mica-res - Changelog
 
+## 2026-09-16 07:52 [decision]
+
+The Worker deployment follows the shape of `mica`'s website Worker (user,
+2026-09-16): `cloudflare/wrangler-action@v4` with a pinned wrangler
+(`4.132.0`, checked at its release today), the account and token from the
+repository secrets, `wrangler.jsonc` instead of `wrangler.toml`, and the write
+endpoint's bearer bound at deploy time from the repository's own
+`WRITE_TOKEN`. Deployment stays manual (`workflow_dispatch` only), as it is
+there. `res.micaos.dev` is a third custom domain on the `micaos.dev` zone; the
+website Worker `micaos-dev` is untouched and this one is named `mica-res`.
+
 ## 2026-09-16 07:45 [progress]
 
 Phase 0 of the resource service: the Bun tooling (lock reader, enumeration,

@@ -85,8 +85,11 @@ Phase 0 deliverables, this plan's scope:
    with wrangler 4.132.0.
 4. `.github/workflows/`: `ci.yml` (gates only, publishes nothing),
    `infra.yml` (`workflow_dispatch`: verify the token, create the bucket,
-   deploy the Worker) and `sync.yml` (dispatch plus a daily schedule,
-   dry-run unless `apply` is set).
+   deploy the Worker, upload the site skeleton) and `sync.yml` (dispatch plus
+   a daily schedule, dry run in phase 0). The deployment copies `mica`'s
+   website Worker: `cloudflare/wrangler-action@v4`, a pinned wrangler,
+   `wrangler.jsonc`, the Worker secret bound at deploy time, and publishing
+   kept manual.
 
 Later phases, unchanged from the accepted proposal: 1 the Debian archives and
 tarballs, 2 the build-env images plus the read-only registry route, A the

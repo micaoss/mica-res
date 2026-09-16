@@ -1,25 +1,29 @@
 name: infra
-# Phase 0 provisioning, by hand only: report what the token may do, create the
-# bucket if it does not exist, and deploy the Worker. It publishes no artefact
-# and deletes nothing.
+# Provisioning, by hand only (`workflow_dispatch`), in the shape the website
+# Worker of `mica` already uses: report what the token may do, create the
+# bucket if it is missing, deploy the Worker with cloudflare/wrangler-action at
+# a pinned wrangler, and upload the site skeleton. It publishes no artefact and
+# deletes nothing. The gates live in ci.yml.
 on:
   workflow_dispatch:
     inputs:
       deploy:
-        description: Deploy the Worker as well as reporting and creating the bucket
+        description: Deploy the Worker and the site skeleton as well as reporting the bucket
         type: boolean
         default: true
 permissions:
   contents: read
 concurrency:
   group: infra
+env:
+  # Pinned so a deploy is reproducible; checked at the wrangler release when
+  # this workflow is touched.
+  WRANGLER_VERSION: '4.132.0'
+  BUCKET: res-micaos-dev
 jobs:
   provision:
     runs-on: ubuntu-24.04
-    env:
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      BUCKET: res-micaos-dev
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
@@ -27,9 +31,11 @@ jobs:
           bun-version-file: package.json
       - run: bun install --frozen-lockfile
 
-      # What the token is allowed to do, printed as policy names only. No
-      # secret value is ever echoed.
+      # What the token is allowed to do, as policy names only. No secret value
+      # is ever echoed.
       - name: Report the token
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           set -euo pipefail
           verify=$(curl -sS -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
@@ -37,6 +43,9 @@ jobs:
           echo "${verify}" | jq '{success, status: .result.status, messages: [.messages[]?.message]}'
 
       - name: Create the bucket if it is missing
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           set -euo pipefail
           base="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/r2/buckets"
@@ -54,21 +63,42 @@ jobs:
 
       - name: Deploy the Worker
         if: inputs.deploy
-        working-directory: worker
-        run: bun x wrangler deploy 2>&1 | tee "${RUNNER_TEMP}/deploy.log"
+        uses: cloudflare/wrangler-action@v4
+        with:
+          wranglerVersion: ${{ env.WRANGLER_VERSION }}
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: worker
+          # Bound on every deploy, so the bearer the write endpoint checks is
+          # the one this repository holds. Until the secret exists nothing is
+          # bound and the endpoint stays closed (503).
+          secrets: ${{ secrets.WRITE_TOKEN != '' && 'WRITE_TOKEN' || '' }}
+        env:
+          WRITE_TOKEN: ${{ secrets.WRITE_TOKEN }}
 
-      # The site skeleton. It renders an empty bucket: phase 0 uploads no
-      # mirrored bytes, and the pages must not claim otherwise.
-      - name: Upload the site skeleton
+      # The site skeleton renders an empty bucket: phase 0 mirrors no bytes and
+      # the pages must not claim otherwise.
+      - name: Render the site skeleton
         if: inputs.deploy
-        run: |
-          set -euo pipefail
-          bun src/cli.ts site --out "${RUNNER_TEMP}/site"
-          for page in index upstream; do
-            bun x wrangler r2 object put "${BUCKET}/site/${page}.html" \
-              --file "${RUNNER_TEMP}/site/${page}.html" \
-              --content-type text/html --remote
-          done
+        run: bun src/cli.ts site --out "${RUNNER_TEMP}/site"
+
+      - name: Upload the site index page
+        if: inputs.deploy
+        uses: cloudflare/wrangler-action@v4
+        with:
+          wranglerVersion: ${{ env.WRANGLER_VERSION }}
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: r2 object put ${{ env.BUCKET }}/site/index.html --file ${{ runner.temp }}/site/index.html --content-type text/html --remote
+
+      - name: Upload the upstream page
+        if: inputs.deploy
+        uses: cloudflare/wrangler-action@v4
+        with:
+          wranglerVersion: ${{ env.WRANGLER_VERSION }}
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: r2 object put ${{ env.BUCKET }}/site/upstream.html --file ${{ runner.temp }}/site/upstream.html --content-type text/html --remote
 
       - name: Report what the credentials would not allow
         if: always()
@@ -77,5 +107,5 @@ jobs:
           echo 'The design asks for two credentials this workflow does not have:'
           echo '  - a bucket-scoped R2 token with no delete permission, for CI;'
           echo '  - a separate delete-capable token held by the user, out of CI.'
-          echo 'The sync uploads through the Worker write endpoint, so it needs'
-          echo 'no R2 credential at all once the Worker holds WRITE_TOKEN.'
+          echo 'WRITE_TOKEN must exist twice: as this repository secret and,'
+          echo 'bound by the deploy step above, on the Worker itself.'

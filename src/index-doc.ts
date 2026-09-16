@@ -34,6 +34,7 @@ function canonicalObject(object: ResourceObject): ResourceObject {
     sha256: object.sha256,
     ...(object.size === undefined ? {} : { size: object.size }),
     ...(object.mediaType === undefined ? {} : { mediaType: object.mediaType }),
+    ...(object.commit === undefined ? {} : { commit: object.commit }),
     ...(object.origin === undefined ? {} : { origin: object.origin }),
     path: object.path,
     readable: [...object.readable].sort(),
@@ -80,6 +81,8 @@ export function readIndex(text: string): IndexDocument {
       refuse('field-value', `${object.sha256} has state ${String(object.state)}`)
     if (object.path !== `blob/${object.sha256.slice(0, 2)}/${object.sha256}`)
       refuse('field-value', `${object.path} is not the blob path of ${object.sha256}`)
+    if (object.commit !== undefined && !/^[0-9a-f]{40}$/.test(object.commit))
+      refuse('field-value', `${object.commit} is not a commit`)
     if (seen.has(object.sha256))
       refuse('duplicate-object', object.sha256)
     if (object.sha256 < previous)

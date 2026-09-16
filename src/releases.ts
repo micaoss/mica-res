@@ -60,6 +60,12 @@ export function assetObjects(tag: string, rows: AssetRow[], sizes: Map<string, n
 export async function enumerateReleases(repository: string): Promise<ResourceObject[]> {
   const releases = await fetchJson<Release[]>(`https://api.github.com/repos/micaoss/${repository}/releases?per_page=100`, githubHeaders())
   const kept = new Set(keptReleases(releases.map(release => release.tag_name)))
+  // Matching none of a repository's releases is a refusal, not an empty
+  // result: ignoring a tag looks exactly like there being no tag, which is how
+  // this reader once kept mirroring superseded releases while reporting
+  // success. If the tag form moves again, the sync fails loudly instead.
+  if (releases.length > 0 && kept.size === 0)
+    throw new Error(`no-release-matched: ${repository} publishes ${releases.length} releases and none is a scoped <scope>.<YYYYMMDD-HHMM> tag (newest: ${releases.slice(0, 3).map(release => release.tag_name).join(', ')})`)
   const objects: ResourceObject[] = []
   for (const release of releases.filter(release => kept.has(release.tag_name))) {
     const lock = release.assets.find(asset => asset.name === `${repository}.lock`)

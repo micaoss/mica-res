@@ -14,14 +14,16 @@
 import { mkdir } from 'node:fs/promises'
 import { enumerate } from './enumerate.ts'
 import { buildIndex, readIndex, renderIndex, renderPointer, summarise } from './index-doc.ts'
-import type { Kind } from './objects.ts'
+import type { Kind, ResourceObject } from './objects.ts'
 import { renderSite } from './site.ts'
 import { resolveSizes } from './sizes.ts'
 import { concluded, listJobs, listRuns, renderCurrent, renderRun, runKey, runSnapshot } from './collect.ts'
 import type { CurrentRun } from './collect.ts'
 import { REPOSITORIES } from './producers.ts'
 import { ghcrToken } from './ghcr.ts'
-import { ensureBlob, pullBlob, putNamed, resolveRedirect, resolveState } from './upload.ts'
+import { chunkBytes, chunkNames, manifestName, packObjects, producePack, renderManifest } from './gitpack.ts'
+import type { GitTree } from './enumerate.ts'
+import { ensureBlob, pullBlob, putNamed, resolveRedirect, resolveState, writeBlob } from './upload.ts'
 import type { Target } from './upload.ts'
 
 const DEFAULT_BASE = 'https://res.micaos.dev'
@@ -49,6 +51,29 @@ function stamp(now = new Date()): string {
 
 function mib(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MiB`
+}
+
+// A tree already mirrored is recognised by its manifest, which names the pack
+// and its ordered chunks, so a second run fetches no git history at all.
+async function mirrorTree(tree: GitTree, to: Target): Promise<{ objects: ResourceObject[], produced: boolean }> {
+  const held = await fetch(`${to.base}${manifestName(tree)}`)
+  if (held.ok) {
+    const manifest = await held.json() as { pack: { sha256: string, size: number }, chunks: { sha256: string, size: number }[] }
+    return { objects: packObjects(tree, manifest.pack, manifest.chunks, renderManifest(tree, manifest.pack, manifest.chunks)), produced: false }
+  }
+
+  const pack = await producePack(tree)
+  const pieces = chunkBytes(pack)
+  const chunks = pieces.map(piece => ({ sha256: Bun.SHA256.hash(piece, 'hex'), size: piece.length }))
+  for (const [index, piece] of pieces.entries())
+    await writeBlob(chunks[index]!.sha256, piece, to)
+
+  const whole = { sha256: Bun.SHA256.hash(pack, 'hex'), size: pack.length }
+  const manifest = renderManifest(tree, whole, chunks)
+  const manifestBytes = new TextEncoder().encode(manifest)
+  await writeBlob(Bun.SHA256.hash(manifestBytes, 'hex'), manifestBytes, to, 'application/json')
+  console.log(`  ${tree.name}: ${(pack.length / 1048576).toFixed(1)} MiB in ${chunks.length} chunk(s) at ${chunkNames(tree, chunks.length)[0]}`)
+  return { objects: packObjects(tree, whole, chunks, manifest), produced: true }
 }
 
 async function sync(argv: string[]): Promise<void> {
@@ -101,6 +126,19 @@ async function sync(argv: string[]): Promise<void> {
         console.log(`  ${stored + present}/${wanted.length} (${stored} written, ${present} already held)`)
     }
     console.log(`apply: ${stored} written (${pulled} of them streamed by the Worker from their origin), ${present} already held, 0 deleted`)
+  }
+
+  if (apply && kinds.includes('git-pack')) {
+    const to = target()
+    console.log(`apply: ${gitTrees.length} git trees to ${to.base}`)
+    let produced = 0
+    for (const tree of gitTrees) {
+      const answer = await mirrorTree(tree, to)
+      objects.push(...answer.objects)
+      if (answer.produced)
+        produced += 1
+    }
+    console.log(`apply: ${produced} trees packed and written, ${gitTrees.length - produced} already held, 0 deleted`)
   }
 
   // What the bucket holds, read back from it, whatever this run uploaded.

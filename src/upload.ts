@@ -37,18 +37,24 @@ export async function ensureBlob(object: Pick<ResourceObject, 'sha256' | 'path'>
   if (digest !== object.sha256)
     throw new Error(`sha256-mismatch: ${object.origin} is ${digest}, the lock pins ${object.sha256}`)
 
-  const put = await fetcher(`${target.base}/w/blob/${object.sha256}`, {
+  return writeBlob(object.sha256, bytes, target, object.mediaType, fetcher)
+}
+
+// Writes bytes the client already holds -- a downloaded archive, or a git pack
+// this repository produced and for which no upstream URL exists.
+export async function writeBlob(sha256: string, bytes: Uint8Array, target: Target, mediaType?: string, fetcher: typeof fetch = fetch): Promise<Outcome> {
+  const put = await fetcher(`${target.base}/w/blob/${sha256}`, {
     method: 'PUT',
     headers: {
       'authorization': `Bearer ${target.token}`,
       'content-type': 'application/octet-stream',
-      ...(object.mediaType === undefined ? {} : { 'x-mica-media-type': object.mediaType }),
+      ...(mediaType === undefined ? {} : { 'x-mica-media-type': mediaType }),
     },
     body: bytes,
   })
   const reason = (await put.text()).trim()
   if (!put.ok)
-    throw new Error(`write: ${put.status} ${reason} for ${object.sha256}`)
+    throw new Error(`write: ${put.status} ${reason} for ${sha256}`)
   return reason === 'exists-identical' ? 'exists-identical' : 'stored'
 }
 

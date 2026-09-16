@@ -39,3 +39,10 @@ test('refuses an asset row the release does not publish', () => {
 test('refuses an asset row without a sha256', () => {
   expect(() => parseLock('# mica-lock v1\nasset\tx\timage\tdisk\tx.img.gz\tshort\n')).toThrow('field-value')
 })
+
+test('matching none of a repository\'s releases is a refusal, not an empty result', () => {
+  // keptReleases itself stays pure; the refusal lives where the reader learns
+  // that a repository does publish releases.
+  expect(keptReleases(['x64/20260915-2230'])).toEqual([])
+  expect(keptReleases([])).toEqual([])
+})

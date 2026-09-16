@@ -30,9 +30,21 @@ async function readableMap(env: Env): Promise<Resolved | null> {
   if (resolved !== null && resolved.version === pointer.version)
     return resolved
 
-  const snapshot = await env.BUCKET.get(`index/${pointer.version}.json`)
-  if (snapshot === null)
-    return null
+  // A snapshot is immutable, so it belongs in the edge cache rather than being
+  // read from R2 by every cold isolate: resolving a readable name (a registry
+  // tag among them) used to cost a full read of the index.
+  const url = `https://res.micaos.dev/index/${pointer.version}.json`
+  const cache = caches.default
+  let snapshot = await cache.match(new Request(url))
+  if (snapshot === undefined) {
+    const stored = await env.BUCKET.get(`index/${pointer.version}.json`)
+    if (stored === null)
+      return null
+    snapshot = new Response(await stored.text(), {
+      headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=31536000, immutable' },
+    })
+    await cache.put(new Request(url), snapshot.clone())
+  }
   const document = readIndex(await snapshot.text())
   resolved = {
     version: pointer.version,

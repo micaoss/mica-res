@@ -24,6 +24,10 @@ export interface ResourceObject {
   size?: number
   // The OCI media type, for the objects a registry client asks for by name.
   mediaType?: string
+  // The commit a git pack carries. Git verifies every object it imports and
+  // the consumer asserts this commit, so the commit -- not the pack's own
+  // sha256 -- is what a pack is trusted by.
+  commit?: string
   origin?: string
   path: string
   // Every readable download path that resolves to these bytes; one byte

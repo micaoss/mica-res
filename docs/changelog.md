@@ -9,6 +9,16 @@ write endpoint answers 401 rather than 503 to an unauthenticated write. The
 status collector ships early, ahead of any page, because the run history it
 snapshots is what the pruning pause only promises to preserve.
 
+## 2026-09-16 17:30 [BUG-P1]
+
+A run given `--kinds product-image,update-archive` published an index with no
+git packs in it, because `--kinds` was narrowing the enumeration and not only
+the uploads. Third defect of one class -- derived state disagreeing with the
+bucket. Fixed by enumerating every kind always, and guarded by
+`refuseRegression`, which refuses a snapshot that loses a whole kind the
+published one had. The complete index is `20260916-1726`: 486 of 486 objects,
+7048.5 MiB.
+
 ## 2026-09-16 17:00 [progress]
 
 Phase 3: the thirteen vendor trees are mirrored as depth-1 packs (44 objects,

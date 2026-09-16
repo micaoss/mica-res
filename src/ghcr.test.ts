@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { descriptorObjects, imageRows } from './ghcr.ts'
+import { descriptorObjects, imageRows, manifestObject } from './ghcr.ts'
 import { parseLock } from './locks.ts'
 
 const lock = parseLock([
@@ -32,4 +32,22 @@ test('an index becomes one object per platform manifest', () => {
   const objects = descriptorObjects({ manifests: [{ digest: `sha256:${'e'.repeat(64)}`, size: 3 }] }, pin, imageRows(lock, 'mica-build-env')[0]!)
   expect(objects).toHaveLength(1)
   expect(objects[0]?.sha256).toBe('e'.repeat(64))
+})
+
+test('a manifest object carries its media type and its registry tag name', () => {
+  const tagged = { name: 'base', platform: 'index', reference: 'ghcr.io/micaoss/mica-build-env:base.20260916-0735@sha256:' + 'f'.repeat(64), digest: 'f'.repeat(64) }
+  const object = manifestObject(tagged, 'mica-build-env', 1234, 'application/vnd.oci.image.index.v1+json', pin)
+  expect(object.mediaType).toBe('application/vnd.oci.image.index.v1+json')
+  expect(object.readable).toContain('/v2/micaoss/mica-build-env/manifests/base.20260916-0735')
+  expect(object.size).toBe(1234)
+})
+
+test('a manifest referenced without a tag gets no registry name', () => {
+  const untagged = { name: 'base', platform: 'amd64', reference: 'ghcr.io/micaoss/mica-build-env@sha256:' + 'e'.repeat(64), digest: 'e'.repeat(64) }
+  expect(manifestObject(untagged, 'mica-build-env', 10, 'application/vnd.oci.image.manifest.v1+json', pin).readable).toHaveLength(1)
+})
+
+test('a descriptor keeps the media type the manifest declared', () => {
+  const objects = descriptorObjects({ layers: [{ digest: `sha256:${'d'.repeat(64)}`, size: 2, mediaType: 'application/vnd.oci.image.layer.v1.tar+gzip' }] }, pin, imageRows(lock, 'mica-build-env')[0]!)
+  expect(objects[0]?.mediaType).toBe('application/vnd.oci.image.layer.v1.tar+gzip')
 })

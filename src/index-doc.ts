@@ -33,6 +33,7 @@ function canonicalObject(object: ResourceObject): ResourceObject {
     state: object.state ?? 'pending',
     sha256: object.sha256,
     ...(object.size === undefined ? {} : { size: object.size }),
+    ...(object.mediaType === undefined ? {} : { mediaType: object.mediaType }),
     ...(object.origin === undefined ? {} : { origin: object.origin }),
     path: object.path,
     readable: [...object.readable].sort(),

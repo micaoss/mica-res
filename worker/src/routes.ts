@@ -8,7 +8,7 @@ const STAMP = /^[0-9]{8}-[0-9]{4}$/
 export type WriteScope = 'mirror' | 'status'
 
 export type Route
-  = | { kind: 'blob', key: string }
+  = | { kind: 'blob', key: string, digest?: string }
     | { kind: 'index', key: string, immutable: boolean }
     | { kind: 'status', key: string, immutable: boolean }
     | { kind: 'download', readable: string }
@@ -16,6 +16,7 @@ export type Route
     | { kind: 'write', key: string, digest: string }
     | { kind: 'pull', key: string, digest: string }
     | { kind: 'write-named', key: string, immutable: boolean, scope: WriteScope }
+    | { kind: 'registry-root' }
     | { kind: 'not-found' }
 
 const SITE: Record<string, string> = {
@@ -48,6 +49,26 @@ export function route(pathname: string): Route {
 
   if (pathname.startsWith('/d/') && !pathname.includes('..'))
     return { kind: 'download', readable: pathname }
+
+  // The read side of the distribution API, for the build-env images. Every
+  // Mica reader pulls by digest; a tag is resolved through the index like any
+  // other readable name, and nothing here writes or deletes.
+  if (pathname === '/v2/' || pathname === '/v2')
+    return { kind: 'registry-root' }
+
+  const registry = /^\/v2\/([a-z0-9][a-z0-9._/-]*)\/(manifests|blobs)\/(.+)$/.exec(pathname)
+  if (registry && !pathname.includes('..')) {
+    const reference = registry[3]!
+    const byDigest = /^sha256:([0-9a-f]{64})$/.exec(reference)
+    if (byDigest) {
+      const digest = byDigest[1]!
+      return { kind: 'blob', key: `blob/${digest.slice(0, 2)}/${digest}`, digest }
+    }
+    // Only a manifest may be asked for by tag, and a tag is a plain name.
+    if (registry[2] === 'manifests' && /^[a-zA-Z0-9._-]+$/.test(reference))
+      return { kind: 'download', readable: pathname }
+    return { kind: 'not-found' }
+  }
 
   const status = /^\/status\/([a-z0-9][a-z0-9./-]*)$/.exec(pathname)
   if (status && !pathname.includes('..')) {
@@ -89,6 +110,8 @@ export function route(pathname: string): Route {
 
 export function cacheControl(matched: Route): string {
   switch (matched.kind) {
+    case 'registry-root':
+      return 'public, max-age=300'
     case 'blob':
     case 'download':
       return 'public, max-age=31536000, immutable'

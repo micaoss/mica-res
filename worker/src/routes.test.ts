@@ -107,3 +107,22 @@ test('routes a pull request by digest', () => {
   expect(route(`/w/pull/${digest}`)).toEqual({ kind: 'pull', key: `blob/aa/${digest}`, digest })
   expect(route('/w/pull/nothex')).toEqual({ kind: 'not-found' })
 })
+
+test('serves the registry ping', () => {
+  expect(route('/v2/')).toEqual({ kind: 'registry-root' })
+})
+
+test('serves a manifest and a blob by digest from the registry route', () => {
+  expect(route(`/v2/micaoss/mica-build-env/manifests/sha256:${digest}`)).toEqual({ kind: 'blob', key: `blob/aa/${digest}`, digest })
+  expect(route(`/v2/micaoss/mica-build-env/blobs/sha256:${digest}`)).toEqual({ kind: 'blob', key: `blob/aa/${digest}`, digest })
+})
+
+test('resolves a registry tag through the index like any readable name', () => {
+  expect(route('/v2/micaoss/mica-build-env/manifests/base.20260916-0735')).toEqual({ kind: 'download', readable: '/v2/micaoss/mica-build-env/manifests/base.20260916-0735' })
+})
+
+test('refuses a registry path that is neither a digest nor a tag, and any write', () => {
+  expect(route('/v2/micaoss/mica-build-env/manifests/sha256:short')).toEqual({ kind: 'not-found' })
+  expect(route('/v2/micaoss/mica-build-env/blobs/uploads/')).toEqual({ kind: 'not-found' })
+  expect(route('/v2/micaoss/mica-build-env/manifests/../../blob/aa/x')).toEqual({ kind: 'not-found' })
+})

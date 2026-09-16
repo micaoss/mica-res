@@ -17,7 +17,7 @@ function hex(bytes: Uint8Array): string {
   return Bun.SHA256.hash(bytes, 'hex')
 }
 
-export async function ensureBlob(object: Pick<ResourceObject, 'sha256' | 'path'> & { origin?: string }, target: Target, fetcher: typeof fetch = fetch): Promise<Outcome> {
+export async function ensureBlob(object: Pick<ResourceObject, 'sha256' | 'path'> & { origin?: string, mediaType?: string }, target: Target, fetcher: typeof fetch = fetch): Promise<Outcome> {
   const head = await fetcher(`${target.base}/${object.path}`, { method: 'HEAD' })
   if (head.ok)
     return 'present'
@@ -39,7 +39,11 @@ export async function ensureBlob(object: Pick<ResourceObject, 'sha256' | 'path'>
 
   const put = await fetcher(`${target.base}/w/blob/${object.sha256}`, {
     method: 'PUT',
-    headers: { 'authorization': `Bearer ${target.token}`, 'content-type': 'application/octet-stream' },
+    headers: {
+      'authorization': `Bearer ${target.token}`,
+      'content-type': 'application/octet-stream',
+      ...(object.mediaType === undefined ? {} : { 'x-mica-media-type': object.mediaType }),
+    },
     body: bytes,
   })
   const reason = (await put.text()).trim()
@@ -64,14 +68,14 @@ export async function putNamed(key: string, text: string, target: Target, fetche
 // from its origin, with R2 verifying the pinned digest as it lands. The client
 // then reads the stored object's own metadata back, so the result is checked on
 // both sides without moving the bytes twice.
-export async function pullBlob(object: Pick<ResourceObject, 'sha256' | 'path'> & { origin?: string }, target: Target, fetcher: typeof fetch = fetch): Promise<Outcome> {
+export async function pullBlob(object: Pick<ResourceObject, 'sha256' | 'path'> & { origin?: string, mediaType?: string }, target: Target, fetcher: typeof fetch = fetch): Promise<Outcome> {
   if (object.origin === undefined)
     throw new Error(`no-origin: ${object.sha256} has no upstream to mirror from`)
 
   const answer = await fetcher(`${target.base}/w/pull/${object.sha256}`, {
     method: 'POST',
     headers: { 'authorization': `Bearer ${target.token}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ origin: object.origin }),
+    body: JSON.stringify({ origin: object.origin, mediaType: object.mediaType }),
   })
   const reason = (await answer.text()).trim()
   if (!answer.ok)

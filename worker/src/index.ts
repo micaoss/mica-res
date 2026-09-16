@@ -93,8 +93,14 @@ async function write(key: string, digest: string, request: Request, env: Env): P
   const decision = writeDecision({ digest, bodyDigest, existing: existing === null ? null : digest })
   if (decision.status !== 200)
     return new Response(`${decision.reason}\n`, { status: decision.status })
-  if (decision.reason === 'stored')
-    await env.BUCKET.put(key, bytes, { customMetadata: { sha256: bodyDigest } })
+  if (decision.reason === 'stored') {
+    // A registry client reads the media type back as the content type.
+    const mediaType = request.headers.get('x-mica-media-type') ?? undefined
+    await env.BUCKET.put(key, bytes, {
+      customMetadata: { sha256: bodyDigest, ...(mediaType === undefined ? {} : { mediaType }) },
+      ...(mediaType === undefined ? {} : { httpMetadata: { contentType: mediaType } }),
+    })
+  }
   return new Response(`${decision.reason}\n`, { status: 200 })
 }
 
@@ -201,12 +207,33 @@ export default {
     if (request.method !== 'GET' && request.method !== 'HEAD')
       return new Response('method not allowed\n', { status: 405, headers: { allow: 'GET, HEAD' } })
 
+    if (matched.kind === 'registry-root') {
+      // The distribution API's version check. This registry is read-only and
+      // anonymous, so there is no authentication to advertise.
+      return new Response('{}', {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+          'docker-distribution-api-version': 'registry/2.0',
+          'cache-control': cacheControl(matched),
+        },
+      })
+    }
+
     const headers = { 'cache-control': cacheControl(matched) }
     if (matched.kind === 'download') {
       const lookup = await readableMap(env)
       const key = lookup?.readable.get(matched.readable)
-      return key === undefined ? notFound() : serve(key, request, env, headers)
+      if (key === undefined)
+        return notFound()
+      const response = await serve(key, request, env, headers)
+      // A registry client reads the digest it was served from the header.
+      response.headers.set('docker-content-digest', `sha256:${key.split('/').pop()}`)
+      return response
     }
-    return serve(matched.key, request, env, headers)
+    const response = await serve(matched.key, request, env, headers)
+    if (matched.kind === 'blob' && matched.digest !== undefined)
+      response.headers.set('docker-content-digest', `sha256:${matched.digest}`)
+    return response
   },
 } satisfies ExportedHandler<Env>

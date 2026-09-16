@@ -24,6 +24,7 @@ export interface ImageRow {
 interface Descriptor {
   digest: string
   size: number
+  mediaType?: string
 }
 
 interface Manifest {
@@ -51,12 +52,13 @@ export async function ghcrToken(repository: string): Promise<string> {
 
 export function descriptorObjects(manifest: Manifest, pin: PinSource, row: ImageRow): ResourceObject[] {
   const descriptors = [...(manifest.manifests ?? []), ...(manifest.config === undefined ? [] : [manifest.config]), ...(manifest.layers ?? [])]
-  return descriptors.map(({ digest, size }) => {
+  return descriptors.map(({ digest, size, mediaType }) => {
     const sha256 = digest.replace('sha256:', '')
     return {
       kind: 'oci-blob' as const,
       sha256,
       size,
+      ...(mediaType === undefined ? {} : { mediaType }),
       path: blobPath(sha256),
       readable: [`/d/build-env/${pin.release}/${row.name}.${row.platform}/${sha256}`],
       pins: [{ ...pin, row: `image ${row.name} ${row.platform}` }],
@@ -64,13 +66,38 @@ export function descriptorObjects(manifest: Manifest, pin: PinSource, row: Image
   })
 }
 
+// The manifest a lock row names is itself an object a puller asks for. Its tag,
+// where the row carries one, becomes a registry readable name so that a tag
+// resolves through the index like any other name.
+export function manifestObject(row: ImageRow, repository: string, bytes: number, mediaType: string, pin: PinSource): ResourceObject {
+  const tag = /:([^:@]+)@sha256:/.exec(row.reference)?.[1]
+  return {
+    kind: 'oci-blob',
+    sha256: row.digest,
+    size: bytes,
+    mediaType,
+    path: blobPath(row.digest),
+    readable: [
+      `/d/build-env/${pin.release}/${row.name}.${row.platform}/${row.digest}`,
+      ...(tag === undefined ? [] : [`/v2/micaoss/${repository}/manifests/${tag}`]),
+    ],
+    pins: [{ ...pin, row: `image ${row.name} ${row.platform}` }],
+  }
+}
+
 export async function enumerateImages(lock: Lock, pin: PinSource, repository: string): Promise<ResourceObject[]> {
   const token = await ghcrToken(repository)
   const headers = { authorization: `Bearer ${token}`, accept: MANIFEST_TYPES }
   const objects: ResourceObject[] = []
   for (const row of imageRows(lock, repository)) {
-    const manifest = await fetchJson<Manifest>(`https://ghcr.io/v2/micaoss/${repository}/manifests/sha256:${row.digest}`, headers)
-    objects.push(...descriptorObjects(manifest, pin, row))
+    const url = `https://ghcr.io/v2/micaoss/${repository}/manifests/sha256:${row.digest}`
+    const answer = await fetch(url, { headers })
+    if (!answer.ok)
+      throw new Error(`${answer.status} ${answer.statusText} for ${url}`)
+    const text = await answer.text()
+    const mediaType = answer.headers.get('content-type') ?? 'application/vnd.oci.image.manifest.v1+json'
+    objects.push(manifestObject(row, repository, new TextEncoder().encode(text).length, mediaType, pin))
+    objects.push(...descriptorObjects(JSON.parse(text) as Manifest, pin, row))
   }
   return objects
 }

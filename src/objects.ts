@@ -22,6 +22,8 @@ export interface ResourceObject {
   state?: State
   sha256: string
   size?: number
+  // The OCI media type, for the objects a registry client asks for by name.
+  mediaType?: string
   origin?: string
   path: string
   // Every readable download path that resolves to these bytes; one byte

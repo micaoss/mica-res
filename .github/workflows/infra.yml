@@ -75,8 +75,10 @@ jobs:
           # runs `wrangler secret put` by hand.
           secrets: |
             WRITE_TOKEN
+            STATUS_WRITE_TOKEN
         env:
           WRITE_TOKEN: ${{ secrets.WRITE_TOKEN }}
+          STATUS_WRITE_TOKEN: ${{ secrets.STATUS_WRITE_TOKEN }}
 
       # The site skeleton renders an empty bucket: phase 0 mirrors no bytes and
       # the pages must not claim otherwise.

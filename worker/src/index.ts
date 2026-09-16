@@ -132,19 +132,43 @@ async function pull(key: string, digest: string, request: Request, env: Env): Pr
   if (held !== null)
     return new Response('exists-identical\n', { status: 200 })
 
-  const { origin } = await request.json() as { origin?: string }
-  if (origin === undefined || !/^https:\/\//.test(origin))
+  const { origin, mediaType } = await request.json() as { origin?: string, mediaType?: string }
+  if (origin === undefined || !origin.startsWith('https://'))
     return new Response('origin-required\n', { status: 400 })
 
-  const download = await fetch(origin, { redirect: 'follow' })
+  // The origin is a hint, never a trust anchor: the digest is what is
+  // enforced, so a wrong origin can only fail. Redirects are followed by hand
+  // so that every hop is re-checked as https and the chain is bounded -- the
+  // failure mode to avoid is this route becoming an open fetcher. It also
+  // never echoes what it fetched: the answer is `stored` or a refusal, so the
+  // route cannot be used to read a URL, only to store bytes whose hash is
+  // already known.
+  let target = origin
+  let download: Response | undefined
+  for (let hop = 0; hop < 5; hop += 1) {
+    const answer = await fetch(target, { redirect: 'manual' })
+    if (answer.status < 300 || answer.status > 399) {
+      download = answer
+      break
+    }
+    const location = answer.headers.get('location')
+    if (location === null)
+      return new Response('origin-redirect-without-location\n', { status: 502 })
+    const next = new URL(location, target)
+    if (next.protocol !== 'https:')
+      return new Response('origin-redirect-not-https\n', { status: 400 })
+    target = next.toString()
+  }
+  if (download === undefined)
+    return new Response('origin-redirect-loop\n', { status: 502 })
   if (!download.ok || download.body === null)
     return new Response(`origin: ${download.status}\n`, { status: 502 })
 
   try {
     await env.BUCKET.put(key, download.body, {
       sha256: digest,
-      customMetadata: { sha256: digest },
-      httpMetadata: { contentType: 'application/octet-stream' },
+      customMetadata: { sha256: digest, ...(mediaType === undefined ? {} : { mediaType }) },
+      httpMetadata: { contentType: mediaType ?? 'application/octet-stream' },
     })
   }
   catch {

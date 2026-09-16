@@ -144,10 +144,24 @@ jobs:
         run: |
           set -euo pipefail
           password="$(openssl rand -hex 24)"
-          hash="$(bun -e '
-            const { hashPassword } = await import("./src/modules/account/auth/password.ts");
-            process.stdout.write(await hashPassword(process.argv[1]));
-          ' "$password")"
+          # Passed through the environment, not argv: `bun -e` argument
+          # handling is not worth depending on, and a wrong password here
+          # surfaces only as a puzzling 401 after the deploy. The round-trip
+          # check turns that into an immediate, obvious failure.
+          hash="$(SMOKE_PW="$password" bun -e '
+            const mod = await import("./src/modules/account/auth/password.ts");
+            const pw = process.env.SMOKE_PW;
+            if (!pw) {
+              console.error("SMOKE_PW was empty");
+              process.exit(1);
+            }
+            const hashed = await mod.hashPassword(pw);
+            if (!(await mod.verifyPassword(pw, hashed))) {
+              console.error("generated hash does not verify against its own password");
+              process.exit(1);
+            }
+            process.stdout.write(hashed);
+          ')"
           jq -n --arg h "$hash" '{
             SINGLE_USER_MODE: "true",
             SINGLE_USER_USERNAME: "smoke",

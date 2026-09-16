@@ -9,6 +9,14 @@ write endpoint answers 401 rather than 503 to an unauthenticated write. The
 status collector ships early, ahead of any page, because the run history it
 snapshots is what the pruning pause only promises to preserve.
 
+## 2026-09-16 09:05 [progress]
+
+Phase 2: the five build-env images of `20260916-0735` are mirrored (65
+objects, 1742.9 MiB) and the read-only registry route serves them. A
+`docker pull` from `res.micaos.dev` returns the digest ghcr returns and
+verifies every layer on the way, so bit-identity is a client's finding rather
+than a claim. The status collector now writes to the bucket.
+
 ## 2026-09-16 08:40 [pitfall]
 
 Cloudflare rejects a request body past the plan limit at the edge, before the

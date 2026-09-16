@@ -159,9 +159,52 @@ mica-boards that tries `<mirror>/blob/<sha256[0:2]>/<sha256>` before a row's
 URL -- boards knows the sha256 from its own lock, so the canonical blob path
 needs no readable names and no lock rewrite.
 
-Later phases: 2 the build-env images plus the read-only registry route, A the
-product images with the `mirrors` member proposed to `mica` docs, 3 the vendor
-git trees as depth-1 packfiles.
+Phase 2, delivered 2026-09-16: the build-env image blobs and the read-only
+registry route.
+
+- 65 of 65 objects, 1742.9 MiB: the five images of build-env `20260916-0735`
+  (base, c, go, rust, bsp), their index and platform manifests, configs and
+  layers. Six went through the pull route. The manifest a lock row names is
+  itself mirrored, with its media type, because a puller asks for it by name.
+- The registry read side: `GET /v2/` answers the version check, a manifest or
+  a blob is served by digest, and a tag resolves through the index like any
+  other readable name (`/v2/micaoss/mica-build-env/manifests/<tag>` is an
+  alias on the manifest object). There is no write, no upload and no delete
+  route in the `/v2` space.
+- The build-env blobs live in a registry that wants a token, and the Worker has
+  no registry credential by design: the client reads a small blob with its own
+  anonymous token, and for one past the request limit it resolves the
+  registry's redirect itself and hands the Worker the resolved URL. The Worker
+  stays a dumb fetcher and R2 still enforces the digest.
+- The pull route is bounded as the coordinator asked: the origin is a hint and
+  never a trust anchor (the digest is enforced, so a wrong origin can only
+  fail), only `https://` is accepted, redirects are followed by hand with every
+  hop re-checked as https and the chain capped at five, and the response never
+  echoes what was fetched -- so the route cannot be used to read a URL, only to
+  store bytes whose hash is already known.
+
+Measured after phase 2:
+
+- **Bit-identical to ghcr, proven by a client rather than claimed**:
+  `docker pull res.micaos.dev/micaoss/mica-build-env:bsp.20260916-0735`
+  transferred the image and reported digest
+  `sha256:dddef7c590c9ea0b52c3bcd07108466a73e02a49252e9ae1a5e07d333b572a3e`,
+  exactly what ghcr serves for that tag; docker verifies every layer digest as
+  it pulls, so the whole image is checked, not just the manifest. The `base`
+  index fetched from both hosts compares byte for byte (`cmp`), both reporting
+  `sha256:23c0ac30...e5a`.
+- **Cost against a ghcr pull**: a 56 MiB layer read cold from the mirror took
+  7.05 s, then 1.59 s and 1.01 s (the first is R2's own cold read), against
+  2.00 s, 1.20 s and 1.20 s from ghcr; a 221.8 MiB layer took 5.45 s from the
+  mirror against 9.03 s from ghcr. A manifest by digest is 0.38-0.41 s against
+  ghcr's 0.27-0.31 s plus the token round trip a client must make first. A
+  manifest **by tag** is 0.69-0.71 s, because resolving a tag reads the index
+  pointer and the 278 KB snapshot; that is the one avoidable cost in the
+  design, and the fix is to cache the resolved tag map in the Cache API rather
+  than per isolate.
+
+Later phases: A the product images with the `mirrors` member proposed to `mica`
+docs, 3 the vendor git trees as depth-1 packfiles.
 
 ## What offline means, and where it stops
 

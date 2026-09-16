@@ -362,15 +362,25 @@ jobs:
       # An OIDC deployment has no local password, so the suite proves the
       # provider wiring instead of signing in. The authenticated paths stay
       # covered by the workerd run above.
+      # A custom domain routes as soon as its DNS record exists, but its
+      # certificate is issued separately and a first attachment can take
+      # minutes. Until it lands, HTTPS fails at the handshake while HTTP
+      # already answers — worth telling apart, because one is a wait and the
+      # other is a misconfiguration.
       - name: Wait for the deployment to serve
         run: |
           url="${{ steps.deploy.outputs.url }}"
-          for _ in $(seq 1 30); do
+          for _ in $(seq 1 90); do
             code="$(curl -s -o /dev/null -w '%{http_code}' "$url/api/health")"
-            [ "$code" = "200" ] && exit 0
-            sleep 4
+            [ "$code" = "200" ] && { echo "serving"; exit 0; }
+            sleep 8
           done
-          echo "::error::the deployment never answered /api/health"
+          plain="$(curl -s -o /dev/null -w '%{http_code}' "${url/https:/http:}/api/health" || true)"
+          if [ "$plain" = "200" ]; then
+            echo "::error::$url routes correctly but its TLS certificate is not issued yet; re-run once it is"
+          else
+            echo "::error::the deployment never answered /api/health (plain HTTP returned $plain)"
+          fi
           exit 1
 
       - name: Smoke test the deployment

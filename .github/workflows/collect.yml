@@ -1,0 +1,35 @@
+name: collect
+# Snapshots Actions run and job metadata into the bucket before anything prunes
+# it. Runs are public data, so this reads with the workflow token and needs no
+# cross-repository credential. It applies no stage mapping: a snapshot is the
+# API's own words, so correcting the map never means collecting again.
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: collect
+  cancel-in-progress: false
+jobs:
+  collect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      # Without the status bearer the snapshots are still rendered and kept as
+      # a workflow artifact, so a cycle is never lost while the secret is set.
+      - run: bun src/cli.ts collect ${{ secrets.STATUS_WRITE_TOKEN != '' && '--apply' || '' }} --out "${RUNNER_TEMP}/status"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MICA_RES_STATUS_TOKEN: ${{ secrets.STATUS_WRITE_TOKEN }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: status-${{ github.run_id }}
+          path: ${{ runner.temp }}/status
+          retention-days: 90

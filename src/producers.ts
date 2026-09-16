@@ -37,3 +37,16 @@ export const GIT_SOURCES: LockSource[] = [
   { repository: 'mica-boards', lock: 'locks/upstream.lock' },
   { repository: 'mica-podman', lock: 'locks/upstream.lock' },
 ]
+
+// The repositories the status collector snapshots. Every one is public, so the
+// runs and jobs it reads are public data.
+export const REPOSITORIES = [
+  'mica',
+  'mica-boards',
+  'mica-build',
+  'mica-build-env',
+  'mica-core',
+  'mica-podman',
+  'mica-res',
+  'mica-system-base',
+]

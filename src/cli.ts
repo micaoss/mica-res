@@ -3,6 +3,7 @@
 //   bun src/cli.ts sync [--sizes] [--out <dir>]   enumerate; write nothing
 //   bun src/cli.ts sync --apply [--kinds deb,source] [--limit <n>]
 //   bun src/cli.ts site [--index <file>] [--out <dir>]
+//   bun src/cli.ts collect [--apply] [--out <dir>]
 //   bun src/cli.ts index --check <file>           read an index snapshot
 //
 // `sync` is a dry run unless `--apply` is given. Uploads go only through the
@@ -16,6 +17,9 @@ import { buildIndex, readIndex, renderIndex, renderPointer, summarise } from './
 import type { Kind } from './objects.ts'
 import { renderSite } from './site.ts'
 import { resolveSizes } from './sizes.ts'
+import { concluded, listJobs, listRuns, renderCurrent, renderRun, runKey, runSnapshot } from './collect.ts'
+import type { CurrentRun } from './collect.ts'
+import { REPOSITORIES } from './producers.ts'
 import { ensureBlob, putNamed } from './upload.ts'
 import type { Target } from './upload.ts'
 
@@ -24,10 +28,10 @@ const DEFAULT_BASE = 'https://res.micaos.dev'
 // Phase 1 mirrors the third-party bytes; the later phases widen this.
 const DEFAULT_KINDS: Kind[] = ['deb', 'source']
 
-function target(): Target {
-  const token = process.env['MICA_RES_WRITE_TOKEN']
+function target(variable = 'MICA_RES_WRITE_TOKEN'): Target {
+  const token = process.env[variable]
   if (token === undefined || token === '')
-    throw new Error('MICA_RES_WRITE_TOKEN is not set; --apply writes through the Worker and needs its bearer')
+    throw new Error(`${variable} is not set; --apply writes through the Worker and needs its bearer`)
   return { base: process.env['MICA_RES_BASE'] ?? DEFAULT_BASE, token }
 }
 
@@ -108,6 +112,65 @@ async function site(argv: string[]): Promise<void> {
   console.log(`site: ${document.objects.length} objects rendered into ${out}`)
 }
 
+// Snapshots every run that has concluded and is not already held. A run in
+// flight is listed in the pointer but never written immutably, so the snapshot
+// of a run is written exactly once, when it is final.
+async function collect(argv: string[]): Promise<void> {
+  const out = argv.includes('--out') ? argv[argv.indexOf('--out') + 1]! : 'tmp/status'
+  const apply = argv.includes('--apply')
+  const to = apply ? target('MICA_RES_STATUS_TOKEN') : undefined
+
+  await mkdir(`${out}/runs`, { recursive: true })
+  const repositories: { repository: string, runs: CurrentRun[] }[] = []
+  let written = 0
+  let held = 0
+  let inFlight = 0
+
+  for (const repository of REPOSITORIES) {
+    const runs = await listRuns(repository)
+    const summaries: CurrentRun[] = []
+    for (const run of runs) {
+      summaries.push({
+        id: run.id,
+        workflow: run.path.replace('.github/workflows/', ''),
+        event: run.event,
+        status: run.status,
+        conclusion: run.conclusion,
+        head_sha: run.head_sha,
+        startedAt: run.run_started_at,
+        completedAt: concluded(run) ? run.updated_at : null,
+      })
+      if (!concluded(run)) {
+        inFlight += 1
+        continue
+      }
+
+      const key = runKey(repository, run.id)
+      if (to !== undefined) {
+        const head = await fetch(`${to.base}/${key}`, { method: 'HEAD' })
+        if (head.ok) {
+          held += 1
+          continue
+        }
+      }
+      const text = renderRun(runSnapshot(repository, run, await listJobs(repository, run.id)))
+      await Bun.write(`${out}/runs/${repository}-${run.id}.json`, text)
+      if (to !== undefined)
+        await putNamed(key, text, to)
+      written += 1
+    }
+    repositories.push({ repository, runs: summaries })
+    console.log(`  ${repository.padEnd(18)} ${String(runs.length).padStart(3)} runs`)
+  }
+
+  const current = renderCurrent({ generatedAt: new Date().toISOString(), repositories })
+  await Bun.write(`${out}/current.json`, current)
+  if (to !== undefined)
+    console.log(`status/current.json: ${await putNamed('status/current.json', current, to)}`)
+
+  console.log(`collect: ${written} snapshots ${to === undefined ? 'rendered' : 'written'}, ${held} already held, ${inFlight} in flight, 0 deleted`)
+}
+
 async function index(argv: string[]): Promise<void> {
   const file = argv[argv.indexOf('--check') + 1]
   if (file === undefined)
@@ -121,6 +184,9 @@ switch (command) {
   case 'sync':
     await sync(argv)
     break
+  case 'collect':
+    await collect(argv)
+    break
   case 'site':
     await site(argv)
     break
@@ -128,6 +194,6 @@ switch (command) {
     await index(argv)
     break
   default:
-    console.error('usage: bun src/cli.ts sync [--sizes] [--out <dir>] | site [--index <file>] [--out <dir>] | index --check <file>')
+    console.error('usage: bun src/cli.ts sync [--sizes] [--apply] [--kinds <k,k>] [--limit <n>] [--out <dir>] | collect [--apply] [--out <dir>] | site [--index <file>] [--out <dir>] | index --check <file>')
     process.exit(2)
 }

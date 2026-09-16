@@ -61,6 +61,7 @@ export function createBunPlatform(): Platform {
     capabilities: {
       encryptionAtRest: true,
       argon2: true,
+      pbkdf2MaxIterations: Number.POSITIVE_INFINITY,
       subprocess: true,
       filesystem: true,
       residentTimers: true,

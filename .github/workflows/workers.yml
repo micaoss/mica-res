@@ -172,7 +172,11 @@ jobs:
               console.error("SMOKE_PW was empty");
               process.exit(1);
             }
-            const hashed = await mod.hashPassword(pw);
+            // Cloudflare refuses PBKDF2 above its ceiling, and a hash minted
+            // above it cannot be verified there at all. The app exposes the
+            // ceiling as a capability; the Workers value is what applies to
+            // the deployment this hash is for.
+            const hashed = await mod.hashPassword(pw, 100_000);
             if (!(await mod.verifyPassword(pw, hashed))) {
               console.error("generated hash does not verify against its own password");
               process.exit(1);

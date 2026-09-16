@@ -64,6 +64,15 @@ export interface PlatformCapabilities {
   readonly encryptionAtRest: boolean;
   /** argon2 / bcrypt password verification (`Bun.password`). */
   readonly argon2: boolean;
+  /**
+   * Largest PBKDF2 iteration count the runtime will compute.
+   *
+   * Hosts cap this to bound the CPU a single request can burn. A hash
+   * generated above the cap cannot be verified at all — not slowly, but
+   * with an exception — so the boot guard rejects one rather than letting
+   * every login answer "invalid credentials".
+   */
+  readonly pbkdf2MaxIterations: number;
   /** Spawning processes (the cron `shell` action). */
   readonly subprocess: boolean;
   /** A local filesystem for the `local` storage driver and file logs. */

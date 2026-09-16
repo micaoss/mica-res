@@ -67,6 +67,7 @@ describe("bun platform: env + capabilities", () => {
     expect(p.capabilities).toEqual({
       encryptionAtRest: true,
       argon2: true,
+      pbkdf2MaxIterations: Number.POSITIVE_INFINITY,
       subprocess: true,
       filesystem: true,
       residentTimers: true,

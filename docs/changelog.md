@@ -56,6 +56,13 @@ each upstream tag; your fork's `Unreleased` block sits at the top.
   or a Workers eviction forgets at most eight increments per key in flight,
   which is a worse deal for an attacker than waiting out the window. Like
   `auth_lockouts`, the table is deliberately excluded from backups.
+- `pbkdf2MaxIterations` capability. Cloudflare refuses PBKDF2 above 100,000
+  iterations, so a hash minted at the OWASP baseline of 600,000 cannot be
+  verified there at all — it throws rather than verifying slowly, and
+  `wrangler dev` computes any count, so the failure appears only in
+  production. `hashPassword` now clamps to the running platform's ceiling and
+  accepts an explicit count for minting a hash aimed at another runtime, and
+  a configured hash above the ceiling is refused at boot.
 - Runtime capability gates: `DB_ENCRYPTION=true`, `CRON_ENABLED=true`,
   argon2/bcrypt password hashes and the cron `shell` action are refused on a
   runtime that cannot support them, at boot rather than at request time. The

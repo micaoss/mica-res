@@ -26,10 +26,20 @@ const PBKDF2_SALT_BYTES = 16;
 const PBKDF2_KEY_BYTES = 32;
 const PBKDF2_PREFIX = "pbkdf2-sha256";
 
-export async function hashPassword(password: string): Promise<string> {
+/**
+ * The iteration count a hash generated here should use: the OWASP baseline,
+ * unless the runtime refuses to compute that many, in which case its ceiling.
+ * A hash is only useful if the runtime that will check it can.
+ */
+export function defaultPbkdf2Iterations(): number {
+  const ceiling = getPlatform().capabilities.pbkdf2MaxIterations;
+  return Math.min(PBKDF2_ITERATIONS, ceiling);
+}
+
+export async function hashPassword(password: string, iterations = defaultPbkdf2Iterations()): Promise<string> {
   const salt = randomBytes(PBKDF2_SALT_BYTES);
-  const hash = await pbkdf2Async(password, salt, PBKDF2_ITERATIONS, PBKDF2_KEY_BYTES, "sha256");
-  return `${PBKDF2_PREFIX}$${PBKDF2_ITERATIONS}$${salt.toString("base64")}$${hash.toString("base64")}`;
+  const hash = await pbkdf2Async(password, salt, iterations, PBKDF2_KEY_BYTES, "sha256");
+  return `${PBKDF2_PREFIX}$${iterations}$${salt.toString("base64")}$${hash.toString("base64")}`;
 }
 
 const RE_BCRYPT = /^\$2[aby]\$/;
@@ -104,9 +114,21 @@ async function verifyPbkdf2(password: string, stored: string): Promise<boolean> 
  * 500. Returns the reason when unsupported, `undefined` when fine.
  */
 export function passwordHashUnsupportedReason(stored: string): string | undefined {
-  if (!stored.startsWith("$argon2") && !RE_BCRYPT.test(stored))
-    return undefined;
-  if (getPlatform().capabilities.argon2)
-    return undefined;
-  return `SINGLE_USER_PASSWORD_HASH is argon2/bcrypt, which this runtime cannot verify. Use a ${PBKDF2_PREFIX} hash instead.`;
+  const { argon2, pbkdf2MaxIterations } = getPlatform().capabilities;
+
+  if (stored.startsWith("$argon2") || RE_BCRYPT.test(stored)) {
+    return argon2
+      ? undefined
+      : `SINGLE_USER_PASSWORD_HASH is argon2/bcrypt, which this runtime cannot verify. Use a ${PBKDF2_PREFIX} hash instead.`;
+  }
+
+  if (stored.startsWith(`${PBKDF2_PREFIX}$`)) {
+    const iterations = Number(stored.split("$")[1]);
+    if (Number.isInteger(iterations) && iterations > pbkdf2MaxIterations) {
+      return `SINGLE_USER_PASSWORD_HASH uses ${iterations} PBKDF2 iterations, above the ${pbkdf2MaxIterations} this runtime will compute. `
+        + `Re-generate it with at most ${pbkdf2MaxIterations} iterations; a hash above the ceiling cannot be verified at all.`;
+    }
+  }
+
+  return undefined;
 }

@@ -9,6 +9,7 @@ import { requestId } from "hono/request-id";
 import { secureHeaders } from "hono/secure-headers";
 import { loadConfig } from "./config";
 import { logDefaultAdmins } from "./modules/account/auth/auth.service";
+import { passwordHashUnsupportedReason } from "./modules/account/auth/password";
 import { startAuditRetentionSweep } from "./modules/audit";
 import { assertCronSchedulerSupported, initCronActions, startCron } from "./modules/cron";
 import { docsCspRelax, mountDocs } from "./modules/docs";
@@ -62,6 +63,16 @@ export interface BootstrapResult {
  */
 export async function bootstrap(): Promise<BootstrapResult> {
   const config = await loadConfig();
+
+  // Refuse a credential this runtime cannot check, at boot. Left to the
+  // login route it would surface as an endless "invalid credentials", with
+  // the real reason buried in a log line.
+  if (config.SINGLE_USER_MODE && config.SINGLE_USER_PASSWORD_HASH) {
+    const reason = passwordHashUnsupportedReason(config.SINGLE_USER_PASSWORD_HASH);
+    if (reason)
+      throw new Error(`[config] ${reason}`);
+  }
+
   const logger = createLogger(config);
   // One controller per process owns all encryption state. Passed to the
   // bootstrap helper, threaded into `c.var.encryption` for every request,

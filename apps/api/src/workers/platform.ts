@@ -125,6 +125,10 @@ export function createWorkersPlatform(opts: {
       encryptionAtRest: false,
       // No `Bun.password`: argon2/bcrypt hashes cannot be verified.
       argon2: false,
+      // Observed on a real deployment: PBKDF2 throws above this, while
+      // `wrangler dev` happily computes any count — so a hash minted for a
+      // Bun deployment authenticates locally and fails in production.
+      pbkdf2MaxIterations: 100_000,
       subprocess: false,
       filesystem: false,
       // The object is evicted when idle and only an alarm wakes it, so a

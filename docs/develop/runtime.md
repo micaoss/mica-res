@@ -30,7 +30,8 @@ honour rather than failing later at request time.
 | Capability | Bun | Workers | Enforced at |
 | --- | --- | --- | --- |
 | `encryptionAtRest` | yes | no | boot — `DB_ENCRYPTION=true` is rejected |
-| `argon2` | yes | no | boot and login — use a `pbkdf2-sha256` hash |
+| `argon2` | yes | no | boot — use a `pbkdf2-sha256` hash |
+| `pbkdf2MaxIterations` | unbounded | 100,000 | boot — a hash above the ceiling is refused |
 | `subprocess` | yes | no | the cron `shell` action throws |
 | `filesystem` | yes | no | static assets, file logs and the OIDC discovery cache fall back |
 | `residentTimers` | yes | no | boot — `CRON_ENABLED=true` is rejected |
@@ -40,8 +41,14 @@ Workers-specific consequences:
 - **Database encryption** is the host's job. Durable Object storage is
   encrypted by Cloudflare; libsql's page-level encryption has no counterpart
   and the `meta.db` / DEK rotation machinery is Bun-only.
-- **Passwords** must be `pbkdf2-sha256`. `Bun.password`'s argon2 and bcrypt
-  verification has no WebCrypto equivalent.
+- **Passwords** must be `pbkdf2-sha256`, generated with at most 100,000
+  iterations. `Bun.password`'s argon2 and bcrypt verification has no WebCrypto
+  equivalent, and Cloudflare refuses PBKDF2 above that ceiling — a hash minted
+  at the OWASP baseline of 600,000 throws rather than verifying slowly. Note
+  that `wrangler dev` computes any iteration count, so a hash that
+  authenticates locally can still fail in production; the boot guard catches
+  it either way. `hashPassword` clamps to the running platform's ceiling, and
+  a hash for another runtime can be minted with an explicit count.
 - **Logs** go to the console as JSON, which is what `wrangler tail` reads.
 - **The SPA** is served by Cloudflare's asset pipeline, not by the app's
   static middleware.

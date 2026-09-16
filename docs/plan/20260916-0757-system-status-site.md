@@ -60,6 +60,14 @@ and identity, never a stage of its own: the API reports no separate row for
 the wrapper job (`build`, `release-products`), and attributing one would
 double-count the work its children already report (mica-podman, 2026-09-16).
 
+**The caller prefix is part of the key, and the workflow file still is too.**
+mica-boards calls one reusable workflow twice in every ci run -- `build`
+without a board and `build-board` with `uefi-x64` -- so `build.yml`'s jobs
+appear twice per run and are distinguished only by the prefix; a map keyed on
+the bare job id collides them. And its `release.yml` caller is also named
+`build`, so the prefix does not tell a release run from a ci run: only the
+workflow file does. The key stays (repository, workflow file, full job name).
+
 ### 2. The stage vocabulary: nineteen words
 
 `plan`, `check`, `docs`, `archives`, `kernel`, `uboot`, `rootfs`, `pool`,
@@ -104,6 +112,15 @@ and workflow can be `unknown`.
 
 `unknown` is the ninth and is not a job state: it is the absence of collected
 data (before the collector ran, or a collection gap). It is never green.
+
+**A job that ran and did nothing is its own case.** When mica-boards' `kernel`
+or `uboot` matrix is empty (every component reused), the plan emits one
+placeholder entry with an empty board, every step is skipped by a condition on
+the matrix value, and **the job appears without parentheses** -- `build /
+uboot` -- and succeeds having done nothing. A parenthesis-less `kernel` or
+`uboot` therefore reads as `no-work`: a success with no duration to chart and
+**no board to attribute it to**, never an unnamed board. It belongs in the
+repository row, not in a board's cell.
 
 **Failure signatures.** A conclusion of `failure` does not say what failed, and
 two repositories have a failure that means "a version was not bumped" rather
@@ -302,13 +319,93 @@ than one workflow.
   differ. See the failure signatures in 3.
 - The work in flight there changes steps inside `package`, not the job set.
 
+#### mica-boards (`65c25c8`)
+
+| Workflow | Job name | Stage |
+|---|---|---|
+| `ci.yml` | `check` | check |
+| `ci.yml` | `build / plan`, `build-board / plan` | plan |
+| `ci.yml` | `build / kernel (<board>, <runner>)`, `build-board / kernel (...)` | kernel |
+| `ci.yml` | `build / uboot (<board>)`, `build-board / uboot (...)` | uboot |
+| `ci.yml` | `build / components`, `build-board / components` | components |
+| `ci.yml` | `build / pool (<arch>, <runner>)`, `build-board / pool (...)` | pool |
+| `ci.yml` | `build / pools`, `build-board / pools` | pools |
+| `release.yml` | `scope` | plan |
+| `release.yml` | `build / plan`, `build / kernel (...)`, `build / uboot (...)`, `build / components`, `build / pool (...)`, `build / pools` | as above |
+| `release.yml` | `publish` | publish |
+
+- `build.yml` is reusable and never triggered alone; `ci.yml` calls it twice
+  (`build` with no board, `build-board` with `uefi-x64`) and both run in every
+  ci run. `ci.yml` `build` and `build-board` are callers, not stages: their
+  durations are the sum of their children and must not be charted.
+- Dimension order, which the API does not give: `kernel (board, runner)` --
+  position 1 the board (`uefi-x64`, `uefi-arm64`, `cx3576`, `s905x5m`);
+  `uboot (board)` -- one dimension, **FIT boards only** (`cx3576`,
+  `s905x5m`); `pool (arch, runner)` -- position 1 the pool architecture.
+  `plan`, `components`, `pools`, `check`, `scope` and `publish` have no
+  matrix. Position 1 is a board in two jobs and an architecture in a third,
+  which is why arity and meaning are declared per job.
+- `uboot` exists only for FIT boards, so for `uefi-x64` and `uefi-arm64` its
+  cell is **`not-applicable` by declaration**, from the board's family in the
+  boards tree -- never inferred from a job's absence.
+- **`scope` maps to `plan`** (decision here, 2026-09-16): it parses the
+  release tag and refuses one that is not `<board>.<YYYYMMDD-HHMM>`, produces
+  no artefact, and resolving what a run is about is what `plan` already means
+  in five repositories. The four words that were added each named a *kind of
+  work* no existing word covered; a job with a distinctive name does not earn
+  one, or every repository's vocabulary becomes its job list. Since a stage
+  cell expands to its jobs, a release run shows `plan` carrying `scope` and
+  `build / plan` and nothing is hidden.
+- **There is no `gate` job here**: the package gate runs inside `pool` (per
+  architecture, with its byte-identical rebuild) and again inside `pools` (the
+  static gate across both). A `gate` bar for this repository could only come
+  from step names, and the map does not claim one. This is the mirror image of
+  mica-core, which has a `gate` job and no `pool` job -- together they are the
+  reason the vocabulary is sparse per repository and absence is never a
+  missing stage.
+- Meaning: `pool` is three things (builds the pool, runs the package version
+  guard for every board of that architecture against the board's latest
+  release, runs the package gate with its rebuild) and **most of its minutes
+  are the gate, not the pack**; `pools` is the cross-architecture static gate,
+  not a second pool build; `components` stages every built component against
+  its board `outputs.tsv` and reports reused rather than built for the others,
+  so with everything reused it does almost nothing.
+- Conditionality: `kernel` and `uboot` run per board only when the plan asks,
+  since a component whose inputs hash equals the one the board's latest
+  release published is not built, in ci as in a release. The plan forces every
+  component to build when the run touches files the component jobs run but the
+  inputs hash does not cover (the workflows, the root `Makefile`, the lock and
+  output tools, `tools/inputs.sh`, `tools/reuse.sh`), when there is no base
+  commit to compare (dispatch, a new branch), and when a push's previous head
+  is not an ancestor (a force push). **The reason is a line in the plan job's
+  log, and logs die with the run**, so the site shows built or reused without
+  the reason unless mica-boards ever emits it as a workflow notice, which the
+  Checks annotations API exposes without logs. Worth asking for later; not
+  asked for now.
+- Cache steps inside `kernel`, `uboot` and `pool` save only on a push to
+  `main` of the full board-less build. `release.yml` runs only on
+  `release: published`, one board per release.
+- The board rename landed today (`x64` to `uefi-x64`, `virt-arm64` to
+  `uefi-arm64`; `cx3576` and `s905x5m` unchanged): the first live case of the
+  rule that nothing is keyed on a board value.
+- The bsp switch, in their tree and unpushed, changes no job name, dimension
+  or stage: only the inside of `kernel` and `uboot`, which build FROM the
+  pinned bsp image instead of installing a toolchain from the Ubuntu snapshot.
+  Those durations should fall a little and stop depending on an archive being
+  up, and an apt-install step disappears from any step-level chart.
+
 #### Outstanding
 
-mica-boards only. It is also the one where the dimension order matters most:
-its measured names put a board first in `build / kernel (uefi-arm64,
-ubuntu-24.04-arm)` and an architecture first in `build / pool (arm64,
-ubuntu-24.04-arm)`, and its `components` job and its manifest-merging step now
-have to be mapped against a vocabulary that has both `merge` and `inputs`.
+None. All seven repositories have answered. The failing step names for the
+failure signatures of mica-podman's `package` and mica-core's `gate` are
+declared later, by coordinator decision; until then the collector records the
+failing step name verbatim, which needs no schema change to label afterwards.
+
+mica-boards has **no** manifest-merging job: `merge` came from mica-build-env,
+and mica-boards builds its multi-architecture pool inside `pools`. Its
+`components` means building and staging components, which is why mica-build's
+`boards` job took the separate word `inputs` for fetching and validating
+already published ones.
 
 ### 5. Pages
 
@@ -363,4 +460,6 @@ phase 1 of the mirror in any case.
   mica-build-env, mica-core and mica-build; vocabulary extended to eighteen
   words with `deploy`, `merge` and `inputs`, then nineteen with `pins` for
   mica-podman's `pin-freshness`. mica-system-base confirmed that `plan`, not
-  `check`, is the near-zero bar. mica-boards outstanding.
+  `check`, is the near-zero bar. All seven repositories have now answered;
+  `scope` is mapped to `plan` by decision here rather than by a twentieth
+  word.

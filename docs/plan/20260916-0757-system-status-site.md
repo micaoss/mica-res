@@ -55,13 +55,18 @@ values inside are **positional and undocumented in the API**, which is why
 every matrixed job declares its dimension order. A segment whose parentheses
 do not match the declared arity is `unmapped`, never guessed.
 
-### 2. The stage vocabulary: eighteen words
+**Only the last segment is a stage.** A caller segment supplies matrix values
+and identity, never a stage of its own: the API reports no separate row for
+the wrapper job (`build`, `release-products`), and attributing one would
+double-count the work its children already report (mica-podman, 2026-09-16).
+
+### 2. The stage vocabulary: nineteen words
 
 `plan`, `check`, `docs`, `archives`, `kernel`, `uboot`, `rootfs`, `pool`,
 `pools`, `components`, `inputs`, `package`, `gate`, `image`, `merge`,
-`publish`, `index`, `deploy`.
+`publish`, `index`, `deploy`, `pins`.
 
-Three were added on 2026-09-16 after the producers pushed back, and each
+Four were added on 2026-09-16 after the producers pushed back, and each
 distinction is real rather than cosmetic (coordinator decision):
 
 - `deploy` -- a site upload that publishes no artefact, lock or OCI tag.
@@ -75,6 +80,8 @@ distinction is real rather than cosmetic (coordinator decision):
 - `inputs` -- fetching and validating another repository's published
   components. mica-build's `boards` job does that, which is not what
   `components` means in mica-boards, where components are built.
+- `pins` -- asking upstream whether a pinned tag has a newer release. It
+  builds and publishes nothing (mica-podman's `pin-freshness`).
 
 A repository uses a sparse subset, and **the absence of a word is never a
 missing stage**: mica-core publishes OCI pools with no `pool` or `pools` job
@@ -97,6 +104,17 @@ and workflow can be `unknown`.
 
 `unknown` is the ninth and is not a job state: it is the absence of collected
 data (before the collector ran, or a collection gap). It is never green.
+
+**Failure signatures.** A conclusion of `failure` does not say what failed, and
+two repositories have a failure that means "a version was not bumped" rather
+than "the build is broken": mica-podman's reuse step inside `package`, which
+fails on purpose when the declared version is unchanged while the inputs or
+the bytes differ, and mica-core's `gate`. The jobs API reports each step with
+its name and conclusion, and the collector snapshots them, so the map may
+declare signatures of the form (workflow, job, failing step name) -> a
+labelled cause. If a step is renamed the signature stops matching and the site
+falls back to a plain `failure`: a signature can add a label, never change a
+state, and never invent one.
 
 ### 4. Declared mapping
 
@@ -249,12 +267,48 @@ than one workflow.
   ids and positions; a site keyed on product names would see every mica-build
   row rename at once.**
 
+#### mica-podman
+
+| Workflow | Job name | Stage |
+|---|---|---|
+| `ci.yml`, `release.yml` | `build / check` | check |
+| `ci.yml`, `release.yml` | `build / package (amd64, ubuntu-latest)` | package |
+| `ci.yml`, `release.yml` | `build / package (arm64, ubuntu-24.04-arm)` | package |
+| `ci.yml`, `release.yml` | `build / gate` | gate |
+| `ci.yml` | `pin-freshness` | pins |
+| `release.yml` | `publish` | publish |
+
+- `build.yml` holds `check`, `package`, `gate` and is called under the job id
+  `build` by both workflows, so the key is the workflow plus the name. The
+  wrapper is not a stage (see 1).
+- `package` is the only matrix job: a `matrix.include` of exactly two pairs,
+  no cross product; position 1 arch (the Debian architecture the package is
+  built for), position 2 runner (`ubuntu-latest` for amd64,
+  `ubuntu-24.04-arm` for arm64, both native). `check`, `gate`, `publish` and
+  `pin-freshness` carry no parentheses.
+- What the stages mean here: `check` is `make check`'s offline gates **plus**
+  `make base-check`, the Debian closure against the pinned Base release, so it
+  is not a pure offline lint -- it has a network step. `package` is the heavy
+  one despite the modest name (the engine build from pinned upstream sources,
+  the packaging, and a full no-cache rebuild of both), so a chart putting it
+  beside `check` is mostly one bar. `gate` downloads both architectures and
+  gates across them, one version and both archives. `publish` re-gates,
+  publishes the OCI pools and attaches the lock and `SHA256SUMS`.
+- Conditionality: `ci.yml` `build` runs only when the event is not a
+  schedule and `pin-freshness` only when it is, so **exactly one of the two
+  runs in any ci run** and the API reports the other as `skipped`.
+- A red `package` is not always a broken build: the reuse step fails on
+  purpose when the declared version is unchanged while the inputs or the bytes
+  differ. See the failure signatures in 3.
+- The work in flight there changes steps inside `package`, not the job set.
+
 #### Outstanding
 
-mica-boards and mica-podman. mica-boards is the one where the dimension order
-matters most: its measured names put a board first in `build / kernel
-(uefi-arm64, ubuntu-24.04-arm)` and an architecture first in `build / pool
-(arm64, ubuntu-24.04-arm)`.
+mica-boards only. It is also the one where the dimension order matters most:
+its measured names put a board first in `build / kernel (uefi-arm64,
+ubuntu-24.04-arm)` and an architecture first in `build / pool (arm64,
+ubuntu-24.04-arm)`, and its `components` job and its manifest-merging step now
+have to be mapped against a vocabulary that has both `merge` and `inputs`.
 
 ### 5. Pages
 
@@ -307,5 +361,6 @@ phase 1 of the mirror in any case.
 - 2026-09-16, coordinator `uj991oa2`: proposal and addendum sent, not yet
   accepted. Authoritative stage answers received from mica-system-base, mica,
   mica-build-env, mica-core and mica-build; vocabulary extended to eighteen
-  words with `deploy`, `merge` and `inputs`. mica-boards and mica-podman
-  outstanding.
+  words with `deploy`, `merge` and `inputs`, then nineteen with `pins` for
+  mica-podman's `pin-freshness`. mica-system-base confirmed that `plan`, not
+  `check`, is the near-zero bar. mica-boards outstanding.

@@ -28,6 +28,12 @@ const DEFAULT_BASE = 'https://res.micaos.dev'
 // Phase 1 mirrors the third-party bytes; the later phases widen this.
 const DEFAULT_KINDS: Kind[] = ['deb', 'source']
 
+// Cloudflare refuses a request body past its plan's limit at the edge, before
+// the Worker runs: a 129.3 MB archive came back 413 Payload Too Large. Objects
+// above this stay `pending` and are reported, until the write endpoint offers a
+// multipart route.
+const MAX_SINGLE_SHOT = 95 * 1024 * 1024
+
 function target(variable = 'MICA_RES_WRITE_TOKEN'): Target {
   const token = process.env[variable]
   if (token === undefined || token === '')
@@ -59,7 +65,12 @@ async function sync(argv: string[]): Promise<void> {
     console.log(`apply: ${wanted.length} objects of kind ${kinds.join(', ')} to ${to.base}`)
     let stored = 0
     let present = 0
+    const tooLarge: typeof wanted = []
     for (const object of wanted) {
+      if (object.size !== undefined && object.size > MAX_SINGLE_SHOT) {
+        tooLarge.push(object)
+        continue
+      }
       const outcome = await ensureBlob(object, to)
       object.state = 'mirrored'
       if (outcome === 'present')
@@ -69,7 +80,9 @@ async function sync(argv: string[]): Promise<void> {
       if ((stored + present) % 25 === 0)
         console.log(`  ${stored + present}/${wanted.length} (${stored} written, ${present} already held)`)
     }
-    console.log(`apply: ${stored} written, ${present} already held, 0 deleted`)
+    console.log(`apply: ${stored} written, ${present} already held, ${tooLarge.length} too large for one request, 0 deleted`)
+    for (const object of tooLarge)
+      console.log(`  too large: ${((object.size ?? 0) / 1048576).toFixed(0)} MiB ${object.readable[0]}`)
   }
 
   const document = buildIndex({ version: stamp(), objects })

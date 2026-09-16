@@ -191,14 +191,19 @@ jobs:
           url="${{ steps.deploy.outputs.url }}"
           echo "user $SMOKE_USERNAME, password length ${#SMOKE_PASSWORD}"
           last=""
-          for _ in $(seq 1 45); do
+          # Ten attempts: the single-user lockout trips at ten failures, so
+          # hammering past that only turns a diagnosable 401 into an opaque
+          # 429. Each status is logged, which is what tells a wrong password
+          # apart from a runtime that cannot verify one.
+          for _ in $(seq 1 10); do
             last="$(curl -s -o /dev/null -w '%{http_code}' -X POST \
               -H 'Content-Type: application/json' -H 'X-Requested-With: XMLHttpRequest' \
               -H "Origin: $url" \
               --data "$(jq -n --arg u "$SMOKE_USERNAME" --arg p "$SMOKE_PASSWORD" '{username:$u,password:$p}')" \
               "$url/api/account/auth/login-local")"
+            echo "login -> $last"
             [ "$last" = "200" ] && exit 0
-            sleep 2
+            sleep 3
           done
           echo "::error::the minted credentials never logged in (last status $last)"
           exit 1

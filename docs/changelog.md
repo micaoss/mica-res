@@ -178,6 +178,16 @@ each upstream tag; your fork's `Unreleased` block sits at the top.
 
 ### Fixed
 
+- Every OpenID Connect login in production failed with a 500 at the
+  callback. The OAuth state cookie is named `__Secure-oauth_state` in
+  production, and it was cleared without `secure` — which Hono refuses for a
+  `__Secure-` cookie, even for the expiring cookie a deletion writes — so the
+  callback threw before exchanging the code. Development uses the plain
+  cookie name, which is why neither local runs nor the e2e suite ever hit
+  it. The deletion also hardcoded `Path=/`, so under a non-empty `BASE_PATH`
+  the state cookie was never cleared. Both attributes now mirror how the
+  cookie is set.
+
 - `PATCH /api/policy/tuples/:id` deleted the old tuple before validating the
   new relation, so a rejected relation (typo, or one that collided with an
   existing row) answered 422 and silently revoked the permission. The rewrite

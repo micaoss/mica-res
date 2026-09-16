@@ -115,6 +115,62 @@ afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
 });
 
+/**
+ * Production-shaped OAuth config: the state cookie is `__Secure-oauth_state`
+ * there, and Hono refuses to write a `__Secure-` cookie — including the
+ * expiring one a deletion emits — unless `Secure` is set. Development uses
+ * the plain name, which is why nothing below showed up locally or in e2e.
+ */
+function productionOAuthConfig(overrides: Partial<Config> = {}): Config {
+  return baseConfig({
+    NODE_ENV: "production",
+    APP_URL: "https://app.example.test",
+    CORS_ORIGIN: "https://app.example.test",
+    OAUTH_CLIENT_ID: "client-under-test",
+    OAUTH_ISSUER: "https://idp.example.test",
+    OAUTH_AUTHORIZE_URL: "https://idp.example.test/auth",
+    OAUTH_TOKEN_URL: "https://idp.example.test/token",
+    OAUTH_USERINFO_URL: "https://idp.example.test/userinfo",
+    ...overrides,
+  });
+}
+
+describe("GET /account/auth/callback — production state cookie", () => {
+  test("clearing the Secure-prefixed state cookie does not crash the callback", async () => {
+    const app = buildApp(db, productionOAuthConfig());
+    const res = await app.request("/account/auth/callback?code=c&state=s", {
+      headers: { Cookie: "__Secure-oauth_state=s" },
+    });
+
+    // No PKCE row exists for this state, so the callback must bounce to the
+    // login error page. A 500 means it died clearing the cookie first.
+    expect(res.status).toBe(302);
+    expect(res.headers.get("Location")).toContain("oauth_state_invalid");
+  });
+
+  test("the expiring cookie is Secure, so a browser actually honours it", async () => {
+    const app = buildApp(db, productionOAuthConfig());
+    const res = await app.request("/account/auth/callback?code=c&state=s", {
+      headers: { Cookie: "__Secure-oauth_state=s" },
+    });
+    const cleared = res.headers.getSetCookie().find(v => v.startsWith("__Secure-oauth_state="));
+    expect(cleared).toBeDefined();
+    expect(cleared).toContain("Secure");
+    expect(cleared).toContain("Max-Age=0");
+  });
+
+  test("the expiring cookie uses the path it was set with under a BASE_PATH", async () => {
+    // A cookie is only replaced by one with the same Path. Deleting at "/"
+    // leaves the "/app"-scoped state cookie behind.
+    const app = buildApp(db, productionOAuthConfig({ BASE_PATH: "/app" }));
+    const res = await app.request("/account/auth/callback?code=c&state=s", {
+      headers: { Cookie: "__Secure-oauth_state=s" },
+    });
+    const cleared = res.headers.getSetCookie().find(v => v.startsWith("__Secure-oauth_state="));
+    expect(cleared).toContain("Path=/app");
+  });
+});
+
 describe("GET /account/auth/mode", () => {
   test("reports oauth mode when single-user is off", async () => {
     const app = buildApp(db, baseConfig());

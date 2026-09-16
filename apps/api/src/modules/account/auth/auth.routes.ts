@@ -353,7 +353,15 @@ export function authRoutes() {
       // the cookie — reject explicitly so the user re-initiates login.
       const cookieName = oauthStateCookieName(config.NODE_ENV);
       const cookieState = getCookie(c, cookieName);
-      deleteCookie(c, cookieName, { path: "/" });
+      // Mirror the attributes it was set with. In production the name carries
+      // the `__Secure-` prefix, and Hono refuses to write such a cookie —
+      // even the expiring one a deletion emits — without `secure`, so leaving
+      // it out threw here and turned every production OIDC callback into a
+      // 500. The path must match too, or the browser keeps the original.
+      deleteCookie(c, cookieName, {
+        path: cookiePath(base),
+        secure: config.NODE_ENV === "production",
+      });
       if (!cookieState || cookieState !== state) {
         return c.redirect(buildLoginErrorUrl(base, "oauth_state_invalid"), 302);
       }

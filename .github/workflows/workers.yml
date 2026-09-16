@@ -145,11 +145,12 @@ jobs:
           set -euo pipefail
           password="$(openssl rand -hex 24)"
           username="smoke-${{ github.run_id }}"
-          # Passed through the environment, not argv: `bun -e` argument
-          # handling is not worth depending on, and a wrong password here
-          # surfaces only as a puzzling 401 after the deploy. The round-trip
-          # check turns that into an immediate, obvious failure.
-          hash="$(SMOKE_PW="$password" bun -e '
+          # Written to a file rather than captured from stdout: anything the
+          # runtime decides to print would otherwise be appended to the hash,
+          # and a hash with trailing junk still passes the format check at
+          # boot while failing every login — which is a long way to walk for
+          # a missing redirect.
+          SMOKE_PW="$password" bun -e '
             const mod = await import("./src/modules/account/auth/password.ts");
             const pw = process.env.SMOKE_PW;
             if (!pw) {
@@ -161,8 +162,13 @@ jobs:
               console.error("generated hash does not verify against its own password");
               process.exit(1);
             }
-            process.stdout.write(hashed);
-          ')"
+            await Bun.write("/tmp/smoke-hash.txt", hashed);
+          '
+          hash="$(cat /tmp/smoke-hash.txt)"
+          rm -f /tmp/smoke-hash.txt
+          # Structure only — lengths and field count carry no secret material.
+          echo "hash length ${#hash}, fields $(echo "$hash" | awk -F'$' '{print NF}'), prefix ${hash%%\$*}"
+
           # A username per run. Failed logins are recorded per username in
           # `auth_lockouts`, which lives in the Durable Object and therefore
           # outlives the deploy — a run that failed for any reason would lock

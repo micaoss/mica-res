@@ -118,11 +118,53 @@ async function writeNamed(key: string, immutable: boolean, scope: WriteScope, re
   return new Response(`${decision.reason}\n`, { status: 200 })
 }
 
+// An object past the edge's request-body limit (a 129.3 MB archive answered
+// 413) is streamed by the Worker from its origin straight into R2, with the
+// pinned digest handed to R2 as the expected checksum: R2 refuses the object if
+// the bytes do not hash to it, so the content-addressed guarantee is kept
+// without the bytes ever passing through a request body or the Worker's memory.
+async function pull(key: string, digest: string, request: Request, env: Env): Promise<Response> {
+  const refusal = authorise('mirror', request, env)
+  if (refusal !== null)
+    return refusal
+
+  const held = await env.BUCKET.head(key)
+  if (held !== null)
+    return new Response('exists-identical\n', { status: 200 })
+
+  const { origin } = await request.json() as { origin?: string }
+  if (origin === undefined || !/^https:\/\//.test(origin))
+    return new Response('origin-required\n', { status: 400 })
+
+  const download = await fetch(origin, { redirect: 'follow' })
+  if (!download.ok || download.body === null)
+    return new Response(`origin: ${download.status}\n`, { status: 502 })
+
+  try {
+    await env.BUCKET.put(key, download.body, {
+      sha256: digest,
+      customMetadata: { sha256: digest },
+      httpMetadata: { contentType: 'application/octet-stream' },
+    })
+  }
+  catch {
+    // R2 rejects the put when the streamed bytes do not hash to the digest.
+    return new Response('sha256-mismatch\n', { status: 409 })
+  }
+  return new Response('stored\n', { status: 200 })
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const matched = route(new URL(request.url).pathname)
     if (matched.kind === 'not-found')
       return notFound()
+
+    if (matched.kind === 'pull') {
+      return request.method === 'POST'
+        ? pull(matched.key, matched.digest, request, env)
+        : new Response('method not allowed\n', { status: 405, headers: { allow: 'POST' } })
+    }
 
     if (matched.kind === 'write' || matched.kind === 'write-named') {
       if (request.method !== 'PUT')

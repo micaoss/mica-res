@@ -59,3 +59,26 @@ export async function putNamed(key: string, text: string, target: Target, fetche
     throw new Error(`write-named: ${put.status} ${reason} for ${key}`)
   return reason
 }
+
+// For an object past the edge's request-body limit: ask the Worker to stream it
+// from its origin, with R2 verifying the pinned digest as it lands. The client
+// then reads the stored object's own metadata back, so the result is checked on
+// both sides without moving the bytes twice.
+export async function pullBlob(object: Pick<ResourceObject, 'sha256' | 'path'> & { origin?: string }, target: Target, fetcher: typeof fetch = fetch): Promise<Outcome> {
+  if (object.origin === undefined)
+    throw new Error(`no-origin: ${object.sha256} has no upstream to mirror from`)
+
+  const answer = await fetcher(`${target.base}/w/pull/${object.sha256}`, {
+    method: 'POST',
+    headers: { 'authorization': `Bearer ${target.token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ origin: object.origin }),
+  })
+  const reason = (await answer.text()).trim()
+  if (!answer.ok)
+    throw new Error(`pull: ${answer.status} ${reason} for ${object.sha256}`)
+
+  const head = await fetcher(`${target.base}/${object.path}`, { method: 'HEAD' })
+  if (!head.ok)
+    throw new Error(`pull-unverified: ${object.sha256} is not readable after the pull`)
+  return reason === 'exists-identical' ? 'exists-identical' : 'stored'
+}

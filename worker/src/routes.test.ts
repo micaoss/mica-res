@@ -102,3 +102,8 @@ test('a named replaceable write replaces, and an unknown existing digest does no
 test('an immutable named object whose stored digest is unknown is refused rather than overwritten', () => {
   expect(namedWriteDecision({ immutable: true, existing: 'unknown', bodyDigest: 'a'.repeat(64) })).toEqual({ status: 409, reason: 'exists-unverifiable' })
 })
+
+test('routes a pull request by digest', () => {
+  expect(route(`/w/pull/${digest}`)).toEqual({ kind: 'pull', key: `blob/aa/${digest}`, digest })
+  expect(route('/w/pull/nothex')).toEqual({ kind: 'not-found' })
+})

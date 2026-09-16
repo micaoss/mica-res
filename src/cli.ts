@@ -20,7 +20,7 @@ import { resolveSizes } from './sizes.ts'
 import { concluded, listJobs, listRuns, renderCurrent, renderRun, runKey, runSnapshot } from './collect.ts'
 import type { CurrentRun } from './collect.ts'
 import { REPOSITORIES } from './producers.ts'
-import { ensureBlob, putNamed } from './upload.ts'
+import { ensureBlob, pullBlob, putNamed } from './upload.ts'
 import type { Target } from './upload.ts'
 
 const DEFAULT_BASE = 'https://res.micaos.dev'
@@ -65,13 +65,12 @@ async function sync(argv: string[]): Promise<void> {
     console.log(`apply: ${wanted.length} objects of kind ${kinds.join(', ')} to ${to.base}`)
     let stored = 0
     let present = 0
-    const tooLarge: typeof wanted = []
+    let pulled = 0
     for (const object of wanted) {
-      if (object.size !== undefined && object.size > MAX_SINGLE_SHOT) {
-        tooLarge.push(object)
-        continue
-      }
-      const outcome = await ensureBlob(object, to)
+      const big = object.size !== undefined && object.size > MAX_SINGLE_SHOT
+      const outcome = big ? await pullBlob(object, to) : await ensureBlob(object, to)
+      if (big && outcome !== 'exists-identical')
+        pulled += 1
       object.state = 'mirrored'
       if (outcome === 'present')
         present += 1
@@ -80,9 +79,7 @@ async function sync(argv: string[]): Promise<void> {
       if ((stored + present) % 25 === 0)
         console.log(`  ${stored + present}/${wanted.length} (${stored} written, ${present} already held)`)
     }
-    console.log(`apply: ${stored} written, ${present} already held, ${tooLarge.length} too large for one request, 0 deleted`)
-    for (const object of tooLarge)
-      console.log(`  too large: ${((object.size ?? 0) / 1048576).toFixed(0)} MiB ${object.readable[0]}`)
+    console.log(`apply: ${stored} written (${pulled} of them streamed by the Worker from their origin), ${present} already held, 0 deleted`)
   }
 
   const document = buildIndex({ version: stamp(), objects })

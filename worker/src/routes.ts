@@ -14,6 +14,7 @@ export type Route
     | { kind: 'download', readable: string }
     | { kind: 'site', key: string }
     | { kind: 'write', key: string, digest: string }
+    | { kind: 'pull', key: string, digest: string }
     | { kind: 'write-named', key: string, immutable: boolean, scope: WriteScope }
     | { kind: 'not-found' }
 
@@ -58,6 +59,15 @@ export function route(pathname: string): Route {
   if (write) {
     const digest = write[1]!
     return { kind: 'write', key: `blob/${digest.slice(0, 2)}/${digest}`, digest }
+  }
+
+  // A pull asks the Worker to stream an origin into the bucket, for an object
+  // past the request-body limit of the edge. The key is still the digest and
+  // R2 verifies it, so this grants no capability the blob write does not.
+  const pull = /^\/w\/pull\/([0-9a-f]{64})$/.exec(pathname)
+  if (pull) {
+    const digest = pull[1]!
+    return { kind: 'pull', key: `blob/${digest.slice(0, 2)}/${digest}`, digest }
   }
 
   // Named writes: the sync writes the index and the site, the collector writes

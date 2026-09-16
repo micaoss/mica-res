@@ -14,14 +14,28 @@ workspace on 2026-09-16:
   Debian archives on `snapshot.debian.org` (105 MiB for both architectures,
   127 MiB counting superseded pins), including the two tarballs
   `source.busybox` (busybox.net) and `source.systemd`.
-- `mica-build:locks/mica-system-base.lock`: 42 further sha256-pinned
-  `upstream` Debian rows, the closure later stages install.
+- `mica-build:locks/mica-system-base.lock`: 42 further `upstream` Debian rows,
+  the closure later stages install. They resolve to 40 distinct digests and
+  **all 40 are already among mica-system-base's 325**, so the closure adds pins
+  rather than bytes. This is the first concrete case of one object carrying two
+  pins, and the reason retention is computed from the pin list and never from a
+  count: dropping either pin would leave the object reachable, and counting
+  pins would double-count the bytes.
 - `mica-boards:locks/upstream.lock`: six sha256-pinned toolchain archives,
   911 MB measured, on `developer.arm.com`, GitHub release assets and
   `raw.githubusercontent.com`; plus seven `git` rows cloned at build time.
   Its three `ubuntu-*` InRelease rows move to `mica-build-env` with the bsp
   image and are out of scope here.
-- `mica-build-env:locks/upstream.lock`: 12 toolchain archives.
+- `mica-build-env:locks/upstream.lock` at `main`: 15 `source` rows. Twelve are
+  the toolchain archives (bun, go, rust, rust-std, cargo-nextest, cargo-deny
+  per architecture), 647.7 MiB measured; the other three are the Ubuntu
+  snapshot's signed `InRelease` indexes (`ubuntu-noble` 250 KiB,
+  `-security` and `-updates` 123 KiB each, about 0.5 MiB together), added with
+  the bsp image and read only by mica-build-env's own release job when bsp is
+  rebuilt, never by a consumer build (mica-build-env, 2026-09-16). The ~207 MB
+  of Ubuntu packages bsp installs are not rows at all: apt resolves them while
+  the image is built, and afterwards they exist only inside the published
+  image.
 - `mica-build:locks/upstream.lock`: one row, `wireless-regdb`.
 - `mica-podman:locks/upstream.lock`: six `git` rows.
 - The build-env images of release `20260915-0138`, read anonymously from
@@ -82,7 +96,11 @@ Phase 0 deliverables, this plan's scope:
    canonical index writer, the readable-path mapping, and the sync with
    `--dry-run` as its default.
 3. `worker/`: the routes, the write endpoint and the cache policy, deployed
-   with wrangler 4.132.0.
+   with wrangler 4.132.0. `WRITE_TOKEN` is bound to the Worker by the deploy
+   step from this repository's secret, so the bearer the endpoint checks is
+   provably the one the repository holds and nobody runs `wrangler secret put`
+   by hand; until the secret exists the deploy step fails loudly rather than
+   deploying a Worker with a blank bearer.
 4. `.github/workflows/`: `ci.yml` (gates only, publishes nothing),
    `infra.yml` (`workflow_dispatch`: verify the token, create the bucket,
    deploy the Worker, upload the site skeleton) and `sync.yml` (dispatch plus
@@ -95,6 +113,22 @@ Later phases, unchanged from the accepted proposal: 1 the Debian archives and
 tarballs, 2 the build-env images plus the read-only registry route, A the
 product images with the `mirrors` member proposed to `mica` docs, 3 the vendor
 git trees as depth-1 packfiles.
+
+## What offline means, and where it stops
+
+An **offline consumer build** is fully covered by this design: every byte a
+build of mica-system-base, mica-boards, mica-core, mica-podman or mica-build
+fetches is either a sha256-pinned row of its own locks, a build-env image it
+pins by digest, or (phase 3) a git tree pinned by commit -- all mirrored.
+
+An **offline rebuild of the build-env images is not covered**, and mirroring
+the three `InRelease` rows does not change that: the Ubuntu packages those
+indexes name are fetched from `snapshot.ubuntu.com` and are not pinned row by
+row, so covering a bsp rebuild would mean mirroring the snapshot's package
+files, a far larger set than three rows suggests (mica-build-env,
+2026-09-16). The protection against an outage there is structural rather than
+mirrored: the image is built once, when a build-env release is cut, and every
+consumer takes it by digest afterwards.
 
 ## Risks
 

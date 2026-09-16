@@ -1,8 +1,8 @@
 import type { Hono } from "hono";
 import type { AppEnv } from "@/shared/lib/types";
-import { sql } from "drizzle-orm";
 import { createMiddleware } from "hono/factory";
 import { getAuthProvider } from "@/shared/middleware/auth-registry";
+import { consumeCreationQuota } from "./creation-quota";
 
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
@@ -14,12 +14,6 @@ interface Window {
   readonly name: "minute" | "hour";
   readonly ms: number;
   readonly max: number;
-}
-
-interface CounterRow {
-  key: string;
-  cnt: number;
-  reset: number;
 }
 
 interface Candidate {
@@ -106,11 +100,13 @@ export interface CreationRateLimitOptions {
  * rhythm just under the burst cap.
  *
  * Creation is the surface where an authenticated caller can grow the
- * database without bound, so the counters live in the database rather than
- * in memory: an in-memory window dies with the process, and a caller can
- * pace requests around a restart — or, on a runtime that evicts the app when
- * idle, around the eviction. Keying on the user id bounds the table to
- * users × resources × windows, one row each, overwritten in place.
+ * database without bound, so the counters outlive the process: an in-memory
+ * window alone dies with it, and a caller can pace requests around a restart
+ * — or, on a runtime that evicts the app when idle, around the eviction.
+ * Counting happens in memory and reaches the `rate_limits` table only when
+ * the stored value would change a decision; see `creation-quota.ts`. Keying
+ * on the user id bounds the table to users × resources × windows, one row
+ * each, overwritten in place.
  */
 export function creationRateLimit(options: CreationRateLimitOptions) {
   const { app, basePath = "" } = options;
@@ -160,34 +156,19 @@ export function creationRateLimit(options: CreationRateLimitOptions) {
       user = resolved;
     }
 
-    const now = Date.now();
-    const keyed = windows.map(w => ({ window: w, key: `${match.resource}:${w.name}:${user.id}` }));
-
-    // Both windows are bumped by one statement, so concurrent requests
-    // cannot read the same count and lose an increment, and neither window
-    // can advance without the other. `excluded.reset_at` carries each row's
-    // own window length.
-    const values = sql.join(
-      keyed.map(({ window, key }) => sql`(${key}, 1, ${now + window.ms})`),
-      sql`, `,
+    const counts = await consumeCreationQuota(
+      db,
+      windows.map(w => ({ key: `${match.resource}:${w.name}:${user.id}`, windowMs: w.ms, max: w.max })),
     );
-    const rows = await db.all<CounterRow>(sql`
-      INSERT INTO rate_limits (key, count, reset_at)
-      VALUES ${values}
-      ON CONFLICT(key) DO UPDATE SET
-        count = CASE WHEN rate_limits.reset_at <= ${now} THEN 1 ELSE rate_limits.count + 1 END,
-        reset_at = CASE WHEN rate_limits.reset_at <= ${now} THEN excluded.reset_at ELSE rate_limits.reset_at END
-      RETURNING key, count AS cnt, reset_at AS reset
-    `);
 
-    // RETURNING gives no ordering guarantee, so match on the key. Report the
-    // longest wait among the windows that tripped: a caller told to retry in
-    // a second would only trip the hour window again.
+    const now = Date.now();
+    // Report the longest wait among the windows that tripped: a caller told
+    // to retry in a second would only trip the hour window again.
     let retryAfter = 0;
-    for (const { window, key } of keyed) {
-      const row = rows.find(r => r.key === key);
-      if (row && row.cnt > window.max)
-        retryAfter = Math.max(retryAfter, Math.ceil((row.reset - now) / 1000));
+    for (const [i, window] of windows.entries()) {
+      const result = counts[i]!;
+      if (result.count > window.max)
+        retryAfter = Math.max(retryAfter, Math.ceil((result.resetAt - now) / 1000));
     }
 
     if (retryAfter > 0) {

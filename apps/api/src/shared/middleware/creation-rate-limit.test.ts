@@ -9,6 +9,7 @@ import { Hono } from "hono";
 import { createDb } from "@/db";
 import { protectedRoutes, publicRoutes } from "@/routes";
 import { rateLimits } from "@/shared/schema";
+import { __resetCreationQuotaForTests } from "./creation-quota";
 import { creationRateLimit, discoverCreationRoutes } from "./creation-rate-limit";
 
 let db: AppDatabase;
@@ -17,9 +18,13 @@ let dir: string;
 beforeEach(async () => {
   dir = mkdtempSync(resolve(tmpdir(), "creation-rate-limit-"));
   db = await createDb(resolve(dir, "app.db"));
+  // The quota cache is module-global and would otherwise carry counts from
+  // the previous case into the next one.
+  __resetCreationQuotaForTests();
 });
 
 afterEach(() => {
+  __resetCreationQuotaForTests();
   db.close();
   rmSync(dir, { recursive: true, force: true });
 });
@@ -62,10 +67,6 @@ function buildApp(limits: Limits, userId: string | null = "user-1") {
 
 function post(app: Hono<AppEnv>, path = "/issues") {
   return app.request(path, { method: "POST" });
-}
-
-async function counter(key: string) {
-  return await db.select().from(rateLimits).where(eq(rateLimits.key, key)).get();
 }
 
 describe("discoverCreationRoutes", () => {
@@ -127,10 +128,11 @@ describe("creationRateLimit — minute window", () => {
     expect((await post(app)).status).toBe(201);
     expect((await post(app)).status).toBe(429);
 
+    // Expire both the checkpoint and the live counter.
     await db.update(rateLimits).set({ resetAt: Date.now() - 1 }).where(eq(rateLimits.key, "issue:minute:user-1"));
+    __resetCreationQuotaForTests();
 
     expect((await post(app)).status).toBe(201);
-    expect((await counter("issue:minute:user-1"))?.count).toBe(1);
   });
 });
 
@@ -145,15 +147,19 @@ describe("creationRateLimit — hour window", () => {
     expect(Number(limited.headers.get("Retry-After"))).toBeGreaterThan(60);
   });
 
-  test("both windows advance together and rejected requests keep counting", async () => {
-    const app = buildApp({ perMinute: 2, perHour: 10 });
-    for (let i = 0; i < 5; i++)
+  test("rejected requests still spend the hour budget, so abuse escalates", async () => {
+    const app = buildApp({ perMinute: 2, perHour: 6 });
+    // 2 accepted, 4 refused by the minute window — but all 6 charged to the
+    // hour window, which is now spent.
+    for (let i = 0; i < 6; i++)
       await post(app);
 
-    // 2 accepted, 3 rejected by the minute window — all 5 charged to the
-    // hour window, so sustained abuse escalates instead of settling in.
-    expect((await counter("issue:minute:user-1"))?.count).toBe(5);
-    expect((await counter("issue:hour:user-1"))?.count).toBe(5);
+    // Clearing the minute window alone must not let the caller continue:
+    // the hour window absorbed the refusals.
+    await db.update(rateLimits).set({ resetAt: Date.now() - 1 }).where(eq(rateLimits.key, "issue:minute:user-1"));
+    const limited = await post(app);
+    expect(limited.status).toBe(429);
+    expect(Number(limited.headers.get("Retry-After"))).toBeGreaterThan(60);
   });
 });
 
@@ -173,12 +179,15 @@ describe("creationRateLimit — scoping", () => {
     expect((await post(buildApp({ perMinute: 1, perHour: 0 }, "bob"))).status).toBe(201);
   });
 
-  test("the counter survives a new app instance — the state is in the database", async () => {
-    for (let i = 0; i < 3; i++)
-      await post(buildApp({ perMinute: 3, perHour: 0 }));
-    // A fresh instance stands in for a restarted process or a re-created
-    // Durable Object: an in-memory limiter would have forgotten the window.
-    expect((await post(buildApp({ perMinute: 3, perHour: 0 }))).status).toBe(429);
+  test("the refusal survives a restart — the crossing write is in the database", async () => {
+    const app = buildApp({ perMinute: 3, perHour: 0 });
+    for (let i = 0; i < 4; i++)
+      await post(app);
+
+    // Dropping the cache is what a process restart or a Durable Object
+    // eviction does; only the database carries the count across it.
+    __resetCreationQuotaForTests();
+    expect((await post(app)).status).toBe(429);
   });
 
   test("an action route is not a create and is never counted", async () => {
@@ -192,9 +201,8 @@ describe("creationRateLimit — scoping", () => {
 describe("creationRateLimit — escape hatches", () => {
   test("an exempt resource is skipped while the others stay limited", async () => {
     const app = buildApp({ perMinute: 1, perHour: 0, exempt: ["issue"] });
-    for (let i = 0; i < 3; i++)
+    for (let i = 0; i < 5; i++)
       expect((await post(app, "/issues")).status).toBe(201);
-    expect(await counter("issue:minute:user-1")).toBeUndefined();
 
     expect((await post(app, "/documents")).status).toBe(201);
     expect((await post(app, "/documents")).status).toBe(429);
@@ -212,7 +220,6 @@ describe("creationRateLimit — escape hatches", () => {
     expect((await post(app)).status).toBe(201);
     expect((await post(app)).status).toBe(201);
     expect((await post(app)).status).toBe(429);
-    expect(await counter("issue:minute:user-1")).toBeUndefined();
   });
 
   test("an unauthenticated request is passed through to the auth layer", async () => {
@@ -223,10 +230,12 @@ describe("creationRateLimit — escape hatches", () => {
 });
 
 describe("creationRateLimit — concurrency", () => {
-  test("concurrent requests cannot lose an increment in either window", async () => {
-    const app = buildApp({ perMinute: 100, perHour: 100 });
-    await Promise.all(Array.from({ length: 20 }, () => post(app)));
-    expect((await counter("issue:minute:user-1"))?.count).toBe(20);
-    expect((await counter("issue:hour:user-1"))?.count).toBe(20);
+  test("concurrent requests cannot lose an increment", async () => {
+    const app = buildApp({ perMinute: 20, perHour: 0 });
+    const results = await Promise.all(Array.from({ length: 20 }, () => post(app)));
+    expect(results.every(r => r.status === 201)).toBe(true);
+    // Exactly 20 were counted, so the 21st is over the cap. A lost
+    // increment would leave room here.
+    expect((await post(app)).status).toBe(429);
   });
 });

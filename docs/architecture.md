@@ -214,10 +214,27 @@ escalates into the hour window instead of settling into a comfortable rhythm
 just under the burst cap. A 429 reports the longest tripped window in
 `Retry-After`.
 
-Both windows are bumped by one upsert, so concurrent requests cannot lose an
-increment and the two cannot drift apart. Keying on the user id bounds the
-table to users × resources × windows, one row each, overwritten in place, so
-no sweep is needed.
+Counting happens in memory; the row is a checkpoint, not a ledger. Writing
+on every request would put SQLite on a path that is otherwise free and —
+worse — would write on *rejected* requests too, turning the limiter into a
+write amplifier under exactly the flood it exists to stop. So a row is
+written only when its value would change a decision: at most once per eight
+increments while under the cap, once on the request that crosses it, and
+never again for that window, because a stored count already past the cap
+refuses on its own after a restart. A flood therefore costs a handful of
+writes rather than two per request.
+
+The cost is bounded and deliberate: a restart, or an eviction on Cloudflare
+Workers, forgets up to eight increments for the keys in flight. Recovering
+those by engineering an eviction means going idle long enough to be evicted,
+which is a worse deal than waiting out the one-minute window and getting the
+whole budget back. Memory being authoritative assumes a single writer, which
+holds everywhere this app runs — one Bun process, or one Durable Object —
+and is the same assumption behind the in-memory limiter, the per-process
+PKCE key and the request-scoped policy cache.
+
+Keying on the user id bounds the table to users × resources × windows, one
+row each, overwritten in place, so no sweep is needed.
 
 Login has a third control that is neither: `auth_lockouts` records failures
 per username in the database, which is what actually stops credential

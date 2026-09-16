@@ -252,10 +252,11 @@ rather than under a module.
 Fixed-window counters for the durable per-user limiter. `key`, `count`,
 `reset_at` (epoch ms). `key` is `<resource>:<window>:<user-id>` — e.g.
 `issue:minute:u_123`, `attachment:hour:u_123` — so each resource carries its
-own budget in each window. Bumped with one upsert so concurrent requests
-cannot lose an increment, and the row is overwritten in place on the next
-window, so cardinality is bounded by users × resources × windows and no
-sweep is needed. Excluded from backups, like `auth_lockouts` — transient
+own budget in each window. The row is a checkpoint of a counter held in
+memory, written only when its value would change a decision (see
+`creation-quota.ts`), and overwritten in place on the next window — so
+cardinality is bounded by users × resources × windows and no sweep is
+needed. Excluded from backups, like `auth_lockouts` — transient
 security state, not user data.
 
 ## Schema scope

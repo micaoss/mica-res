@@ -48,9 +48,14 @@ each upstream tag; your fork's `Unreleased` block sits at the top.
   creation is where an authenticated caller can grow the database without
   bound, and a counter that dies with the process can be defeated by pacing
   requests around a restart or, on Cloudflare Workers, around an eviction.
-  Both windows are bumped by a single upsert so concurrent requests cannot
-  lose an increment. Like `auth_lockouts`, the table is deliberately excluded
-  from backups.
+  Counting happens in memory and reaches the row only when the stored value
+  would change a decision — at most once per eight increments under the cap,
+  once when crossing it, and never again for that window. That keeps SQLite
+  off a path that is otherwise free, and stops the limiter from amplifying
+  writes under the flood it exists to stop: refusals cost nothing. A restart
+  or a Workers eviction forgets at most eight increments per key in flight,
+  which is a worse deal for an attacker than waiting out the window. Like
+  `auth_lockouts`, the table is deliberately excluded from backups.
 - Runtime capability gates: `DB_ENCRYPTION=true`, `CRON_ENABLED=true`,
   argon2/bcrypt password hashes and the cron `shell` action are refused on a
   runtime that cannot support them, at boot rather than at request time. The

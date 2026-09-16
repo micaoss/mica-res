@@ -17,6 +17,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { enumerate } from './enumerate.ts'
 import { buildIndex, readIndex, renderIndex, renderPointer, summarise } from './index-doc.ts'
+import type { IndexDocument } from './index-doc.ts'
 import type { Kind, ResourceObject } from './objects.ts'
 import { renderSite } from './site.ts'
 import { resolveSizes } from './sizes.ts'
@@ -87,6 +88,28 @@ async function mirrorTree(tree: GitTree, to: Target): Promise<{ objects: Resourc
   return { objects: packObjects(tree, whole, chunks, manifest), produced: true }
 }
 
+// A snapshot that loses a whole kind the published one had is a defect, not a
+// state: three times now a run has produced derived state that disagreed with
+// the bucket, and each time the shape was "something that exists stopped being
+// enumerated". This is the cheap check that catches the shape rather than the
+// three instances.
+async function refuseRegression(document: IndexDocument, base: string): Promise<void> {
+  const pointer = await fetch(`${base}/index/current.json`)
+  if (!pointer.ok)
+    return
+  const version = (await pointer.json() as { version: string }).version
+  const previous = await fetch(`${base}/index/${version}.json`)
+  if (!previous.ok)
+    return
+
+  const before = summarise(readIndex(await previous.text()).objects)
+  const after = new Map(summarise(document.objects).map(row => [row.kind, row.count]))
+  for (const row of before) {
+    if ((after.get(row.kind) ?? 0) === 0)
+      throw new Error(`kind-vanished: index ${version} has ${row.count} ${row.kind} objects and this enumeration has none`)
+  }
+}
+
 async function sync(argv: string[]): Promise<void> {
   const out = argv.includes('--out') ? argv[argv.indexOf('--out') + 1]! : 'tmp/sync'
   const apply = argv.includes('--apply')
@@ -139,25 +162,24 @@ async function sync(argv: string[]): Promise<void> {
     console.log(`apply: ${stored} written (${pulled} of them streamed by the Worker from their origin), ${present} already held, 0 deleted`)
   }
 
-  if (!apply) {
-    // Dry run: report the packs the bucket already holds, produce none.
-    const base = process.env['MICA_RES_BASE'] ?? DEFAULT_BASE
-    for (const tree of gitTrees)
-      objects.push(...(await heldTree(tree, base) ?? []))
-  }
-
-  if (apply && kinds.includes('git-pack')) {
-    const to = target()
-    console.log(`apply: ${gitTrees.length} git trees to ${to.base}`)
-    let produced = 0
-    for (const tree of gitTrees) {
-      const answer = await mirrorTree(tree, to)
+  // Enumeration always covers every kind. `--kinds` gates what is UPLOADED and
+  // nothing else: letting it narrow the enumeration is how a run that uploaded
+  // product images published an index with no git packs in it, while the bucket
+  // held all 44 of them.
+  const packing = apply && kinds.includes('git-pack')
+  let produced = 0
+  for (const tree of gitTrees) {
+    if (packing) {
+      const answer = await mirrorTree(tree, target())
       objects.push(...answer.objects)
       if (answer.produced)
         produced += 1
+      continue
     }
-    console.log(`apply: ${produced} trees packed and written, ${gitTrees.length - produced} already held, 0 deleted`)
+    objects.push(...(await heldTree(tree, process.env['MICA_RES_BASE'] ?? DEFAULT_BASE) ?? []))
   }
+  if (packing)
+    console.log(`apply: ${produced} trees packed and written, ${gitTrees.length - produced} already held, 0 deleted`)
 
   // What the bucket holds, read back from it, whatever this run uploaded.
   await resolveState(objects, process.env['MICA_RES_BASE'] ?? DEFAULT_BASE)
@@ -165,6 +187,7 @@ async function sync(argv: string[]): Promise<void> {
   const document = buildIndex({ version: stamp(), objects })
   const snapshot = renderIndex(document)
   readIndex(snapshot)
+  await refuseRegression(document, process.env['MICA_RES_BASE'] ?? DEFAULT_BASE)
 
   await mkdir(out, { recursive: true })
   await Bun.write(`${out}/index-${document.version}.json`, snapshot)

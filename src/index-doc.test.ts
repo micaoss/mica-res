@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { buildIndex, readIndex, readPointer, renderIndex, renderPointer } from './index-doc.ts'
+import { buildIndex, readIndex, readPointer, renderIndex, renderPointer, summarise } from './index-doc.ts'
 
 const object = (digest: string) => ({
   kind: 'deb' as const,
@@ -63,4 +63,12 @@ test('the pointer names a snapshot and reads back', () => {
 
 test('refuses a pointer without a snapshot digest', () => {
   expect(() => readPointer('{"schema":"mica/resource-index-pointer/v1","version":"20260916-0728","sha256":"short"}\n')).toThrow('field-value')
+})
+
+test('summarise reports mirrored and pinned counts per kind, so a vanished kind is visible', () => {
+  const rows = summarise([
+    { ...object('a'.repeat(64)), kind: 'deb', state: 'mirrored' },
+    { ...object('b'.repeat(64)), kind: 'git-pack', state: 'pending' },
+  ])
+  expect(rows.map(row => [row.kind, row.count, row.mirrored])).toEqual([['deb', 1, 1], ['git-pack', 1, 0]])
 })

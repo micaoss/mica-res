@@ -22,5 +22,7 @@
   "field": {
     "name": "组名称",
     "description": "描述"
-  }
+  },
+  "idpBadge": "IdP",
+  "idpManaged": "成员由身份提供商管理，每次登录时同步。"
 }

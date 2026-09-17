@@ -131,7 +131,7 @@ export function buildAuthorizeUrl(args: {
   url.searchParams.set("response_type", "code");
   url.searchParams.set("client_id", args.oauth.clientId);
   url.searchParams.set("redirect_uri", args.callbackUrl);
-  url.searchParams.set("scope", "openid profile email");
+  url.searchParams.set("scope", args.appConfig.OAUTH_SCOPES);
   url.searchParams.set("state", args.state);
   if (args.codeChallenge) {
     url.searchParams.set("code_challenge", args.codeChallenge);

@@ -23,6 +23,7 @@ const groupSchema = z.object({
   id: z.string(),
   name: z.string(),
   description: z.string().nullable(),
+  source: z.enum(["local", "idp"]),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -55,6 +56,14 @@ const updateGroupSchema = z.object({
 const addMemberSchema = z.object({
   userId: z.string().min(1),
 });
+
+// Memberships of an IdP-managed group are rewritten from the groups claim at
+// every login, so a manual edit would be undone silently; a rename would cut
+// the group off from the claim value it mirrors.
+function assertLocallyManaged(group: { readonly source: string }, what: string): void {
+  if (group.source === "idp")
+    throw new AppError(`This group is managed by the identity provider; its ${what} cannot be changed here`, 409, "GROUP_MANAGED_BY_IDP");
+}
 
 export function groupRoutes() {
   const router = new Hono<AppEnv>();
@@ -179,6 +188,7 @@ export function groupRoutes() {
       const body = c.req.valid("json");
 
       if (body.name && body.name !== existing.name) {
+        assertLocallyManaged(existing, "name");
         const nameConflict = await getGroupByName(db, body.name);
         if (nameConflict) {
           throw new AppError(`Group name "${body.name}" already exists`, 409, "CONFLICT");
@@ -296,6 +306,7 @@ export function groupRoutes() {
       if (!group) {
         throw new NotFoundError("Group", id);
       }
+      assertLocallyManaged(group, "members");
 
       const body = c.req.valid("json");
       const user = await getUserById(db, body.userId);
@@ -334,7 +345,7 @@ export function groupRoutes() {
       security: SECURITY.session,
       responses: {
         ...jsonOk(z.null(), "Member removed"),
-        ...errors(401, 403, 404),
+        ...errors(401, 403, 404, 409),
       },
     }),
     adminRequired,
@@ -347,6 +358,7 @@ export function groupRoutes() {
       if (!group) {
         throw new NotFoundError("Group", id);
       }
+      assertLocallyManaged(group, "members");
 
       const removed = await removeGroupMember(db, id, userId);
       if (!removed) {

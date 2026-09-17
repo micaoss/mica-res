@@ -46,6 +46,7 @@ CREATE TABLE `groups` (
 	`id` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,
 	`description` text,
+	`source` text DEFAULT 'local' NOT NULL,
 	`created_at` text NOT NULL,
 	`updated_at` text NOT NULL
 );

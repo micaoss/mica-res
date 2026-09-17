@@ -30,6 +30,7 @@ interface Group {
   readonly id: string;
   readonly name: string;
   readonly description: string | null;
+  readonly source: "local" | "idp";
   readonly memberCount: number;
   readonly createdAt: string;
 }
@@ -291,6 +292,9 @@ function GroupsTab() {
                               <div className="flex items-center gap-2">
                                 <span className="font-medium truncate">{group.name}</span>
                                 <Badge variant="secondary" className="shrink-0">{group.memberCount}</Badge>
+                                {group.source === "idp" && (
+                                  <Badge variant="outline" className="shrink-0" title={t("idpManaged")}>{t("idpBadge")}</Badge>
+                                )}
                               </div>
                               {group.description && (
                                 <p className="text-xs text-muted-foreground truncate">{group.description}</p>
@@ -323,6 +327,7 @@ function GroupsTab() {
                                 <DialogContent>
                                   <GroupFormDialog
                                     initialName={group.name}
+                                    nameLocked={group.source === "idp"}
                                     initialDescription={group.description ?? ""}
                                     onSubmit={async (name, description) => {
                                       await http(`/account/groups/${group.id}`, {
@@ -364,9 +369,11 @@ function GroupsTab() {
                 <CardTitle className="truncate">
                   {selectedGroup ? t("membersOf", { name: selectedGroup.name }) : t("membersTitle")}
                 </CardTitle>
-                <CardDescription>{t("membersDescription")}</CardDescription>
+                <CardDescription>
+                  {selectedGroup?.source === "idp" ? t("idpManaged") : t("membersDescription")}
+                </CardDescription>
               </div>
-              {selectedGroup && (
+              {selectedGroup && selectedGroup.source !== "idp" && (
                 <Dialog
                   open={addMemberOpen}
                   onOpenChange={(open) => {
@@ -441,15 +448,17 @@ function GroupsTab() {
                                 {member.email}
                               </p>
                             </div>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => void removeMember(member.id)}
-                              className="shrink-0 text-destructive hover:text-destructive"
-                            >
-                              <Trash2 className="mr-1 size-3.5" />
-                              {t("removeMember")}
-                            </Button>
+                            {selectedGroup.source !== "idp" && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => void removeMember(member.id)}
+                                className="shrink-0 text-destructive hover:text-destructive"
+                              >
+                                <Trash2 className="mr-1 size-3.5" />
+                                {t("removeMember")}
+                              </Button>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -464,6 +473,7 @@ function GroupsTab() {
 function GroupFormDialog({
   initialName = "",
   initialDescription = "",
+  nameLocked = false,
   onSubmit,
   title,
   description,
@@ -471,6 +481,8 @@ function GroupFormDialog({
 }: {
   readonly initialName?: string;
   readonly initialDescription?: string;
+  /** The IdP owns the name of a group it manages; only the description is editable. */
+  readonly nameLocked?: boolean;
   readonly onSubmit: (name: string, description: string) => Promise<void>;
   readonly title: string;
   readonly description: string;
@@ -517,6 +529,7 @@ function GroupFormDialog({
             id="group-name"
             value={name}
             onChange={e => setName(e.target.value)}
+            disabled={nameLocked}
             required
           />
         </div>

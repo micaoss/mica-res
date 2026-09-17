@@ -43,8 +43,10 @@
 | `OAUTH_AUTHORIZE_URL` | url | — | no | Explicit endpoint overrides — only needed when the IdP does not expose OIDC discovery. Each must be a full HTTPS URL. Authorization endpoint the browser is redirected to to start login. |
 | `OAUTH_CLIENT_ID` | string | — | no | OAuth/OIDC is read from environment variables at runtime, not from the settings database. Use OAUTH_ISSUER for discovery or provide all endpoints. Client id registered at the IdP for this deployment. |
 | `OAUTH_CLIENT_SECRET` | string | — | no | Client secret. Keep out of public configuration management; pull from a secrets store and inject as env var at runtime. |
+| `OAUTH_GROUPS_CLAIM` | string | — | no | Claim carrying the user's group names (userinfo first, then the id_token). When set, every login makes the user's memberships in IdP-managed groups match the claim: missing groups are created as IdP-managed, and the user leaves IdP groups no longer listed. Admin-created (local) groups are never touched, and IdP-managed groups refuse manual member edits and renames. A login whose tokens lack the claim leaves memberships unchanged. |
 | `OAUTH_ISSUER` | url | — | no | OIDC issuer URL — when set the API hits `<issuer>/.well-known/openid- configuration` and auto-fills the four endpoints below. Production discovery hits are cached next to the DB for boot-time fallback. |
 | `OAUTH_PKCE` | enum(true,false) | `true` | no | Authorization Code with PKCE. Leave true unless the IdP forbids PKCE. |
+| `OAUTH_SCOPES` | string | `openid profile email` | no | Space-separated scopes requested at login. Add the scope your IdP gates a groups claim behind (often `groups`) when using OAUTH_GROUPS_CLAIM. |
 | `OAUTH_TOKEN_URL` | url | — | no | Token endpoint the server posts to to exchange the code for tokens. |
 | `OAUTH_USERINFO_URL` | url | — | no | Userinfo endpoint the server calls with the access token to load claims used to upsert the user row. |
 | `OIDC_LOGOUT_URL` | url | — | no | RP-Initiated Logout endpoint. When set the `/account/auth/logout` flow redirects the browser here after revoking the local session so the IdP also tears down its SSO cookie. |

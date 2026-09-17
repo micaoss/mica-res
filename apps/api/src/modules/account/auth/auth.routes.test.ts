@@ -54,6 +54,7 @@ function baseConfig(overrides: Partial<Config> = {}): Config {
     OAUTH_TOKEN_URL: undefined,
     OAUTH_USERINFO_URL: undefined,
     OAUTH_PKCE: true,
+    OAUTH_SCOPES: "openid profile email",
     SESSION_MAX_AGE: 86400,
     AUDIT_RETENTION_DAYS: 0,
     MAX_UPLOAD_BYTES: 10 * 1024 * 1024,
@@ -391,5 +392,25 @@ describe("readIdTokenSub — present vs absent vs unparseable", () => {
     expect(() => __readIdTokenSubForTests(jwt({ email: "a@b.c" }))).toThrow(__IdTokenErrorForTests);
     expect(() => __readIdTokenSubForTests(jwt({ sub: 42 }))).toThrow(__IdTokenErrorForTests);
     expect(() => __readIdTokenSubForTests(jwt({ sub: "" }))).toThrow(__IdTokenErrorForTests);
+  });
+});
+
+describe("GET /account/auth/login — requested scopes", () => {
+  const oauth = {
+    OAUTH_CLIENT_ID: "client",
+    OAUTH_AUTHORIZE_URL: "https://idp.test/authorize",
+    OAUTH_TOKEN_URL: "https://idp.test/token",
+    OAUTH_USERINFO_URL: "https://idp.test/userinfo",
+    APP_URL: "http://localhost:3000",
+  } as Partial<Config>;
+
+  test("asks for openid profile email by default", async () => {
+    const res = await buildApp(db, baseConfig(oauth)).request("/account/auth/login");
+    expect(new URL(res.headers.get("location")!).searchParams.get("scope")).toBe("openid profile email");
+  });
+
+  test("asks for OAUTH_SCOPES when set, so an IdP that gates the groups claim behind a scope sends it", async () => {
+    const res = await buildApp(db, baseConfig({ ...oauth, OAUTH_SCOPES: "openid profile email groups" })).request("/account/auth/login");
+    expect(new URL(res.headers.get("location")!).searchParams.get("scope")).toBe("openid profile email groups");
   });
 });

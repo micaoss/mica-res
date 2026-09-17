@@ -19,6 +19,7 @@ import { getClientIp } from "@/shared/lib/client-ip";
 import { AppError } from "@/shared/lib/errors";
 import { describeRoute, errors, jsonOk, TAGS } from "@/shared/lib/openapi";
 import { consumeRateLimit } from "@/shared/middleware/rate-limit";
+import { applyIdpGroups } from "../groups/idp-sync";
 import {
   consumePkceEntry,
   createPkceChallenge,
@@ -427,6 +428,14 @@ export function authRoutes() {
         logger.warn({ username: user.username }, "login denied: user is disabled");
         return c.redirect(buildLoginErrorUrl(base, "user_disabled"), 302);
       }
+
+      await applyIdpGroups(db, {
+        claim: config.OAUTH_GROUPS_CLAIM,
+        userId: user.id,
+        userInfo: userInfo as unknown as Record<string, unknown>,
+        idToken: tokens.id_token,
+        logger,
+      });
 
       // Check if user has TOTP enabled — if so, defer session creation
       const totpEnabled = await hasVerifiedTotp(db, user.id);

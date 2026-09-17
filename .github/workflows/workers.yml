@@ -106,6 +106,9 @@ jobs:
       OAUTH_ISSUER: ${{ vars.OAUTH_ISSUER }}
       OAUTH_CLIENT_ID: ${{ vars.OAUTH_CLIENT_ID }}
       DEFAULT_ADMIN: ${{ vars.DEFAULT_ADMIN }}
+      # Optional: sync group memberships from an IdP claim at login.
+      OAUTH_SCOPES: ${{ vars.OAUTH_SCOPES }}
+      OAUTH_GROUPS_CLAIM: ${{ vars.OAUTH_GROUPS_CLAIM }}
     steps:
       # The `secrets` context cannot be read from a job-level `if`, so the
       # credential check is a step. Without it the job would fail deep inside
@@ -286,6 +289,12 @@ jobs:
               echo "OAUTH_CLIENT_ID = \"$OAUTH_CLIENT_ID\""
               echo "OAUTH_PKCE = \"true\""
               echo "DEFAULT_ADMIN = \"$DEFAULT_ADMIN\""
+              if [ -n "${OAUTH_SCOPES:-}" ]; then
+                echo "OAUTH_SCOPES = \"$OAUTH_SCOPES\""
+              fi
+              if [ -n "${OAUTH_GROUPS_CLAIM:-}" ]; then
+                echo "OAUTH_GROUPS_CLAIM = \"$OAUTH_GROUPS_CLAIM\""
+              fi
             fi
             # Low enough for the suite to reach in a short burst. The shipped
             # default is 60 a minute, which would take more requests to prove

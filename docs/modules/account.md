@@ -91,6 +91,26 @@ Implemented routes:
 | POST | `/api/account/groups/:id/members` | Admin | Adds a member. |
 | DELETE | `/api/account/groups/:id/members/:userId` | Admin | Removes a member. |
 
+### Groups from the identity provider
+
+Set `OAUTH_GROUPS_CLAIM` to the claim that carries group names (userinfo
+first, then the id_token) and every OIDC login syncs the user's memberships:
+
+- A claimed group that does not exist is created with `source: "idp"`.
+- The user is added to each claimed `idp` group and removed from every `idp`
+  group the claim no longer lists.
+- `local` groups — created by an admin — are never joined or left. A claimed
+  name that belongs to a local group is skipped with a warning, so the IdP
+  cannot pick up whatever an admin granted that group.
+- A login whose tokens lack the claim leaves memberships unchanged, so a
+  missing scope does not wipe them; an empty list is an empty set.
+
+`idp` groups refuse manual member changes and renames with
+`409 GROUP_MANAGED_BY_IDP`; their description can still be edited, and they
+can be deleted (a later login recreates them). Many IdPs only send the claim
+when a scope asks for it — add it with `OAUTH_SCOPES`, for example
+`openid profile email groups`.
+
 ## Policy Integration
 
 Users and groups are policy subjects. Resource grants to users and to groups

@@ -13,6 +13,17 @@ each upstream tag; your fork's `Unreleased` block sits at the top.
 
 ### Added
 
+- Group memberships from the identity provider. With `OAUTH_GROUPS_CLAIM`
+  set, each OIDC login makes the user's memberships in IdP-managed groups
+  match the claim, creating missing groups as `source: "idp"`. Local groups
+  are never touched, IdP groups refuse manual member edits and renames
+  (`409 GROUP_MANAGED_BY_IDP`), and a login without the claim changes
+  nothing. `OAUTH_SCOPES` sets the scopes requested at login (default
+  `openid profile email`) for IdPs that send the claim only on request.
+  **Schema:** `groups.source` was added to the regenerated `0000_init`
+  migration; a deployed database needs the column added by hand
+  (`ALTER TABLE groups ADD source text DEFAULT 'local' NOT NULL`).
+
 - A raw API at `${BASE_PATH}/api/raw/*` for other services to integrate with.
   It shares the `/api` prefix but none of the browser-facing layers the `/api`
   sub-app applies for the SPA — no security headers, CSRF guard, CORS policy,

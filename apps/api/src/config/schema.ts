@@ -120,6 +120,8 @@ export const configSchema = z.object({
   OAUTH_TOKEN_URL: z.string().url().optional(),
   OAUTH_USERINFO_URL: z.string().url().optional(),
   OAUTH_PKCE: z.enum(["true", "false"]).default("true").transform(v => v === "true"),
+  OAUTH_SCOPES: z.string().min(1).default("openid profile email"),
+  OAUTH_GROUPS_CLAIM: z.string().min(1).optional(),
 
   SESSION_MAX_AGE: z.coerce.number().int().positive().default(86400),
 

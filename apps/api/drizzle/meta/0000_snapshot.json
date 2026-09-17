@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "1048ca5c-152e-4080-9274-563ffaedcbba",
+  "id": "581f5969-4758-426a-b3bd-27e070836f5f",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "auth_lockouts": {
@@ -322,6 +322,14 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'local'"
         },
         "created_at": {
           "name": "created_at",

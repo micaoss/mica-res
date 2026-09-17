@@ -22,5 +22,7 @@
   "field": {
     "name": "Group Name",
     "description": "Description"
-  }
+  },
+  "idpBadge": "IdP",
+  "idpManaged": "Members are managed by the identity provider and update at each sign-in."
 }

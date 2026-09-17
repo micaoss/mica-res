@@ -187,6 +187,13 @@ each upstream tag; your fork's `Unreleased` block sits at the top.
 
 ### Fixed
 
+- `docs/reference/env-reference.md` listed only the config schema, so a
+  variable read directly from the environment — `ROOT_DIR`, `LODE_DIR`, or one
+  a module reads through `getPlatform().env` — went undocumented and unchecked.
+  `gen-env-docs` now scans `apps/api/src` for env reads outside the schema,
+  fails `check` when one is missing from `.env.example`, and lists them in a
+  separate table.
+
 - On Bun, a raw `db.get(sql\`...\`)` that matched no row threw `Failed query`
   instead of returning `undefined`. drizzle's libsql driver maps the first row
   with `Object.keys` without checking there is one; the builder `.get()` and

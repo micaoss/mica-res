@@ -427,7 +427,7 @@ bun run typecheck       # tsc --noEmit
 bun run test            # All tests pass; new modules ≥ 80% coverage
 bun run build           # Both vite build and bun build succeed
 bun run check:i18n      # en / zh locale namespaces in sync
-bun run check:env-docs  # docs/reference/env-reference.md matches the zod schema + .env.example
+bun run check:env-docs  # docs/reference/env-reference.md matches the zod schema, the env reads in apps/api/src, and .env.example
 bun run check:api-docs  # docs/reference/api-routes.md matches the in-process Hono routes
 ```
 

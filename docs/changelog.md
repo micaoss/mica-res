@@ -187,6 +187,19 @@ each upstream tag; your fork's `Unreleased` block sits at the top.
 
 ### Fixed
 
+- A second auth provider replaced the first. `registerAuthProvider` kept a
+  single slot, so a module adding token authentication switched session
+  login off. Providers now form a chain, asked in registration order, where
+  the first to return a user wins and one that throws fails the request.
+  Registering the same function twice is a no-op, and registration returns a
+  function that removes the provider.
+
+- The OpenAPI spec and `docs/reference/api-routes.md` left out the raw API.
+  The spec walked only the `/api` sub-app; `mountDocs` now also takes the raw
+  routes and documents them under `/raw`, tagged `Raw`. The route reference
+  mounted a hand-kept module list; it now mounts the same route composition
+  the app serves, so a new module is listed without editing the script.
+
 - `bun run lint`, and so `bun run check`, passed or failed depending on the
   runtime ESLint happened to run on. perfectionist takes its list of built-in
   modules from `node:module` in the running runtime, and `bun:test` is on

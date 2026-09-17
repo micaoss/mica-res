@@ -173,16 +173,66 @@ const cases: Case[] = [
     },
   },
   {
-    name: "the open API reaches the Worker and carries no browser headers",
+    // On Workers the Durable Object driver's run() returned nothing, and
+    // the version check read `rowsAffected` off it — every edit threw.
+    name: "editing a document commits, and a stale version is a conflict",
     async run() {
-      // The asset pipeline answers any path the Worker is not listed for,
-      // with index.html for unknown ones — so a missing `run_worker_first`
-      // entry shows up as HTML here rather than as an error.
-      const res = await fetch(`${baseUrl}/open/health`);
-      assert(res.status === 200, `open health returned ${res.status}`);
-      assert((res.headers.get("content-type") ?? "").includes("application/json"), "open API answered with something other than JSON");
-      assert(res.headers.get("content-security-policy") === null, "open API carries a CSP");
-      assert(res.headers.get("cross-origin-resource-policy") === null, "open API restricts cross-origin readers");
+      const created = await json<{ data: { id: string; version: number } }>(
+        await call("/api/documents", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: "smoke edit" }),
+        }),
+      );
+      const { id, version } = created.data;
+
+      const edit = await call(`/api/documents/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "smoke edit v2", version }),
+      });
+      if (edit.status !== 200)
+        throw new SmokeError(`edit returned ${edit.status}: ${await edit.text()}`);
+
+      const stale = await call(`/api/documents/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "smoke edit v3", version }),
+      });
+      assert(stale.status === 409, `a stale version returned ${stale.status}, expected 409`);
+      await stale.text();
+    },
+  },
+  {
+    name: "deleting a document removes it",
+    async run() {
+      const created = await json<{ data: { id: string } }>(
+        await call("/api/documents", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: "smoke delete" }),
+        }),
+      );
+      const { id } = created.data;
+
+      const del = await call(`/api/documents/${id}`, { method: "DELETE" });
+      if (del.status >= 300)
+        throw new SmokeError(`delete returned ${del.status}: ${await del.text()}`);
+      await del.text();
+
+      const gone = await call(`/api/documents/${id}`);
+      assert(gone.status === 404, `a deleted document still answers ${gone.status}`);
+      await gone.text();
+    },
+  },
+  {
+    name: "the raw API reaches the Worker and carries no browser headers",
+    async run() {
+      const res = await fetch(`${baseUrl}/api/raw/health`);
+      assert(res.status === 200, `raw health returned ${res.status}`);
+      assert((res.headers.get("content-type") ?? "").includes("application/json"), "raw API answered with something other than JSON");
+      assert(res.headers.get("content-security-policy") === null, "raw API carries a CSP");
+      assert(res.headers.get("cross-origin-resource-policy") === null, "raw API restricts cross-origin readers");
     },
   },
   {
@@ -220,16 +270,13 @@ const oidcCases: Case[] = [
     },
   },
   {
-    name: "the open API reaches the Worker and carries no browser headers",
+    name: "the raw API reaches the Worker and carries no browser headers",
     async run() {
-      // The asset pipeline answers any path the Worker is not listed for,
-      // with index.html for unknown ones — so a missing `run_worker_first`
-      // entry shows up as HTML here rather than as an error.
-      const res = await fetch(`${baseUrl}/open/health`);
-      assert(res.status === 200, `open health returned ${res.status}`);
-      assert((res.headers.get("content-type") ?? "").includes("application/json"), "open API answered with something other than JSON");
-      assert(res.headers.get("content-security-policy") === null, "open API carries a CSP");
-      assert(res.headers.get("cross-origin-resource-policy") === null, "open API restricts cross-origin readers");
+      const res = await fetch(`${baseUrl}/api/raw/health`);
+      assert(res.status === 200, `raw health returned ${res.status}`);
+      assert((res.headers.get("content-type") ?? "").includes("application/json"), "raw API answered with something other than JSON");
+      assert(res.headers.get("content-security-policy") === null, "raw API carries a CSP");
+      assert(res.headers.get("cross-origin-resource-policy") === null, "raw API restricts cross-origin readers");
     },
   },
   {

@@ -26,6 +26,14 @@ import * as schema from "@/db/schema";
  *     so the handle is cast once here instead of forking the type through
  *     the whole app. See `db/types.ts`.
  *
+ *     Awaiting is not the whole story: the drivers also return different
+ *     shapes. libsql's `run()` resolves to a result carrying
+ *     `rowsAffected`; the Durable Object driver's `run()` returns nothing.
+ *     The app reads `rowsAffected` to detect version conflicts, skip no-op
+ *     deletes and count retention batches, so on Workers each of those read a
+ *     property of `undefined` and threw. `run()` is wrapped below to return
+ *     the libsql shape.
+ *
  *  2. *Transactions.* drizzle's Durable Object `transaction()` wraps
  *     `storage.transactionSync()`, which requires a synchronous callback —
  *     it commits as soon as the callback returns, so an `async` callback
@@ -41,6 +49,8 @@ export async function createWorkersDb(storage: DurableObjectStorage): Promise<Ap
   // `db.transaction()` synchronously and calls `tx.rollback()` itself.
   await migrate(db, migrations);
 
+  reportRowsAffected(db, storage);
+
   return Object.assign(db, {
     close: () => {},
     // Durability is the host's job; there is no WAL to fold in.
@@ -48,4 +58,41 @@ export async function createWorkersDb(storage: DurableObjectStorage): Promise<Ap
     transaction: async <T>(fn: (tx: unknown) => Promise<T>): Promise<T> =>
       storage.transaction(async () => fn(db)) as Promise<T>,
   }) as unknown as AppDatabase;
+}
+
+interface PreparedRun {
+  run: (placeholders?: unknown) => unknown;
+}
+
+interface DrizzleSession {
+  prepareQuery: (...args: unknown[]) => PreparedRun;
+}
+
+/**
+ * Give `run()` the result libsql's driver returns.
+ *
+ * Both a raw `db.run(sql)` and a builder's `.run()` end in the session's
+ * `prepareQuery(...).run()`, so wrapping `prepareQuery` covers every write,
+ * including those inside a transaction, which share the session.
+ *
+ * `changes()` is read straight after the statement rather than taken from
+ * the cursor, because drizzle discards the cursor and re-deriving its
+ * bindings would mean depending on drizzle internals. It is exact here: the
+ * Durable Object executes synchronously and serves one event at a time, so
+ * no other statement can run in between.
+ */
+function reportRowsAffected(db: unknown, storage: DurableObjectStorage): void {
+  const session = (db as { session: DrizzleSession }).session;
+  const prepare = session.prepareQuery.bind(session);
+  session.prepareQuery = (...args: unknown[]) => {
+    const query = prepare(...args);
+    const run = query.run.bind(query);
+    query.run = (placeholders?: unknown) => {
+      run(placeholders);
+      const row = storage.sql.exec("SELECT changes() AS n, last_insert_rowid() AS id").toArray()[0] as
+        { n: number; id: number } | undefined;
+      return { rowsAffected: Number(row?.n ?? 0), lastInsertRowid: BigInt(row?.id ?? 0) };
+    };
+    return query;
+  };
 }

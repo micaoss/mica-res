@@ -187,6 +187,16 @@ each upstream tag; your fork's `Unreleased` block sits at the top.
 
 ### Fixed
 
+- On Cloudflare Workers, editing a document, deleting an item, and the audit
+  retention sweep all failed. drizzle's Durable Object driver returns nothing
+  from `run()`, where libsql returns a result carrying `rowsAffected`, and the
+  app reads that field to detect version conflicts, skip no-op deletes and
+  count retention batches — so each read threw on `undefined`. The Workers
+  adapter now wraps `run()` to return the libsql shape, reading `changes()`
+  straight after the statement, which is exact on a single-threaded Durable
+  Object. The smoke suite covered creates but never edits or deletes, which is
+  how this shipped; it now covers both.
+
 - `DEFAULT_ADMIN` could be silently cancelled. It applied only while no admin
   existed at all, so any other admin — a single-user account left from an
   earlier mode, for instance — meant the configured admin logged in as an

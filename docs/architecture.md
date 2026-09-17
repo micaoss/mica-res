@@ -249,6 +249,39 @@ long-lived process. Every window reachable on a runtime that evicts the app
 when idle is either a minute long or has a database-backed control beneath
 it.
 
+## Open API
+
+`${BASE_PATH}/open/*` is the bare surface for other services to integrate
+with. It is mounted beside `/api`, not inside it, and deliberately carries none
+of what `/api` applies for the SPA:
+
+| Applied on `/api` | On `/open` |
+| --- | --- |
+| Security headers (CSP, HSTS, frame, `same-origin` resource and opener policy) | No |
+| CSRF guard (Origin plus `X-Requested-With`) | No |
+| CORS policy | No |
+| Session and policy middleware | No |
+| Per-user creation quota | No |
+| Per-client rate limit | Yes — `OPEN_API_RATE_LIMIT_PER_MINUTE`, per IP |
+
+Each of those exists for a browser session and gets in the way of a service
+calling from outside: a `same-origin` resource policy stops cross-origin
+readers outright, and the CSRF guard demands headers a server-to-server client
+never sends. What remains is plumbing — a request id, the request context,
+request logging, the JSON error shape — and the rate limit, which counts
+unknown paths too, so probing for routes spends the same budget as calling
+them.
+
+The exemption from the security headers is decided by path, not by the order
+middleware is registered in, and applies only while the open API is mounted:
+a locked deployment has none, and the prefix then gets the normal headers
+rather than becoming an unprotected hole into whatever answers it. Anything
+unmatched under the prefix answers a JSON 404, never the SPA.
+
+Routes live in `apps/api/src/routes/open.ts`. Nothing there is authenticated
+by the framework, so a route that needs it checks it itself, usually with a
+service token in a header.
+
 ## Encryption Lifecycle
 
 The app can start in a locked mode. Setup and unlock routes are available before the full protected app is mounted. After unlock, protected routes are mounted and guarded by `requireUnlocked`.

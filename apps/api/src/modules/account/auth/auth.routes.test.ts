@@ -62,6 +62,7 @@ function baseConfig(overrides: Partial<Config> = {}): Config {
     CREATE_RATE_LIMIT_PER_MINUTE: 60,
     CREATE_RATE_LIMIT_PER_HOUR: 600,
     CREATE_RATE_LIMIT_EXEMPT: [],
+    OPEN_API_RATE_LIMIT_PER_MINUTE: 120,
     FILE_STORAGE_DRIVER: "local",
     FILE_STORAGE_LOCAL_ROOT: "data/uploads/files",
     FILE_GC_MODE: "async",

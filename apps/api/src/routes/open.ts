@@ -1,0 +1,26 @@
+import type { AppEnv } from "@/shared/lib/types";
+import { Hono } from "hono";
+
+/**
+ * Routes served on the open API, `${BASE_PATH}/open/*`.
+ *
+ * This is the surface for other services to integrate with, so it carries
+ * none of the browser-facing protections the `/api` routes get: no security
+ * headers, no CSRF guard, no CORS policy, no session or policy middleware.
+ * The only protection applied to every route here is a per-client rate limit
+ * (see `buildOpenApp`). Anything that needs authentication must check it
+ * itself — a service token in a header is the usual shape.
+ *
+ * Mount a module's open routes below, the same way `protected.ts` mounts
+ * session-authenticated ones.
+ */
+export function openRoutes() {
+  const app = new Hono<AppEnv>();
+
+  // A reachability probe for integrators: it also shows the open API's
+  // headers (or their absence) and consumes rate-limit budget like any other
+  // route.
+  app.get("/health", c => c.json({ status: "ok" }));
+
+  return app;
+}

@@ -173,6 +173,19 @@ const cases: Case[] = [
     },
   },
   {
+    name: "the open API reaches the Worker and carries no browser headers",
+    async run() {
+      // The asset pipeline answers any path the Worker is not listed for,
+      // with index.html for unknown ones — so a missing `run_worker_first`
+      // entry shows up as HTML here rather than as an error.
+      const res = await fetch(`${baseUrl}/open/health`);
+      assert(res.status === 200, `open health returned ${res.status}`);
+      assert((res.headers.get("content-type") ?? "").includes("application/json"), "open API answered with something other than JSON");
+      assert(res.headers.get("content-security-policy") === null, "open API carries a CSP");
+      assert(res.headers.get("cross-origin-resource-policy") === null, "open API restricts cross-origin readers");
+    },
+  },
+  {
     // Runs last: it spends whatever creation budget the cases above left.
     name: "creation rate limit is enforced from the database",
     async run() {
@@ -204,6 +217,19 @@ const oidcCases: Case[] = [
     async run() {
       const res = await call("/api/health");
       assert(res.status === 200, `health returned ${res.status}`);
+    },
+  },
+  {
+    name: "the open API reaches the Worker and carries no browser headers",
+    async run() {
+      // The asset pipeline answers any path the Worker is not listed for,
+      // with index.html for unknown ones — so a missing `run_worker_first`
+      // entry shows up as HTML here rather than as an error.
+      const res = await fetch(`${baseUrl}/open/health`);
+      assert(res.status === 200, `open health returned ${res.status}`);
+      assert((res.headers.get("content-type") ?? "").includes("application/json"), "open API answered with something other than JSON");
+      assert(res.headers.get("content-security-policy") === null, "open API carries a CSP");
+      assert(res.headers.get("cross-origin-resource-policy") === null, "open API restricts cross-origin readers");
     },
   },
   {

@@ -30,12 +30,14 @@ new_sqlite_classes = ["AppDurableObject"]
 binding = "FILES"
 bucket_name = "bun-tpl-files"
 
-# The SPA is served by the asset pipeline; only /api/* reaches the Worker.
+# The SPA is served by the asset pipeline; only the API prefixes reach the
+# Worker. Any other path is answered from the assets, with the SPA's index.html
+# for anything unknown — so a prefix left out here never reaches the app.
 [assets]
 directory = "../web/dist"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
-run_worker_first = ["/api/*"]
+run_worker_first = ["/api/*", "/open/*"]
 
 [observability]
 enabled = true

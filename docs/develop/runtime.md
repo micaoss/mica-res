@@ -191,6 +191,11 @@ question of which serves. Prefer deploying configuration as `vars` in the
 same version as the code, and keep secrets for values that must not be
 readable from the dashboard.
 
+The asset pipeline answers every path the Worker is not listed for in
+`run_worker_first`, serving the SPA's `index.html` for unknown ones. A route
+prefix left out of that list never reaches the app — it returns HTML with a
+200 — so both `/api/*` and `/open/*` are listed.
+
 Attaching a custom domain needs the zone on the same account; state it with
 `zone_name` rather than relying on inference. Adding any route disables the
 workers.dev URL unless `workers_dev = true` is explicit, and a newly attached

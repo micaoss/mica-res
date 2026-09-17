@@ -17,19 +17,20 @@ import { bootstrapEncryption } from "./modules/encryption";
 import { EncryptionState as EncryptionStateCtor } from "./modules/encryption/state";
 import { initFileModule, startFileGcSweep } from "./modules/file";
 import { getAllRouteBindings, policyMiddleware } from "./modules/policy";
-import { protectedRoutes, publicRoutes, setupRoutes } from "./routes";
+import { openRoutes, protectedRoutes, publicRoutes, setupRoutes } from "./routes";
 import { getAuthConfig, seedSettingsFromEnv } from "./shared/lib/app-config";
 import { createLogger } from "./shared/lib/logger";
 import { creationRateLimit } from "./shared/middleware/creation-rate-limit";
 import { csrfGuard } from "./shared/middleware/csrf";
 import { errorHandler } from "./shared/middleware/error-handler";
 import { loggingMiddleware } from "./shared/middleware/logging";
+import { rateLimit } from "./shared/middleware/rate-limit";
 import { propagateRequestId } from "./shared/middleware/request-id";
 import { hasStaticAssets, serveStaticAssets } from "./shared/middleware/static";
 
 // ─── Types ───
 
-interface AppDeps {
+export interface AppDeps {
   readonly config: Config;
   readonly db: AppDatabase;
   readonly logger: Logger;
@@ -215,7 +216,7 @@ export async function buildFullApp({ config, db, logger, encryption }: AppDeps) 
 
   api.onError(errorHandler);
 
-  return buildOuterApp(api, config);
+  return buildOuterApp(api, config, buildOpenApp({ config, db, logger, encryption }));
 }
 
 // ─── Locked App (setup / unlock) ───
@@ -238,9 +239,73 @@ export function buildLockedApp(config: Config, logger: Logger, encryption: Encry
 
 // ─── Outer shell (shared by full & locked) ───
 
-function buildOuterApp(api: Hono<AppEnv>, config: Config) {
+// ─── Open API ───
+
+/** Mount point of the open API, below BASE_PATH. */
+export const OPEN_API_PREFIX = "/open";
+
+function isUnder(path: string, prefix: string): boolean {
+  return path === prefix || path.startsWith(`${prefix}/`);
+}
+
+/**
+ * The bare API other services integrate with, mounted at
+ * `${BASE_PATH}/open`.
+ *
+ * It sits beside `/api`, not inside it, because everything `/api` applies is
+ * built for the SPA in a browser and gets in the way of a service calling
+ * from outside: security headers (a `same-origin` resource policy blocks
+ * cross-origin readers outright), the CSRF guard (which demands an Origin and
+ * an `X-Requested-With` a server-to-server client never sends), the CORS
+ * policy, and the session and policy middleware.
+ *
+ * What remains is plumbing — a request id to correlate with, the request
+ * context, request logging, a JSON error shape — and one protection: a
+ * per-client rate limit, `OPEN_API_RATE_LIMIT_PER_MINUTE`. Routes that need
+ * authentication check it themselves.
+ *
+ * `routes` is injectable so the composition can be tested with routes the
+ * production table does not have.
+ */
+export function buildOpenApp(
+  { config, db, logger, encryption }: AppDeps,
+  routes: Hono<AppEnv> = openRoutes(),
+): Hono<AppEnv> {
+  const open = new Hono<AppEnv>();
+
+  open.use("*", requestId());
+  open.use("*", propagateRequestId);
+  open.use("*", async (c, next) => {
+    c.set("db", db);
+    c.set("config", config);
+    c.set("logger", logger);
+    c.set("encryption", encryption);
+    await next();
+  });
+  open.use("*", loggingMiddleware());
+
+  // Keyed per client IP. Unknown paths count too, so probing for routes
+  // spends the same budget as calling them.
+  const perMinute = config.OPEN_API_RATE_LIMIT_PER_MINUTE;
+  if (perMinute > 0) {
+    open.use("*", rateLimit({ windowMs: 60_000, max: perMinute, bucket: "open-api" }));
+  }
+
+  open.route("/", routes);
+
+  // Anything unmatched under the prefix is answered here. Without it the
+  // request would fall through to the SPA catch-all and an integrator would
+  // get index.html with a 200 for a mistyped endpoint.
+  open.all("*", c => c.json({ success: false, error: { code: "NOT_FOUND", message: "Not found" } }, 404));
+
+  open.onError(errorHandler);
+  return open;
+}
+
+export function buildOuterApp(api: Hono<AppEnv>, config: Config, open?: Hono<AppEnv>) {
   const app = new Hono<AppEnv>();
   const base = config.BASE_PATH;
+  const openPrefix = `${base}${OPEN_API_PREFIX}`;
 
   // Scoped CSP relaxation for the Scalar docs page. Registered before
   // `secureHeaders` so its post-`next()` override wins over the strict global
@@ -254,7 +319,7 @@ function buildOuterApp(api: Hono<AppEnv>, config: Config) {
   // PDFs via same-origin <iframe>. HSTS auto-enables when APP_URL is
   // https — a direct deployment without a reverse proxy still gets it.
   const hstsEnabled = config.APP_URL?.startsWith("https://") ?? false;
-  app.use("*", secureHeaders({
+  const securityHeaders = secureHeaders({
     referrerPolicy: "strict-origin-when-cross-origin",
     crossOriginOpenerPolicy: "same-origin",
     crossOriginResourcePolicy: "same-origin",
@@ -281,7 +346,17 @@ function buildOuterApp(api: Hono<AppEnv>, config: Config) {
       formAction: ["'self'"],
       objectSrc: ["'none'"],
     },
-  }));
+  });
+
+  // The open API is exempt, by path rather than by registration order: this
+  // is a browser policy for the SPA and its API, and it would stop other
+  // services from reading the open API at all. Only when the open API is
+  // actually mounted — otherwise the prefix would fall through to the SPA
+  // and serve it without its headers.
+  app.use("*", (c, next) =>
+    open !== undefined && isUnder(c.req.path, openPrefix)
+      ? next()
+      : securityHeaders(c, next));
 
   // When BASE_PATH is set, redirect bare "/" to "${base}/" so a request to the
   // origin lands on the SPA. With no base the SPA already owns "/" — skip the
@@ -293,6 +368,10 @@ function buildOuterApp(api: Hono<AppEnv>, config: Config) {
   }
 
   app.route(`${base}/api`, api);
+  if (open !== undefined) {
+    // Before the SPA catch-all, which would otherwise claim these paths.
+    app.route(openPrefix, open);
+  }
   if (hasStaticAssets()) {
     app.get(`${base}/*`, serveStaticAssets(base));
   }

@@ -60,6 +60,7 @@ const ENCRYPTION_ADMIN_TEST = join(E2E_DIR, "modules/encryption/admin.test.ts");
 const ENCRYPTION_RATE_LIMIT_TEST = join(E2E_DIR, "modules/encryption/rate-limit.test.ts");
 const MODULE_DIRS = [
   "system",
+  "open",
   "account",
   "policy",
   "document",

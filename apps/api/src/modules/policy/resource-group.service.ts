@@ -32,7 +32,7 @@ export interface ResourceGroupMember {
  * - Group members:   <resource-ns>:<resource-id>#parent@resource_group:<groupId>
  * - Access grants:   resource_group:<groupId>#<relation>@<subject>
  *
- * Member namespaces must be registered via `loadNamespaces`. In this template the
+ * Member namespaces must be registered via `registerNamespace`. In this template the
  * default registry only ships the `user`, `group`, and `resource_group`
  * namespaces — register your own resource namespaces to make them groupable.
  */
@@ -156,7 +156,7 @@ export async function addResourceGroupMember(
     throw new ValidationError("Invalid member namespace", {
       namespace: validNamespaces.length
         ? `Must be one of: ${validNamespaces.join(", ")}`
-        : "No resource namespaces registered. Call loadNamespaces() with your resource namespaces.",
+        : "No resource namespaces registered. Register them with registerNamespace().",
     });
   }
 

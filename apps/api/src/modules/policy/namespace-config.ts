@@ -102,11 +102,42 @@ const defaultNamespaces: readonly NamespaceConfig[] = [
   },
 ];
 
+// Namespaces modules add with `registerNamespace`, kept apart from the
+// registry so `loadNamespaces()` can rebuild it without losing them.
+const moduleNamespaces = new Map<string, NamespaceConfig>();
+
+/**
+ * Reset the registry. With no argument it holds the shipped defaults plus
+ * every namespace registered by a module; with `configs` it holds exactly
+ * those, which tests use to run against a namespace set of their own.
+ */
 export function loadNamespaces(configs?: readonly NamespaceConfig[]): void {
   namespaceRegistry.clear();
-  for (const config of configs ?? defaultNamespaces) {
+  for (const config of configs ?? [...defaultNamespaces, ...moduleNamespaces.values()]) {
     namespaceRegistry.set(config.name, config);
   }
+}
+
+/**
+ * Add a module's namespace, typically from the module's `index.ts`.
+ * Registering an identical config again is a no-op; a different config under
+ * a name already taken — a shipped namespace or another module's — throws,
+ * since it would silently change that namespace's access ladder.
+ */
+export function registerNamespace(config: NamespaceConfig): void {
+  const existing = defaultNamespaces.find(ns => ns.name === config.name) ?? moduleNamespaces.get(config.name);
+  if (existing !== undefined) {
+    if (JSON.stringify(existing) === JSON.stringify(config))
+      return;
+    throw new Error(`[policy] namespace "${config.name}" is already registered with a different config`);
+  }
+  moduleNamespaces.set(config.name, config);
+  namespaceRegistry.set(config.name, config);
+}
+
+/** Test hook: drop a module namespace. Call `loadNamespaces()` afterwards. */
+export function __unregisterNamespaceForTests(name: string): void {
+  moduleNamespaces.delete(name);
 }
 
 export function getNamespace(name: string): NamespaceConfig | undefined {

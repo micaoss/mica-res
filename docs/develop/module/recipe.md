@@ -225,6 +225,16 @@ Open `apps/api/src/modules/policy/namespace-config.ts`. If the `item` namespace 
 my_relation: { union: [{ this: {} }] },
 ```
 
+A resource that is not content-shaped gets a namespace of its own instead. Register it from the module's `index.ts` rather than editing `namespace-config.ts`:
+
+```ts
+import { registerNamespace } from "@/modules/policy";
+
+registerNamespace({ name: "<name>", relations: { viewer: { union: [{ this: {} }] } } });
+```
+
+It survives the `loadNamespaces()` reset tests call, and a second module claiming the same name with a different config fails at boot.
+
 ---
 
 ## Step 5 — Backup wiring

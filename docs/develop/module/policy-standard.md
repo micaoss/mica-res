@@ -131,7 +131,8 @@ The `relation_tuples.namespace` you write into. Either:
 - **Reuse `"item"`** if the resource is content-shaped (has owner /
   editor / viewer / assignee / approver / watcher; needs parent-chain
   inheritance). Document and Issue both do this.
-- **Register a new namespace** in `namespace-config.ts` otherwise.
+- **Register a new namespace** otherwise, with `registerNamespace` from
+  `@/modules/policy`, called in the module's `index.ts`.
   Keep namespaces narrow: one per *kind* of access ladder.
 
 ### `actions`
@@ -552,10 +553,12 @@ keeping the edge in sync with the business hierarchy.
 
 ### Pattern: custom subject type (service-account, api-token)
 
-Register the namespace in `namespace-config.ts`:
+Register the namespace from the module's `index.ts`:
 
 ```ts
-{ name: "service_account" },
+import { registerNamespace } from "@/modules/policy";
+
+registerNamespace({ name: "service_account" });
 ```
 
 Then use it as a subject:
@@ -776,7 +779,9 @@ call site.
 await access.grant(ctx, { ..., relation: "can_share" });
 ```
 
-Add the relation to `namespace-config.ts`, then point an action at it.
+Add the relation to the namespace's config (`registerNamespace` for a
+module's own namespace, `namespace-config.ts` for a shipped one), then point
+an action at it.
 The engine validates relations at write time and will reject unknown
 names.
 

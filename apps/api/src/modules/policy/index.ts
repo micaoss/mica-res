@@ -2,6 +2,8 @@ import { registerBackupContribution } from "@/modules/backup/registry";
 import { policyBackupContribution } from "./policy.backup";
 
 export { policyContext, policyMiddleware, requirePermission } from "./middleware";
+export { registerNamespace } from "./namespace-config";
+export type { NamespaceConfig } from "./namespace-config";
 export { createPermissionCache, defineResource, ResourceAccess } from "./permission";
 export { NOOP_POLICY_LOGGER } from "./policy-logger";
 export { policyRoutes } from "./policy.routes";

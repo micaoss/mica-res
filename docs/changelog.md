@@ -187,6 +187,13 @@ each upstream tag; your fork's `Unreleased` block sits at the top.
 
 ### Fixed
 
+- A module could not add a policy namespace without editing
+  `namespace-config.ts`, and `loadNamespaces()` — which tests call to reset —
+  cleared the registry back to the shipped list. `registerNamespace` (exported
+  from `@/modules/policy`) adds one from the module's `index.ts`; the reset
+  keeps it, and a different config under a taken name throws at boot.
+  `loadNamespaces(configs)` still replaces the registry wholesale for tests.
+
 - A second auth provider replaced the first. `registerAuthProvider` kept a
   single slot, so a module adding token authentication switched session
   login off. Providers now form a chain, asked in registration order, where

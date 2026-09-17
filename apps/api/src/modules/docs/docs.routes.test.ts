@@ -2,8 +2,10 @@ import type { Config } from "@/config";
 import type { AppEnv } from "@/shared/lib/types";
 import { describe, expect, it } from "bun:test";
 import { Hono } from "hono";
+import { describeRoute } from "hono-openapi";
 import { auditRoutes } from "@/modules/audit";
 import { systemRoutes } from "@/modules/system";
+import { rawRoutes } from "@/routes/raw";
 import { mountDocs } from "./docs.routes";
 
 const cfg = { BASE_PATH: "", APP_NAME: "app" } as unknown as Config;
@@ -80,5 +82,50 @@ describe("docs module", () => {
     const app = buildApp();
     expect((await app.request("/openapi.json")).status).toBe(200);
     expect((await app.request("/docs")).status).toBe(200);
+  });
+});
+
+describe("docs module — the raw API", () => {
+  function buildWithRaw(): Hono<AppEnv> {
+    const api = new Hono<AppEnv>();
+    api.use("*", (c, next) => {
+      c.set("config", cfg);
+      return next();
+    });
+    // The raw API is mounted on the outer app, not on `api`, so the spec
+    // only sees it when handed the raw routes.
+    mountDocs(api, cfg, { raw: rawRoutes() });
+    api.route("/", systemRoutes());
+    return api;
+  }
+
+  it("includes raw API routes, under /raw", async () => {
+    const spec = await (await buildWithRaw().request("/openapi.json")).json() as {
+      paths: Record<string, Record<string, { tags?: string[]; security?: unknown[] }>>;
+    };
+    const op = spec.paths["/raw/health"]?.get;
+    expect(op).toBeDefined();
+    expect(op?.tags).toEqual(["Raw"]);
+    // Still documents the rest of /api alongside it.
+    expect(Object.keys(spec.paths)).toContain("/health");
+  });
+
+  it("does not describe raw routes as session-authenticated", async () => {
+    const spec = await (await buildWithRaw().request("/openapi.json")).json() as {
+      paths: Record<string, Record<string, { security?: Record<string, unknown>[] }>>;
+    };
+    const security = spec.paths["/raw/health"]?.get?.security ?? [];
+    expect(security.some(s => "sessionCookie" in s)).toBe(false);
+  });
+
+  it("sees routes mounted after the docs, as it does for /api", async () => {
+    // The spec is built on first request, so routes registered after
+    // mountDocs are included — the same contract `api` already relies on.
+    const api = new Hono<AppEnv>();
+    const raw = new Hono<AppEnv>();
+    mountDocs(api, cfg, { raw });
+    raw.get("/late", describeRoute({ tags: ["Raw"], summary: "Late", responses: { 200: { description: "ok" } } }), c => c.text("ok"));
+    const spec = await (await api.request("/openapi.json")).json() as { paths: Record<string, unknown> };
+    expect(Object.keys(spec.paths)).toContain("/raw/late");
   });
 });

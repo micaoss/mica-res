@@ -38,6 +38,7 @@ export const TAGS = {
   Cron: "Cron",
   File: "File",
   Issue: "Issue",
+  Raw: "Raw",
 } as const;
 
 // ─── Security schemes ───

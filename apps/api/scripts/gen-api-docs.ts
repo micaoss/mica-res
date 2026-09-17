@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // Generate docs/reference/api-routes.md from the in-process Hono routes table.
-// Walks each module's `*.routes.ts` factory — no live server, no DB.
+// Walks the route composition from src/routes — no live server, no DB.
 //
 // Usage:
 //   bun scripts/gen-api-docs.ts          # write docs/reference/api-routes.md
@@ -11,21 +11,7 @@ import { resolve } from "node:path";
 import process from "node:process";
 import { parseArgs } from "node:util";
 import { Hono } from "hono";
-import { accountRoutes } from "@/modules/account";
-import { auditRoutes } from "@/modules/audit";
-import { backupRoutes } from "@/modules/backup";
-import { cronRoutes } from "@/modules/cron";
-import { documentRoutes } from "@/modules/document";
-import {
-  encryptionProtectedRoutes,
-  encryptionPublicRoutes,
-  encryptionStatusRoute,
-} from "@/modules/encryption";
-import { fileRoutes } from "@/modules/file";
-import { issueRoutes } from "@/modules/issue";
-import { policyRoutes } from "@/modules/policy";
-import { settingsRoutes } from "@/modules/settings";
-import { systemRoutes } from "@/modules/system";
+import { protectedRoutes, publicRoutes, rawRoutes, setupRoutes } from "@/routes";
 
 const { values: cli } = parseArgs({
   args: process.argv.slice(2),
@@ -38,19 +24,13 @@ const ROOT = resolve(import.meta.dir, "..", "..", "..");
 const OUT_PATH = resolve(ROOT, "docs/reference/api-routes.md");
 
 const app = new Hono();
-app.route("/", systemRoutes());
-app.route("/", encryptionStatusRoute());
-app.route("/", encryptionPublicRoutes());
-app.route("/", encryptionProtectedRoutes());
-app.route("/", accountRoutes());
-app.route("/", issueRoutes());
-app.route("/", policyRoutes());
-app.route("/", documentRoutes());
-app.route("/", settingsRoutes());
-app.route("/", auditRoutes());
-app.route("/", backupRoutes());
-app.route("/", cronRoutes());
-app.route("/", fileRoutes());
+// The same composition app.ts serves (setup routes are only mounted while the
+// system is uninitialised or locked, but they are part of the API), so a newly mounted module is listed
+// without touching this script.
+app.route("/", setupRoutes());
+app.route("/", publicRoutes());
+app.route("/", protectedRoutes());
+app.route("/raw", rawRoutes());
 
 interface HonoRoute { readonly method: string; readonly path: string }
 const routesTable = (app as unknown as { routes: HonoRoute[] }).routes;

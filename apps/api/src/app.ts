@@ -196,7 +196,8 @@ export async function buildFullApp({ config, db, logger, encryption }: AppDeps) 
   // unlock guards (which would otherwise gate them). `openAPIRouteHandler`
   // walks `api`'s route table lazily at request time, so routes registered
   // below are still included in the spec. See modules/docs.
-  mountDocs(api, config);
+  const raw = rawRoutes();
+  mountDocs(api, config, { raw });
 
   api.route("/", publicRoutes());
   api.route("/", protectedRoutes());
@@ -216,7 +217,7 @@ export async function buildFullApp({ config, db, logger, encryption }: AppDeps) 
 
   api.onError(errorHandler);
 
-  return buildOuterApp(api, config, buildRawApp({ config, db, logger, encryption }));
+  return buildOuterApp(api, config, buildRawApp({ config, db, logger, encryption }, raw));
 }
 
 // ─── Locked App (setup / unlock) ───

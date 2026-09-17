@@ -1,5 +1,7 @@
 import type { AppEnv } from "@/shared/lib/types";
 import { Hono } from "hono";
+import { describeRoute } from "hono-openapi";
+import { TAGS } from "@/shared/lib/openapi";
 
 /**
  * Routes served on the raw API, `${BASE_PATH}/api/raw/*`.
@@ -20,7 +22,15 @@ export function rawRoutes() {
   // A reachability probe for integrators: it also shows the raw API's
   // headers (or their absence) and consumes rate-limit budget like any other
   // route.
-  app.get("/health", c => c.json({ status: "ok" }));
+  app.get(
+    "/health",
+    describeRoute({
+      tags: [TAGS.Raw],
+      summary: "Raw API reachability probe",
+      responses: { 200: { description: "The raw API is reachable" } },
+    }),
+    c => c.json({ status: "ok" }),
+  );
 
   return app;
 }

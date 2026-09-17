@@ -283,7 +283,9 @@ order; swapping it fails the suite.
 
 Routes live in `apps/api/src/routes/raw.ts`. Nothing there is authenticated
 by the framework, so a route that needs it checks it itself, usually with a
-service token in a header.
+service token in a header. Routes described with `describeRoute` appear in the
+OpenAPI spec at `/api/openapi.json` under `/raw/...`, tagged `Raw`, and in
+`docs/reference/api-routes.md`.
 
 ## Encryption Lifecycle
 

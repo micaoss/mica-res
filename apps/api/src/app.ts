@@ -17,7 +17,7 @@ import { bootstrapEncryption } from "./modules/encryption";
 import { EncryptionState as EncryptionStateCtor } from "./modules/encryption/state";
 import { initFileModule, startFileGcSweep } from "./modules/file";
 import { getAllRouteBindings, policyMiddleware } from "./modules/policy";
-import { openRoutes, protectedRoutes, publicRoutes, setupRoutes } from "./routes";
+import { protectedRoutes, publicRoutes, rawRoutes, setupRoutes } from "./routes";
 import { getAuthConfig, seedSettingsFromEnv } from "./shared/lib/app-config";
 import { createLogger } from "./shared/lib/logger";
 import { creationRateLimit } from "./shared/middleware/creation-rate-limit";
@@ -216,7 +216,7 @@ export async function buildFullApp({ config, db, logger, encryption }: AppDeps) 
 
   api.onError(errorHandler);
 
-  return buildOuterApp(api, config, buildOpenApp({ config, db, logger, encryption }));
+  return buildOuterApp(api, config, buildRawApp({ config, db, logger, encryption }));
 }
 
 // ─── Locked App (setup / unlock) ───
@@ -239,10 +239,10 @@ export function buildLockedApp(config: Config, logger: Logger, encryption: Encry
 
 // ─── Outer shell (shared by full & locked) ───
 
-// ─── Open API ───
+// ─── Raw API ───
 
-/** Mount point of the open API, below BASE_PATH. */
-export const OPEN_API_PREFIX = "/open";
+/** Mount point of the raw API, below BASE_PATH. */
+export const RAW_API_PREFIX = "/api/raw";
 
 function isUnder(path: string, prefix: string): boolean {
   return path === prefix || path.startsWith(`${prefix}/`);
@@ -250,62 +250,65 @@ function isUnder(path: string, prefix: string): boolean {
 
 /**
  * The bare API other services integrate with, mounted at
- * `${BASE_PATH}/open`.
+ * `${BASE_PATH}/api/raw`.
  *
- * It sits beside `/api`, not inside it, because everything `/api` applies is
- * built for the SPA in a browser and gets in the way of a service calling
- * from outside: security headers (a `same-origin` resource policy blocks
- * cross-origin readers outright), the CSRF guard (which demands an Origin and
- * an `X-Requested-With` a server-to-server client never sends), the CORS
- * policy, and the session and policy middleware.
+ * It shares the `/api` prefix but not the `/api` sub-app, because everything
+ * that sub-app applies is built for the SPA in a browser and gets in the way
+ * of a service calling from outside: security headers (a `same-origin`
+ * resource policy blocks cross-origin readers outright), the CSRF guard
+ * (which demands an Origin and an `X-Requested-With` a server-to-server
+ * client never sends), the CORS policy, the session and policy middleware,
+ * and the creation quota.
  *
  * What remains is plumbing — a request id to correlate with, the request
  * context, request logging, a JSON error shape — and one protection: a
- * per-client rate limit, `OPEN_API_RATE_LIMIT_PER_MINUTE`. Routes that need
+ * per-client rate limit, `RAW_API_RATE_LIMIT_PER_MINUTE`. Routes that need
  * authentication check it themselves.
  *
  * `routes` is injectable so the composition can be tested with routes the
  * production table does not have.
  */
-export function buildOpenApp(
+export function buildRawApp(
   { config, db, logger, encryption }: AppDeps,
-  routes: Hono<AppEnv> = openRoutes(),
+  routes: Hono<AppEnv> = rawRoutes(),
 ): Hono<AppEnv> {
-  const open = new Hono<AppEnv>();
+  const raw = new Hono<AppEnv>();
 
-  open.use("*", requestId());
-  open.use("*", propagateRequestId);
-  open.use("*", async (c, next) => {
+  raw.use("*", requestId());
+  raw.use("*", propagateRequestId);
+  raw.use("*", async (c, next) => {
     c.set("db", db);
     c.set("config", config);
     c.set("logger", logger);
     c.set("encryption", encryption);
     await next();
   });
-  open.use("*", loggingMiddleware());
+  raw.use("*", loggingMiddleware());
 
   // Keyed per client IP. Unknown paths count too, so probing for routes
   // spends the same budget as calling them.
-  const perMinute = config.OPEN_API_RATE_LIMIT_PER_MINUTE;
+  const perMinute = config.RAW_API_RATE_LIMIT_PER_MINUTE;
   if (perMinute > 0) {
-    open.use("*", rateLimit({ windowMs: 60_000, max: perMinute, bucket: "open-api" }));
+    raw.use("*", rateLimit({ windowMs: 60_000, max: perMinute, bucket: "raw-api" }));
   }
 
-  open.route("/", routes);
+  raw.route("/", routes);
 
-  // Anything unmatched under the prefix is answered here. Without it the
-  // request would fall through to the SPA catch-all and an integrator would
-  // get index.html with a 200 for a mistyped endpoint.
-  open.all("*", c => c.json({ success: false, error: { code: "NOT_FOUND", message: "Not found" } }, 404));
+  // Anything unmatched under the prefix is answered here. It is also what
+  // keeps the `/api` sub-app out: that sub-app is mounted after this one on
+  // the same prefix, and Hono runs matching handlers in registration order,
+  // so a response from here ends the chain before any `/api` middleware.
+  // Without it a mistyped endpoint would fall through to the `/api` stack.
+  raw.all("*", c => c.json({ success: false, error: { code: "NOT_FOUND", message: "Not found" } }, 404));
 
-  open.onError(errorHandler);
-  return open;
+  raw.onError(errorHandler);
+  return raw;
 }
 
-export function buildOuterApp(api: Hono<AppEnv>, config: Config, open?: Hono<AppEnv>) {
+export function buildOuterApp(api: Hono<AppEnv>, config: Config, raw?: Hono<AppEnv>) {
   const app = new Hono<AppEnv>();
   const base = config.BASE_PATH;
-  const openPrefix = `${base}${OPEN_API_PREFIX}`;
+  const rawPrefix = `${base}${RAW_API_PREFIX}`;
 
   // Scoped CSP relaxation for the Scalar docs page. Registered before
   // `secureHeaders` so its post-`next()` override wins over the strict global
@@ -348,13 +351,12 @@ export function buildOuterApp(api: Hono<AppEnv>, config: Config, open?: Hono<App
     },
   });
 
-  // The open API is exempt, by path rather than by registration order: this
-  // is a browser policy for the SPA and its API, and it would stop other
-  // services from reading the open API at all. Only when the open API is
-  // actually mounted — otherwise the prefix would fall through to the SPA
-  // and serve it without its headers.
+  // The raw API is exempt, decided by path: this is a browser policy for the
+  // SPA and its API, and it would stop other services from reading the raw
+  // API at all. Only while the raw API is mounted — a locked deployment has
+  // none, and the prefix must then keep the normal headers.
   app.use("*", (c, next) =>
-    open !== undefined && isUnder(c.req.path, openPrefix)
+    raw !== undefined && isUnder(c.req.path, rawPrefix)
       ? next()
       : securityHeaders(c, next));
 
@@ -367,11 +369,14 @@ export function buildOuterApp(api: Hono<AppEnv>, config: Config, open?: Hono<App
     });
   }
 
-  app.route(`${base}/api`, api);
-  if (open !== undefined) {
-    // Before the SPA catch-all, which would otherwise claim these paths.
-    app.route(openPrefix, open);
+  if (raw !== undefined) {
+    // Before the `/api` sub-app, which shares the prefix: Hono runs matching
+    // handlers in registration order, so mounting the raw API first is what
+    // keeps CSRF, CORS, the session and policy middleware and the creation
+    // quota from ever running on it. `raw-api.test.ts` pins this.
+    app.route(rawPrefix, raw);
   }
+  app.route(`${base}/api`, api);
   if (hasStaticAssets()) {
     app.get(`${base}/*`, serveStaticAssets(base));
   }

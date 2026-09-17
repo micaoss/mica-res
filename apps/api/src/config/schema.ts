@@ -144,10 +144,10 @@ export const configSchema = z.object({
   CREATE_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().nonnegative().default(60),
   CREATE_RATE_LIMIT_PER_HOUR: z.coerce.number().int().nonnegative().default(600),
 
-  // Per-client cap on the open API (`${BASE_PATH}/open/*`), the bare surface
+  // Per-client cap on the raw API (`${BASE_PATH}/api/raw/*`), the bare surface
   // other services integrate with. Counted per IP in a one-minute window.
   // 0 = unlimited.
-  OPEN_API_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().nonnegative().default(120),
+  RAW_API_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().nonnegative().default(120),
   // Resources to leave unthrottled, comma-separated (e.g. `attachment`).
   // Names are the singular collection names the limiter derives from the
   // route table — `issue`, `document`, `comment`, `attachment`, ...

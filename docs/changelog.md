@@ -13,17 +13,15 @@ each upstream tag; your fork's `Unreleased` block sits at the top.
 
 ### Added
 
-- An open API at `${BASE_PATH}/open/*` for other services to integrate with.
-  It is mounted beside `/api` and carries none of the browser-facing layers
-  `/api` applies for the SPA — no security headers, CSRF guard, CORS policy,
-  session or policy middleware — only a per-client rate limit,
-  `OPEN_API_RATE_LIMIT_PER_MINUTE` (default 120, 0 disables). The header
-  exemption is decided by path and applies only while the open API is
-  mounted, unmatched paths answer a JSON 404 rather than the SPA, and on
-  Cloudflare the prefix is added to `run_worker_first`, without which the
-  asset pipeline would answer it with the SPA. Routes go in
-  `apps/api/src/routes/open.ts` and authenticate their callers themselves.
-
+- A raw API at `${BASE_PATH}/api/raw/*` for other services to integrate with.
+  It shares the `/api` prefix but none of the browser-facing layers the `/api`
+  sub-app applies for the SPA — no security headers, CSRF guard, CORS policy,
+  session or policy middleware, or creation quota — only a per-client rate
+  limit, `RAW_API_RATE_LIMIT_PER_MINUTE` (default 120, 0 disables). The header
+  exemption is decided by path and applies only while the raw API is mounted;
+  the `/api` sub-app's middleware is kept out by mounting the raw API first,
+  and unknown raw paths answer a JSON 404. Routes go in
+  `apps/api/src/routes/raw.ts` and authenticate their callers themselves.
 - Runtime seam under `apps/api/src/platform/` (`getPlatform()`): `env`,
   a TTL key/value store (`kv.namespace(...)`), a background `scheduler`,
   an `openDatabase` override, and a `capabilities` flag set. The rate

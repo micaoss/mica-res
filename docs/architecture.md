@@ -249,20 +249,20 @@ long-lived process. Every window reachable on a runtime that evicts the app
 when idle is either a minute long or has a database-backed control beneath
 it.
 
-## Open API
+## Raw API
 
-`${BASE_PATH}/open/*` is the bare surface for other services to integrate
-with. It is mounted beside `/api`, not inside it, and deliberately carries none
-of what `/api` applies for the SPA:
+`${BASE_PATH}/api/raw/*` is the bare surface for other services to integrate
+with. It shares the `/api` prefix but not the `/api` sub-app, and deliberately
+carries none of what that sub-app applies for the SPA:
 
-| Applied on `/api` | On `/open` |
+| Applied on the rest of `/api` | On `/api/raw` |
 | --- | --- |
 | Security headers (CSP, HSTS, frame, `same-origin` resource and opener policy) | No |
 | CSRF guard (Origin plus `X-Requested-With`) | No |
 | CORS policy | No |
 | Session and policy middleware | No |
 | Per-user creation quota | No |
-| Per-client rate limit | Yes — `OPEN_API_RATE_LIMIT_PER_MINUTE`, per IP |
+| Per-client rate limit | Yes — `RAW_API_RATE_LIMIT_PER_MINUTE`, per IP |
 
 Each of those exists for a browser session and gets in the way of a service
 calling from outside: a `same-origin` resource policy stops cross-origin
@@ -272,13 +272,16 @@ request logging, the JSON error shape — and the rate limit, which counts
 unknown paths too, so probing for routes spends the same budget as calling
 them.
 
-The exemption from the security headers is decided by path, not by the order
-middleware is registered in, and applies only while the open API is mounted:
-a locked deployment has none, and the prefix then gets the normal headers
-rather than becoming an unprotected hole into whatever answers it. Anything
-unmatched under the prefix answers a JSON 404, never the SPA.
+Two mechanisms keep it bare. The security-header exemption is decided by
+path, and applies only while the raw API is mounted: a locked deployment has
+none, and the prefix then keeps the normal headers instead of becoming an
+unprotected hole. The `/api` sub-app's middleware is kept out by mount order:
+the raw API is mounted first and always responds — including a JSON 404 for
+an unknown path — and Hono runs matching handlers in registration order, so
+nothing the `/api` sub-app registered is reached. `raw-api.test.ts` pins that
+order; swapping it fails the suite.
 
-Routes live in `apps/api/src/routes/open.ts`. Nothing there is authenticated
+Routes live in `apps/api/src/routes/raw.ts`. Nothing there is authenticated
 by the framework, so a route that needs it checks it itself, usually with a
 service token in a header.
 

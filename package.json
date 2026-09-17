@@ -22,7 +22,7 @@
     "dev:all": "bun scripts/dev-all.ts",
     "dev:dex": "bun scripts/dev-dex.ts",
     "build": "bun run --filter '*' build",
-    "lint": "eslint apps/ packages/ scripts/ eslint.config.ts --ext .ts,.tsx",
+    "lint": "eslint apps/ packages/ scripts/ tests/ eslint.config.ts --ext .ts,.tsx",
     "lint:fix": "eslint apps/ packages/ scripts/ eslint.config.ts --ext .ts,.tsx --fix",
     "typecheck": "bun run --filter '*' typecheck",
     "test": "bun run --filter '*' test",

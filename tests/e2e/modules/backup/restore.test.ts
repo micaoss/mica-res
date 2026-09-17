@@ -22,11 +22,11 @@
 // every later phase-B test that shares a cached admin session.
 
 import type { Subprocess } from "bun";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import process from "node:process";
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { ApiClient } from "../../lib/api";
 
 const ROOT = resolve(import.meta.dir, "../../../..");
@@ -119,7 +119,9 @@ beforeAll(async () => {
 afterAll(async () => {
   if (api) {
     api.kill();
-    try { await api.exited; }
+    try {
+      await api.exited;
+    }
     catch {}
     api = null;
   }

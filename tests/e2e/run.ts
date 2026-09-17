@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-/* eslint-disable no-console */
+
 // Unified e2e orchestrator. Boots the API with DB_ENCRYPTION=true, walks
 // the full encryption setup, then exercises every module against the live
 // stack, and finally restarts to verify the unlock cycle.
@@ -25,10 +25,10 @@
 // + grand total) and writes summary.json next to the XMLs for CI to ingest.
 
 import type { Subprocess } from "bun";
+import { $ } from "bun";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import process from "node:process";
-import { $ } from "bun";
 
 const ROOT = resolve(import.meta.dir, "../..");
 const E2E_DIR = resolve(import.meta.dir);
@@ -227,7 +227,7 @@ function printSummary(summaries: readonly PhaseSummary[]): void {
       `  ${s.phase.padEnd(36)} ${fmt(s.tests, 6)} ${fmt(pass, 6)} ${fmt(s.failures, 6)} ${fmt(s.skipped, 6)} ${`${s.time.toFixed(2)}s`.padStart(8)}`,
     );
   }
-  console.log("  " + "─".repeat(58));
+  console.log(`  ${"─".repeat(58)}`);
   const totalPass = total.tests - total.failures - total.skipped;
   console.log(
     `  ${"TOTAL".padEnd(36)} ${fmt(total.tests, 6)} ${fmt(totalPass, 6)} ${fmt(total.failures, 6)} ${fmt(total.skipped, 6)} ${`${total.time.toFixed(2)}s`.padStart(8)}`,
@@ -261,7 +261,9 @@ async function main() {
   const stopApi = async () => {
     if (api) {
       api.kill();
-      try { await api.exited; }
+      try {
+        await api.exited;
+      }
       catch {}
       api = null;
     }
@@ -269,7 +271,9 @@ async function main() {
   const stopDex = async () => {
     if (dex) {
       dex.kill();
-      try { await dex.exited; }
+      try {
+        await dex.exited;
+      }
       catch {}
       dex = null;
     }
@@ -350,9 +354,13 @@ async function main() {
     `${JSON.stringify({ runId, phases: summaries, exitCode }, null, 2)}\n`,
   );
   const latest = join(REPORT_ROOT, "latest");
-  try { rmSync(latest, { recursive: true, force: true }); }
+  try {
+    rmSync(latest, { recursive: true, force: true });
+  }
   catch {}
-  try { symlinkSync(reportDir, latest, "dir"); }
+  try {
+    symlinkSync(reportDir, latest, "dir");
+  }
   catch {
     // symlink may fail on some FSes; fall back to a marker file.
     writeFileSync(`${latest}.txt`, reportDir);

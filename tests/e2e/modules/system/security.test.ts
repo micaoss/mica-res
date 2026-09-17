@@ -7,7 +7,7 @@
 // run against the real Bun.serve pipeline (not a synthetic app.fetch()).
 
 import { describe, expect, it } from "bun:test";
-import { ApiClient, API_BASE } from "../../lib/api";
+import { API_BASE, ApiClient } from "../../lib/api";
 
 const TARGET = "/api/account/auth/logout"; // any state-changing route under csrfGuard
 

@@ -27,8 +27,8 @@
  */
 import type { Subprocess } from "bun";
 import { rmSync } from "node:fs";
-import { setTimeout as sleep } from "node:timers/promises";
 import process from "node:process";
+import { setTimeout as sleep } from "node:timers/promises";
 
 // Local runs use the fixture in apps/api/.dev.vars.example. A run against a
 // real deployment passes freshly generated credentials instead, so a

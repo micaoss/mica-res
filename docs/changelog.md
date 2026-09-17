@@ -187,6 +187,18 @@ each upstream tag; your fork's `Unreleased` block sits at the top.
 
 ### Fixed
 
+- `bun run lint`, and so `bun run check`, passed or failed depending on the
+  runtime ESLint happened to run on. perfectionist takes its list of built-in
+  modules from `node:module` in the running runtime, and `bun:test` is on
+  Bun's list but not Node's, so the same import was a built-in under Bun and
+  an external package under Node and the two demanded opposite orders. CI
+  lints under Node and stayed green; running under Bun reported 43 errors.
+  `sort-imports` now sets `environment: "bun"`, which makes `bun:*` a built-in
+  in both, and the lint passes under either. `tests/` is now linted too — it
+  was outside the glob and did not meet the rules — with the two executable
+  entry points given the same top-level-await exemption antfu gives
+  `scripts/`.
+
 - A module's `router.use("*", authRequired)` guarded every router mounted after
   it, not only its own routes: Hono merges a sub-router's `use("*")` into the
   parent. A public route could only live in `public.ts`, ahead of all modules,

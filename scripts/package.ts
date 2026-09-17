@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 /* eslint-disable no-console */
+import { Glob } from "bun";
 /**
  * Build a lode-compatible release asset.
  *
@@ -15,7 +16,6 @@ import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync } from "n
 import { basename, resolve } from "node:path";
 import process from "node:process";
 import { parseArgs } from "node:util";
-import { Glob } from "bun";
 
 interface PackageJson {
   readonly name?: string;

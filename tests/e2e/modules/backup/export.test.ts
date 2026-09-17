@@ -5,8 +5,8 @@
 // the request must carry { challengeId, encryptedDek } produced by the
 // same ECIES round-trip used for unlock and rotate-dek.
 
-import process from "node:process";
 import { describe, expect, it } from "bun:test";
+import process from "node:process";
 import { bytesToHex, deriveKeyPairFromPassword, eciesDecrypt, eciesEncrypt, hexToBytes } from "../../../../packages/shared/src/index";
 import { getClient } from "../../lib/oidc";
 

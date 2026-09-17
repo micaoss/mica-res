@@ -1,6 +1,6 @@
+import { Database } from "bun:sqlite";
 import { chmodSync, existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { Database } from "bun:sqlite";
 
 export interface EncryptionMeta {
   readonly masterPublicKey: string;

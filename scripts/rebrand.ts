@@ -10,11 +10,11 @@
 //     [--scope myorg] [--repo https://github.com/myorg/myapp] \
 //     [--description "Internal tools for myorg"] [--dry-run]
 /* eslint-disable no-console */
+import { Glob } from "bun";
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import process from "node:process";
 import { parseArgs } from "node:util";
-import { Glob } from "bun";
 
 const { values: cli } = parseArgs({
   args: process.argv.slice(2),

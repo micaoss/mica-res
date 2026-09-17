@@ -12,6 +12,32 @@ export default antfu({
     "no-console": "warn",
     "ts/no-explicit-any": "error",
     "ts/consistent-type-imports": ["error", { prefer: "type-imports" }],
+    // antfu's options, plus `environment: "bun"`. perfectionist decides what
+    // counts as a built-in module from `node:module`'s list in whichever
+    // runtime ESLint is running on — and `bun:test` is on Bun's list but not
+    // Node's. Left to the default, the same `import … from "bun:test"` is a
+    // built-in under Bun and an external package under Node, the two
+    // runtimes demand opposite orders, and `bun run lint` passes or fails
+    // depending on which one ran it. Naming the environment makes `bun:*` a
+    // built-in in both.
+    "perfectionist/sort-imports": ["error", {
+      environment: "bun",
+      groups: [
+        "type-import",
+        ["type-parent", "type-sibling", "type-index", "type-internal"],
+        "value-builtin",
+        "value-external",
+        "value-internal",
+        ["value-parent", "value-sibling", "value-index"],
+        "side-effect",
+        "ts-equals-import",
+        "unknown",
+      ],
+      newlinesBetween: "ignore",
+      newlinesInside: "ignore",
+      order: "asc",
+      type: "natural",
+    }],
   },
   ignores: [
     "**/*.json",
@@ -34,10 +60,20 @@ export default antfu({
   files: [
     "**/*.test.ts",
     "**/*.test.tsx",
-    "tests/e2e/**/*.ts",
+    "tests/**/*.ts",
   ],
   rules: {
     "ts/no-explicit-any": "warn",
     "no-console": "off",
+  },
+}, {
+  // Executable entry points, like the files under scripts/ that antfu
+  // already exempts: they run top-level awaits by design.
+  files: [
+    "tests/e2e/run.ts",
+    "tests/workers/smoke.ts",
+  ],
+  rules: {
+    "antfu/no-top-level-await": "off",
   },
 });

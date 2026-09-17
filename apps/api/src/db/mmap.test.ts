@@ -1,7 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { describe, expect, test } from "bun:test";
 import { sql } from "drizzle-orm";
 import { createDb } from "./index";
 

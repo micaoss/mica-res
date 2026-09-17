@@ -2,10 +2,10 @@
 // fixtures are written to a throwaway temp dir per test so the filesystem
 // walk runs against a tiny, deterministic tree.
 
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   collectReferences,
   findMissing,

@@ -1,8 +1,8 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { bytesToHex, eciesDecrypt, generateKeyPair, hexToBytes } from "@app/shared";
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { customAlphabet } from "nanoid";
 import { createDb } from "@/db";
 import { changeMasterKey, initEncryption, unlockSystem } from "./encryption.service";

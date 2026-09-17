@@ -1,10 +1,10 @@
 import type { AppDatabase } from "@/db";
 import type { AuthConfig } from "@/shared/lib/app-config";
 import type { Logger } from "@/shared/lib/logger";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { customAlphabet } from "nanoid";
 import { createDb } from "@/db";

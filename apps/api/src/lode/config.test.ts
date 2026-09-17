@@ -1,8 +1,8 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { readLodeConfig } from "./config";
 
 const ENV = ["LODE_DIR", "LODE_CONFIG"] as const;

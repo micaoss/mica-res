@@ -8,8 +8,8 @@
 // possession of the DEK by submitting a re-encrypted copy under a fresh
 // server-issued ephemeral pubkey.
 
-import process from "node:process";
 import { describe, expect, it } from "bun:test";
+import process from "node:process";
 import { bytesToHex, deriveKeyPairFromPassword, eciesDecrypt, eciesEncrypt, hexToBytes } from "../../../../packages/shared/src/index";
 import { getClient } from "../../lib/oidc";
 

@@ -21,11 +21,11 @@
  * Resolution priority for every knob:  CLI flag > env var > nsl get > default
  */
 import type { Subprocess } from "bun";
+import { $ } from "bun";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import process from "node:process";
 import { parseArgs } from "node:util";
-import { $ } from "bun";
 
 const { values: cli } = parseArgs({
   args: process.argv.slice(2),

@@ -1,9 +1,9 @@
 import type { Subprocess } from "bun";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import process from "node:process";
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { ApiClient } from "../../lib/api";
 
 describe("/api/health (live, encrypted, unlocked)", () => {
@@ -35,7 +35,6 @@ describe("/api/health (live, encrypted, unlocked)", () => {
     expect(res.data.locked).toBe(false);
     expect(res.data.status).toBe("unlocked");
   });
-
 });
 
 // ─── Failure-state coverage ─────────────────────────────────────────
@@ -116,7 +115,9 @@ describe("/api/health/ready returns 503 when the system is not yet unlocked", ()
   afterAll(async () => {
     if (api) {
       api.kill();
-      try { await api.exited; }
+      try {
+        await api.exited;
+      }
       catch {}
       api = null;
     }

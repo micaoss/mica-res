@@ -56,5 +56,4 @@ describe("/api/issues/:id/comments/:cid/attachments", () => {
 
     await user.raw(`/api/issues/${issueId}`, { method: "DELETE" });
   });
-
 });

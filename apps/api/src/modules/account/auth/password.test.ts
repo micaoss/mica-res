@@ -1,5 +1,5 @@
-import { Buffer } from "node:buffer";
 import { describe, expect, test } from "bun:test";
+import { Buffer } from "node:buffer";
 import { hashPassword, verifyPassword } from "./password";
 
 describe("hashPassword + verifyPassword (PBKDF2 default)", () => {

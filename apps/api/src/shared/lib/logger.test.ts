@@ -1,7 +1,7 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createLogger } from "./logger";
 
 let dir: string;

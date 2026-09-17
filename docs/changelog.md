@@ -187,6 +187,27 @@ each upstream tag; your fork's `Unreleased` block sits at the top.
 
 ### Fixed
 
+- On Bun, two writes that happened to overlap failed with `SQLITE_BUSY`. libsql
+  keeps a connection pool, and a transaction holds one connection — and
+  SQLite's write lock — across every `await` in its body, so a write from
+  another request landed on a second connection and met that lock. The
+  `PRAGMA busy_timeout` meant to absorb it only ever reached the one
+  connection that ran it. A busy timeout would not have fixed it anyway:
+  libsql executes synchronously, so waiting inside SQLite blocks the event
+  loop the open transaction needs in order to commit, and the server freezes
+  until the write fails regardless. Writes in the process are now serialized
+  before they reach SQLite — a transaction holds an async lock for its whole
+  life, a write outside one takes it for its single statement, reads skip
+  it — and a write waiting past 15 seconds answers `503 DB_BUSY`. A write that
+  escapes a transaction through the outer handle, which could never succeed,
+  now fails at once with an explanation. The busy timeout is passed to the
+  client so every pooled connection gets it, for other processes writing the
+  same file.
+- An `AppError` thrown beneath a query reached the client as a 500. drizzle
+  wraps whatever a driver throws in `DrizzleQueryError`; the error handler now
+  finds an `AppError` on the cause chain, as the constraint-violation check
+  already did.
+
 - On Cloudflare Workers, editing a document, deleting an item, and the audit
   retention sweep all failed. drizzle's Durable Object driver returns nothing
   from `run()`, where libsql returns a result carrying `rowsAffected`, and the

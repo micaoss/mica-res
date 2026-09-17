@@ -65,3 +65,22 @@ describe("errorHandler", () => {
     expect(captured[0]!.msg).toBe("unhandled error");
   });
 });
+
+describe("errorHandler — an AppError wrapped by the query layer", () => {
+  test("answers with the wrapped AppError's status, not 500", async () => {
+    // drizzle wraps anything a driver throws in DrizzleQueryError, with the
+    // original on `.cause`. An AppError raised below the query layer — the
+    // write lock's DB_BUSY — must still reach the client as itself.
+    const wrapped = new Error("Failed query: INSERT INTO t VALUES (1)", {
+      cause: new AppError("The database is busy. Try again shortly.", 503, "DB_BUSY"),
+    });
+    const res = await buildApp(wrapped).request("/p");
+    expect(res.status).toBe(503);
+    expect((await res.json() as { error: { code: string } }).error.code).toBe("DB_BUSY");
+  });
+
+  test("an error with no AppError in its chain is still a 500", async () => {
+    const res = await buildApp(new Error("boom", { cause: new Error("deeper") })).request("/p");
+    expect(res.status).toBe(500);
+  });
+});

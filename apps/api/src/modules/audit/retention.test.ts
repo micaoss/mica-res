@@ -68,8 +68,8 @@ describe("pruneAuditEvents", () => {
   test("retentionDays = 0 keeps everything", async () => {
     const old = new Date(Date.now() - 90 * 86400_000).toISOString();
     const fresh = new Date().toISOString();
-    insertEventAt(nanoid(), old);
-    insertEventAt(nanoid(), fresh);
+    await insertEventAt(nanoid(), old);
+    await insertEventAt(nanoid(), fresh);
 
     const deleted = await pruneAuditEvents(db, 0);
     expect(deleted).toBe(0);
@@ -83,10 +83,10 @@ describe("pruneAuditEvents", () => {
     const justOver = new Date(Date.now() - 31 * 86400_000).toISOString();
     const justUnder = new Date(Date.now() - 29 * 86400_000).toISOString();
     const fresh = new Date().toISOString();
-    insertEventAt(nanoid(), veryOld);
-    insertEventAt(nanoid(), justOver);
-    insertEventAt(nanoid(), justUnder);
-    insertEventAt(nanoid(), fresh);
+    await insertEventAt(nanoid(), veryOld);
+    await insertEventAt(nanoid(), justOver);
+    await insertEventAt(nanoid(), justUnder);
+    await insertEventAt(nanoid(), fresh);
 
     const deleted = await pruneAuditEvents(db, 30);
     expect(deleted).toBe(2);
@@ -170,7 +170,7 @@ describe("startAuditRetentionSweep", () => {
   });
 
   test("AUDIT_RETENTION_DAYS = 0 → no timer, no boot run", async () => {
-    insertEventAt(nanoid(), new Date(Date.now() - 90 * 86400_000).toISOString());
+    await insertEventAt(nanoid(), new Date(Date.now() - 90 * 86400_000).toISOString());
     const log = silentLogger();
 
     startAuditRetentionSweep(db, makeConfig(0), log);
@@ -183,8 +183,8 @@ describe("startAuditRetentionSweep", () => {
   });
 
   test("AUDIT_RETENTION_DAYS > 0 → defers boot run; firing it prunes and schedules the hourly sweep", async () => {
-    insertEventAt(nanoid(), new Date(Date.now() - 90 * 86400_000).toISOString());
-    insertEventAt(nanoid(), new Date().toISOString());
+    await insertEventAt(nanoid(), new Date(Date.now() - 90 * 86400_000).toISOString());
+    await insertEventAt(nanoid(), new Date().toISOString());
     const log = silentLogger();
 
     startAuditRetentionSweep(db, makeConfig(30), log);
@@ -227,7 +227,7 @@ describe("startAuditRetentionSweep", () => {
   });
 
   test("invoking the scheduled callback prunes again and logs deletions", async () => {
-    insertEventAt(nanoid(), new Date(Date.now() - 90 * 86400_000).toISOString());
+    await insertEventAt(nanoid(), new Date(Date.now() - 90 * 86400_000).toISOString());
     const log = silentLogger();
 
     startAuditRetentionSweep(db, makeConfig(30), log);
@@ -235,7 +235,7 @@ describe("startAuditRetentionSweep", () => {
     log.calls.length = 0;
 
     // Insert a fresh expired event, then trigger the captured tick.
-    insertEventAt(nanoid(), new Date(Date.now() - 90 * 86400_000).toISOString());
+    await insertEventAt(nanoid(), new Date(Date.now() - 90 * 86400_000).toISOString());
     captured!.fn();
     await Bun.sleep(10);
 

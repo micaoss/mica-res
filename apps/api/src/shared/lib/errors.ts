@@ -65,6 +65,22 @@ export function isConstraintViolation(err: unknown): boolean {
 }
 
 /**
+ * The first `AppError` in `err`'s cause chain, if any. drizzle wraps anything
+ * thrown beneath a query — including an `AppError` a database adapter raises,
+ * such as the write lock's DB_BUSY — in `DrizzleQueryError`, so a status meant
+ * for the client can sit a level or two down.
+ */
+export function findAppError(err: unknown): AppError | undefined {
+  let cur: unknown = err;
+  for (let i = 0; i < 5 && cur && typeof cur === "object"; i++) {
+    if (cur instanceof AppError)
+      return cur;
+    cur = (cur as { cause?: unknown }).cause;
+  }
+  return undefined;
+}
+
+/**
  * Drizzle wraps the driver error in `DrizzleQueryError`, so the libsql
  * `code` / message sit on `.cause`; walk the chain rather than trusting
  * the outermost error.

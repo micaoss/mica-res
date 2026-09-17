@@ -2,11 +2,13 @@ import type { Context } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import type { AppEnv } from "@/shared/lib/types";
 import { ZodError } from "zod";
-import { AppError, isConstraintViolation } from "@/shared/lib/errors";
+import { findAppError, isConstraintViolation } from "@/shared/lib/errors";
 
 export function errorHandler(err: Error, c: Context<AppEnv>) {
-  if (err instanceof AppError) {
-    return c.json(err.toJSON(), err.statusCode as ContentfulStatusCode);
+  // Walk the cause chain: an AppError raised beneath a query arrives wrapped.
+  const appError = findAppError(err);
+  if (appError) {
+    return c.json(appError.toJSON(), appError.statusCode as ContentfulStatusCode);
   }
 
   if (err instanceof ZodError) {

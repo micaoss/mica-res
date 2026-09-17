@@ -88,7 +88,9 @@ async function requireItem(db: AppDatabase, shortId: string) {
 
 export function issueRoutes() {
   const router = new Hono<AppEnv>();
-  router.use("*", authRequired);
+  // Scoped to this module's own paths. `use("*")` here would become a
+  // guard on every router mounted after this one, not just on these.
+  router.use("/issues/*", authRequired);
 
   // ─── List ──────────────────────────────────────────────────────────
   router.get(

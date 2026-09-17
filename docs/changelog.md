@@ -187,6 +187,16 @@ each upstream tag; your fork's `Unreleased` block sits at the top.
 
 ### Fixed
 
+- A module's `router.use("*", authRequired)` guarded every router mounted after
+  it, not only its own routes: Hono merges a sub-router's `use("*")` into the
+  parent. A public route could only live in `public.ts`, ahead of all modules,
+  and the backup sidecar's `POST /backup/export-via-token` — authenticated by a
+  service token, not a session — answered 401 to a valid token, because the
+  session guards of the modules mounted before backup reached it. Each module
+  now scopes its guard to its own path prefixes, and a composition test mounts
+  a public route after all protected modules and fails if any guard reaches
+  it.
+
 - On Bun, two writes that happened to overlap failed with `SQLITE_BUSY`. libsql
   keeps a connection pool, and a transaction holds one connection — and
   SQLite's write lock — across every `await` in its body, so a write from

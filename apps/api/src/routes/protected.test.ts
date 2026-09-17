@@ -66,6 +66,77 @@ describe("protectedRoutes composition", () => {
     expect(res.status).toBe(404);
   });
 
+  test("no module's auth guard reaches a public route mounted after the protected ones", async () => {
+    // Every protected module used to guard with `use("*", authRequired)`,
+    // which Hono merges into the parent as a guard on everything mounted
+    // afterwards. A route that should be public had to be squeezed into
+    // public.ts, ahead of them all. Guards are now scoped to each module's
+    // own paths, so a route mounted later is left alone.
+    const app = new Hono<AppEnv>();
+    app.use("*", async (c, next) => {
+      c.set("db", db);
+      c.set("config", { NODE_ENV: "test", TRUST_PROXY: false, BASE_PATH: "" } as unknown as Config);
+      c.set("logger", noop);
+      c.set("encryption", { isSystemLocked: () => false } as unknown as AppEnv["Variables"]["encryption"]);
+      await next();
+    });
+    app.route("/", protectedRoutes());
+    app.get("/probe/public", c => c.json({ ok: true }));
+    app.onError(errorHandler);
+
+    const res = await app.request("/probe/public");
+    expect(res.status).toBe(200);
+  });
+
+  test("scoping the guards leaves every protected module guarded", async () => {
+    const anonymous = buildApp();
+    for (const path of [
+      "/account/me",
+      "/account/users",
+      "/account/visible-users",
+      "/account/groups",
+      "/issues",
+      "/documents",
+      "/settings",
+      "/audit",
+      "/backup/modules",
+      "/encryption/meta",
+    ]) {
+      const res = await anonymous.request(path);
+      expect({ path, status: res.status }).toEqual({ path, status: 401 });
+    }
+  });
+
+  test("the backup sidecar reaches its export with a service token and no session", async () => {
+    // It authenticates with a service token, not a session. The session
+    // guards of the modules mounted before backup used to leak onto it, so
+    // the sidecar got 401 however valid its token was.
+    const token = "t".repeat(40);
+    const app = new Hono<AppEnv>();
+    app.use("*", async (c, next) => {
+      c.set("db", db);
+      c.set("config", {
+        NODE_ENV: "test",
+        TRUST_PROXY: false,
+        BASE_PATH: "",
+        SERVICE_TOKEN_BACKUP: token,
+        BACKUP_EXPORT_MIN_INTERVAL_SECONDS: 0,
+      } as unknown as Config);
+      c.set("logger", noop);
+      c.set("encryption", { isSystemLocked: () => false } as unknown as AppEnv["Variables"]["encryption"]);
+      await next();
+    });
+    app.route("/", protectedRoutes());
+    app.onError(errorHandler);
+
+    const res = await app.request("/backup/export-via-token", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(200);
+    await res.arrayBuffer();
+  });
+
   test("cron itself stays admin-only", async () => {
     const user = await sessionFor("user");
     expect((await buildApp().request("/cron/actions", { headers: { Cookie: user } })).status).toBe(403);

@@ -38,7 +38,9 @@ function validateSettingKey(key: string): void {
 export function settingsRoutes() {
   const router = new Hono<AppEnv>();
 
-  router.use("*", authRequired);
+  // Scoped to this module's own paths. `use("*")` here would become a
+  // guard on every router mounted after this one, not just on these.
+  router.use("/settings/*", authRequired);
 
   // GET /settings — list all settings
   router.get(

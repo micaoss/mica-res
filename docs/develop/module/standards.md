@@ -155,6 +155,7 @@ A new module's routes default to `protected.ts`. Use `public.ts` only when the r
 ### 2.5 Middleware and context
 
 - Do not add new global middleware; module-specific needs go into route-level `app.use(...)` inside `<name>.routes.ts`.
+- Scope a module's middleware to its own paths: `router.use("/things/*", authRequired)`, never `router.use("*", …)`. Module routers are mounted with `app.route("/", …)`, and Hono merges a sub-router's `use("*")` into the parent as a guard on every router mounted after it — a public route further down becomes unreachable, and a route with its own authentication (a service token, say) gets a session guard it cannot pass. `/things/*` also matches `/things` itself. `routes/protected.test.ts` mounts a public route after all protected modules and fails if any guard reaches it.
 - Cross-module reusable middleware lives under `apps/api/src/shared/middleware/`.
 - An endpoint for other services to call goes on the raw API: mount it in `apps/api/src/routes/raw.ts`, not in `protected.ts`. It is served at `/api/raw/*` with no security headers, CSRF guard, CORS, session or policy middleware — only a per-client rate limit — so a route there authenticates its caller itself. See *Raw API* in `docs/architecture.md`.
 - Read context via `c.get("db" | "config" | "logger" | "user")`; do not inject new singletons inside the service layer.

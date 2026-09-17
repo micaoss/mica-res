@@ -122,7 +122,9 @@ export function documentRoutes() {
   // `policyMiddleware` mounted in `app.ts`, driven by the route table
   // declared in `document.permission.ts`.
   const router = new Hono<AppEnv>();
-  router.use("*", authRequired);
+  // Scoped to this module's own paths. `use("*")` here would become a
+  // guard on every router mounted after this one, not just on these.
+  router.use("/documents/*", authRequired);
 
   router.get(
     "/documents",

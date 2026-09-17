@@ -91,13 +91,14 @@ describe("encryption unlock flow (locked API)", () => {
     expect(status.data.status).toBe("unlocked");
   });
 
-  it("setup endpoints disappear after unlock (caught by the protected catch-all)", async () => {
+  it("setup endpoints disappear after unlock", async () => {
     // setupRoutes is mounted only by buildLockedApp; once buildFullApp takes
-    // over, /unlock-challenge (and /init / /unlock) are no longer routes.
-    // The catch-all under protectedRoutes requires a session, so the endpoint
-    // now answers 401, not the locked-state 409 NOT_LOCKED.
+    // over, /unlock-challenge (and /init / /unlock) are no longer routes and
+    // answer 404 — not the locked-state 409 NOT_LOCKED. It used to answer
+    // 401, but only because a module's session guard leaked onto every path
+    // mounted after it; guards are scoped now.
     const res = await c.raw("/api/encryption/unlock-challenge", { method: "POST" });
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(404);
   });
 
   afterAll(() => {});

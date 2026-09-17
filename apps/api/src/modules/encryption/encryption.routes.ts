@@ -427,7 +427,12 @@ export function encryptionPublicRoutes() {
 export function encryptionProtectedRoutes() {
   const router = new Hono<AppEnv>();
 
-  router.use("*", authRequired);
+  // Scoped to this module's own paths. `use("*")` here would become a
+  // guard on every router mounted after this one, not just on these.
+  router.use("/encryption/challenge/*", authRequired);
+  router.use("/encryption/change-master/*", authRequired);
+  router.use("/encryption/meta/*", authRequired);
+  router.use("/encryption/rotate-dek/*", authRequired);
   // POST /encryption/challenge — create an ephemeral challenge for admin operations
   // (rotate-dek, change-master). The client encrypts the DEK with the returned
   // ephemeral public key and sends it back in the subsequent operation request.

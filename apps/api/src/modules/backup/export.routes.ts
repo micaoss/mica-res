@@ -163,7 +163,10 @@ export function backupExportRoutes() {
   );
 
   // Everything else under this router is session-auth gated.
-  router.use("*", authRequired);
+  // Scoped to this module's own paths. `use("*")` here would become a
+  // guard on every router mounted after this one, not just on these.
+  router.use("/backup/export/*", authRequired);
+  router.use("/backup/modules/*", authRequired);
 
   router.get(
     "/backup/modules",

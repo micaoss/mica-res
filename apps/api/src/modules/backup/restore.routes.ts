@@ -87,7 +87,9 @@ function stripUserTables<T extends { tables: Record<string, unknown[]>; modules:
 export function backupImportRoutes() {
   const router = new Hono<AppEnv>();
 
-  router.use("*", authRequired);
+  // Scoped to this module's own paths. `use("*")` here would become a
+  // guard on every router mounted after this one, not just on these.
+  router.use("/backup/import/*", authRequired);
 
   router.post(
     "/backup/import",

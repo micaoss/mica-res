@@ -53,15 +53,16 @@ describe("encryption init flow (fresh API)", () => {
   });
 
   it("/encryption/init is no longer reachable after the system is unlocked", async () => {
-    // setupRoutes is mounted only in the locked app; once buildFullApp
-    // takes over the surface goes away. The catch-all under protectedRoutes
-    // requires a session, so the endpoint now responds with 401 (not 409
-    // ALREADY_INITIALIZED — that only fires while the system is still locked).
+    // setupRoutes is mounted only in the locked app; once buildFullApp takes
+    // over, the route no longer exists and answers 404 — not 409
+    // ALREADY_INITIALIZED, which only fires while the system is still locked.
+    // It used to answer 401, but only because a module's session guard
+    // leaked onto every path mounted after it; guards are scoped now.
     const res = await c.raw("/api/encryption/init", {
       method: "POST",
       body: { bootstrapToken: BOOTSTRAP_TOKEN, publicKey: "0".repeat(66), kdfSalt: "0".repeat(64) },
     });
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(404);
   });
 
   it("/api/health returns 200 after init completes", async () => {

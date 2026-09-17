@@ -53,7 +53,11 @@ const userSchema = z.object({
 export function userRoutes() {
   const router = new Hono<AppEnv>();
 
-  router.use("*", authRequired);
+  // Scoped to this module's own paths. `use("*")` here would become a
+  // guard on every router mounted after this one, not just on these.
+  router.use("/account/me/*", authRequired);
+  router.use("/account/users/*", authRequired);
+  router.use("/account/visible-users/*", authRequired);
 
   // ── /me — current user endpoints ──
 

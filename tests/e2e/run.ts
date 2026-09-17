@@ -58,19 +58,13 @@ const ENCRYPTION_INIT_TEST = join(E2E_DIR, "modules/encryption/init.test.ts");
 const ENCRYPTION_UNLOCK_TEST = join(E2E_DIR, "modules/encryption/unlock.test.ts");
 const ENCRYPTION_ADMIN_TEST = join(E2E_DIR, "modules/encryption/admin.test.ts");
 const ENCRYPTION_RATE_LIMIT_TEST = join(E2E_DIR, "modules/encryption/rate-limit.test.ts");
-const MODULE_DIRS = [
-  "system",
-  "raw",
-  "account",
-  "policy",
-  "document",
-  "file",
-  "issue",
-  "settings",
-  "audit",
-  "backup",
-  "cron",
-].map(d => join(E2E_DIR, "modules", d));
+// Every module folder runs in phase B, except encryption: its suites are
+// wired into the phases that set up and unlock the system (admin.test.ts is
+// added to phase B explicitly, after the others).
+const MODULE_DIRS = readdirSync(join(E2E_DIR, "modules"), { withFileTypes: true })
+  .filter(entry => entry.isDirectory() && entry.name !== "encryption")
+  .map(entry => join(E2E_DIR, "modules", entry.name))
+  .toSorted();
 
 interface PhaseSummary {
   readonly phase: string;

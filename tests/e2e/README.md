@@ -114,8 +114,8 @@ Both have password `admin`:
    `E2E_BOOTSTRAP_TOKEN`, and `E2E_PASSWORD` into the test process —
    `lib/api.ts` reads `E2E_API_BASE` so tests work whether the API is on
    the default `:3010` or somewhere else.
-4. New module subdirs have to be added to `MODULE_DIRS` in `run.ts` so the
-   orchestrator picks them up.
+4. A new `modules/<module>/` folder is picked up by the orchestrator
+   automatically (phase B runs every module folder except `encryption`).
 
 ## Known gaps
 

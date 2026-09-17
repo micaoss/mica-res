@@ -260,7 +260,7 @@ export const <name>Nav: NavItem = {
 };
 ```
 
-Then in `apps/web/src/shared/components/sidebar/registry.ts`, add one import line and one entry in the `NAV_ITEMS` array.
+The sidebar registry picks up every `-*.nav.ts` under `apps/web/src/app/routes/` by glob; no registration edit is needed.
 
 ---
 

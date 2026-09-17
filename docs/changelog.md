@@ -187,6 +187,15 @@ each upstream tag; your fork's `Unreleased` block sits at the top.
 
 ### Fixed
 
+- Adding a module meant editing lists that nothing flagged when forgotten. The
+  sidebar registry now collects every `-*.nav.ts` under `app/routes` by glob,
+  and its test compares against the files rather than a key list; the e2e
+  runner runs every `tests/e2e/modules/*` folder instead of a hand-kept
+  `MODULE_DIRS`; the docs test derives the expected security schemes from the
+  `SECURITY` presets and checks every documented route's requirement is
+  defined. The creation-quota resource list in its test stays pinned on
+  purpose, so a change to what is throttled is a visible diff.
+
 - `docs/reference/env-reference.md` listed only the config schema, so a
   variable read directly from the environment — `ROOT_DIR`, `LODE_DIR`, or one
   a module reads through `getPlatform().env` — went undocumented and unchecked.

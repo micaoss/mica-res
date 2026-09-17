@@ -6,6 +6,7 @@ import { describeRoute } from "hono-openapi";
 import { auditRoutes } from "@/modules/audit";
 import { systemRoutes } from "@/modules/system";
 import { rawRoutes } from "@/routes/raw";
+import { SECURITY } from "@/shared/lib/openapi";
 import { mountDocs } from "./docs.routes";
 
 const cfg = { BASE_PATH: "", APP_NAME: "app" } as unknown as Config;
@@ -40,7 +41,23 @@ describe("docs module", () => {
     expect(spec.info.title).toBe("app API");
     expect(Object.keys(spec.paths)).toContain("/health");
     expect(Object.keys(spec.paths)).toContain("/audit");
-    expect(Object.keys(spec.components?.securitySchemes ?? {})).toEqual(["sessionCookie", "serviceToken"]);
+    // Every scheme a route can declare (the SECURITY presets) is defined,
+    // and nothing is defined that no preset uses.
+    const used = new Set(Object.values(SECURITY).flatMap(reqs => reqs.flatMap(r => Object.keys(r))));
+    expect(Object.keys(spec.components?.securitySchemes ?? {}).toSorted()).toEqual([...used].toSorted());
+  });
+
+  it("defines every security scheme a documented route requires", async () => {
+    const spec = await (await buildApp().request("/openapi.json")).json() as {
+      paths: Record<string, Record<string, { security?: Record<string, unknown>[] }>>;
+      components?: { securitySchemes?: Record<string, unknown> };
+    };
+    const defined = new Set(Object.keys(spec.components?.securitySchemes ?? {}));
+    const required = Object.values(spec.paths)
+      .flatMap(ops => Object.values(ops))
+      .flatMap(op => (op.security ?? []).flatMap(r => Object.keys(r)));
+    expect(required.length).toBeGreaterThan(0);
+    expect(required.filter(name => !defined.has(name))).toEqual([]);
   });
 
   it("documents validated request params in the spec", async () => {

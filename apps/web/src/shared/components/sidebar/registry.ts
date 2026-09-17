@@ -1,23 +1,15 @@
 import type { NavArea, NavItem } from "./types";
-import { auditNav } from "@/app/routes/_app/admin/-audit.nav";
-import { cronNav } from "@/app/routes/_app/admin/-cron.nav";
-import { policiesNav } from "@/app/routes/_app/admin/-policies.nav";
-import { settingsNav } from "@/app/routes/_app/admin/-settings.nav";
-import { usersNav } from "@/app/routes/_app/admin/-users.nav";
-import { documentsNav } from "@/app/routes/_app/documents/-documents.nav";
-import { issuesNav } from "@/app/routes/_app/issues/-issues.nav";
-import { overviewNav } from "@/app/routes/_app/overview/-overview.nav";
 
-const NAV_ITEMS: readonly NavItem[] = [
-  overviewNav,
-  issuesNav,
-  documentsNav,
-  usersNav,
-  policiesNav,
-  auditNav,
-  cronNav,
-  settingsNav,
-];
+// Every `-<name>.nav.ts` beside a route is a sidebar entry. Vite resolves the
+// glob at build time, so a module adds its entry by dropping the file in —
+// no edit here. The `-` prefix keeps the router generator from treating it
+// as a route.
+const navModules = import.meta.glob<Record<string, NavItem>>(
+  "../../../app/routes/**/-*.nav.ts",
+  { eager: true },
+);
+
+const NAV_ITEMS: readonly NavItem[] = Object.values(navModules).flatMap(m => Object.values(m));
 
 export function getNavItems(area: NavArea): NavItem[] {
   return NAV_ITEMS

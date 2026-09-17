@@ -1,0 +1,85 @@
+name = "mica-res"
+main = "src/workers/entry.ts"
+compatibility_date = "2026-09-01"
+# node:crypto / node:buffer / node:path / node:util are used across the shared
+# codebase (PBKDF2 hashing, base64url encoding, path joins).
+compatibility_flags = ["nodejs_compat"]
+
+# Keep the workers.dev URL even when custom domains are attached: adding a
+# route otherwise turns it off, which leaves nothing to reach the deployment
+# by while a domain is still being provisioned.
+workers_dev = true
+
+# res.micaos.dev serves the home page, listings, redirects, the registry and
+# the admin console; s3.res.micaos.dev serves the S3 read API. Public bytes
+# are not here at all: dl.res.micaos.dev is the R2 custom domain of
+# res-micaos-dev, attached to the bucket, not to this Worker.
+routes = [
+  { pattern = "res.micaos.dev", custom_domain = true, zone_name = "micaos.dev" },
+  { pattern = "s3.res.micaos.dev", custom_domain = true, zone_name = "micaos.dev" },
+]
+
+# `bun:sqlite` is imported statically by the encryption module's meta.db
+# reader. That mode is rejected at boot here, so the import resolves to a stub
+# that throws if anything ever reaches it.
+[alias]
+"bun:sqlite" = "./src/workers/stub-bun-sqlite.ts"
+
+# One Durable Object class holds the SQLite database and runs the control
+# plane. The edge plane in the stateless Worker never calls it on a read.
+[[durable_objects.bindings]]
+name = "APP"
+class_name = "AppDurableObject"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["AppDurableObject"]
+
+# The public bucket: served directly by its custom domain.
+[[r2_buckets]]
+binding = "RES_PUBLIC"
+bucket_name = "res-micaos-dev"
+
+# The protected bucket: no public domain; staging uploads and access
+# snapshots live here too.
+[[r2_buckets]]
+binding = "RES_PROTECT"
+bucket_name = "protect-res-micaos-dev"
+
+# The template's file module is unused by the resource service but still
+# boots; it gets the protected bucket rather than a bucket of its own.
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "protect-res-micaos-dev"
+
+# The Worker runs first for every path: it owns routing between the home
+# page, the admin SPA, the edge plane and the admin API, and fetches the two
+# SPAs from this binding itself (see src/edge/http.ts).
+[assets]
+directory = "../../dist/worker-assets"
+binding = "ASSETS"
+run_worker_first = true
+
+[observability]
+enabled = true
+
+# Non-secret configuration. Secrets (OAUTH_CLIENT_SECRET, R2_ACCESS_KEY_ID,
+# R2_SECRET_ACCESS_KEY, CF_PURGE_TOKEN, RES_KEY_KEK, ...) are bound at deploy
+# time from repository secrets -- never in this file.
+[vars]
+NODE_ENV = "production"
+LOG_TO_STDOUT = "true"
+BASE_PATH = "/admin"
+APP_URL = "https://res.micaos.dev"
+CORS_ORIGIN = "https://res.micaos.dev"
+# Durable Object storage is encrypted by the host; libsql page encryption has
+# no counterpart here and is rejected at boot.
+DB_ENCRYPTION = "false"
+FILE_STORAGE_DRIVER = "r2"
+FILE_PRESIGN_ENABLED = "false"
+TRUST_PROXY = "false"
+RES_HOME_URL = "https://res.micaos.dev"
+RES_DOWNLOAD_URL = "https://dl.res.micaos.dev"
+RES_S3_URL = "https://s3.res.micaos.dev"
+RES_PUBLIC_BUCKET = "res-micaos-dev"
+RES_PROTECT_BUCKET = "protect-res-micaos-dev"

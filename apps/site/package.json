@@ -1,0 +1,36 @@
+{
+  "name": "@app/site",
+  "type": "module",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Public home page of the resource service: what the site is and where the resources are.",
+  "homepage": "https://github.com/micaoss/mica-res",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/micaoss/mica-res.git",
+    "directory": "apps/site"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@fontsource-variable/inter": "5.3.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@app/tsconfig": "workspace:*",
+    "@tailwindcss/vite": "4.3.3",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.1",
+    "@vitest/coverage-v8": "5.0.0",
+    "tailwindcss": "4.3.3",
+    "typescript": "catalog:",
+    "vite": "8.3.0",
+    "vitest": "catalog:"
+  }
+}

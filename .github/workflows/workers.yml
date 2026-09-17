@@ -1,0 +1,78 @@
+name: workers
+
+# Cloudflare Workers is the secondary runtime: the app also runs on a single
+# Durable Object that owns its SQLite database (see docs/develop/runtime.md).
+# This workflow proves that target still works.
+#
+#  - `smoke-local` always runs. It boots the Worker in workerd through
+#    `wrangler dev`, so it needs no Cloudflare account.
+#  Deployment lives in infra.yml, by hand only.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/api/**"
+      - "apps/web/**"
+      - "apps/site/**"
+      - "tests/workers/**"
+      - ".github/workflows/workers.yml"
+  pull_request:
+    paths:
+      - "apps/api/**"
+      - "apps/web/**"
+      - "apps/site/**"
+      - "tests/workers/**"
+      - ".github/workflows/workers.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: workers-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  BUN_VERSION: "1.4.2"
+  NODE_VERSION: "24.21.0"
+
+jobs:
+  smoke-local:
+    name: workerd smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # The migrations bundle is committed; a stale one would make the
+      # Worker run a different schema than the Bun build.
+      - name: Check the Durable Object migrations bundle is current
+        working-directory: apps/api
+        run: bun run db:check-migrations
+
+      # wrangler.toml points the asset pipeline at dist/worker-assets: the home
+      # page at the root and the admin SPA under /admin.
+      - name: Build the home page and the admin SPA
+        run: bun run build:worker
+
+      - name: Build the Worker bundle
+        working-directory: apps/api
+        run: bun run workers:build
+
+      - name: Configure smoke-test variables
+        run: cp apps/api/.dev.vars.example apps/api/.dev.vars
+
+      - name: Smoke test on workerd
+        run: bun run test:workers

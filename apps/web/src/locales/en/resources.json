@@ -1,0 +1,106 @@
+{
+  "page": {
+    "title": "Resources",
+    "description": "Namespaces, published objects, access keys and CDN purges of the resource service."
+  },
+  "tabs": {
+    "namespaces": "Namespaces",
+    "objects": "Objects",
+    "keys": "Access keys",
+    "purges": "CDN purges",
+    "site": "Site & import"
+  },
+  "loadFailed": "Failed to load.",
+  "saveFailed": "Failed to save.",
+  "actionFailed": "The action failed.",
+  "saved": "Saved.",
+  "edit": "Edit",
+  "cancel": "Cancel",
+  "save": "Save",
+  "done": "Done",
+  "visibility": {
+    "public": "Public",
+    "protected": "Protected"
+  },
+  "namespace": {
+    "create": "New namespace",
+    "edit": "Edit {{name}}",
+    "name": "Namespace",
+    "title": "Title",
+    "description": "Description",
+    "visibility": "Visibility",
+    "cachePolicy": "Cache policy",
+    "store": "Store",
+    "listable": "Listable",
+    "immutable": "Immutable",
+    "siteMode": "Site mode (serve index.html)",
+    "examples": "Example paths (one per line)"
+  },
+  "objects": {
+    "prefix": "Prefix",
+    "show": {
+      "exclude": "Live",
+      "include": "Live and deleted",
+      "only": "Deleted"
+    },
+    "deletePrefix": "Delete prefix",
+    "path": "Path",
+    "size": "Size",
+    "published": "Published",
+    "empty": "No objects.",
+    "purgeAt": "bytes removed {{at}}",
+    "restore": "Restore",
+    "purge": "Purge now",
+    "delete": "Delete",
+    "confirmTitle": "Delete {{count}} object(s)?",
+    "confirmDescription": "{{target}} disappears from listings within 30 seconds; the bytes stay until the grace period ends and can be restored until then.",
+    "reason": "Reason",
+    "totp": "TOTP code",
+    "totpRequired": "Enter a TOTP code to confirm.",
+    "deleted": "{{count}} object(s) deleted.",
+    "restored": "Restored.",
+    "purged": "Purge scheduled."
+  },
+  "keys": {
+    "noProtected": "No protected namespace exists yet; create one in the protect store first.",
+    "hint": "Keys read protected namespaces: {{names}}.",
+    "create": "New access key",
+    "name": "Name",
+    "grants": "Grants",
+    "grantsHint": "One namespace:prefix per line; an empty prefix grants the whole namespace.",
+    "expires": "Expires",
+    "revoked": "Revoked",
+    "sign": "Signed URL",
+    "revoke": "Revoke",
+    "confirmRevoke": "Revoke {{name}}? Clients lose access within 30 seconds.",
+    "createdTitle": "Access key created",
+    "createdDescription": "The secret is shown once. Store it now.",
+    "signPath": "namespace/path"
+  },
+  "purges": {
+    "created": "Queued",
+    "state": "State",
+    "error": "Last error",
+    "empty": "No purges.",
+    "retry": "Retry",
+    "states": {
+      "pending": "Pending",
+      "done": "Done",
+      "skipped": "Skipped"
+    }
+  },
+  "site": {
+    "home": "Home page",
+    "title": "Title",
+    "description": "Description",
+    "publish": "Publish catalog now",
+    "catalog": {
+      "published": "Catalog published.",
+      "pending": "Publishing failed; the background job will retry."
+    },
+    "import": "Import the v1 mirror",
+    "importHint": "Copies every mirrored v1 blob to its readable key inside R2, records it, and maps its old names to redirects. Safe to run again.",
+    "importRun": "Run import",
+    "importProgress": "{{done}} of {{total}} processed, {{created}} created"
+  }
+}

@@ -1,6 +1,6 @@
 # mica-res - Plan Index
 
-> Updated: 2026-09-16
+> Updated: 2026-09-17
 
 ## Usage
 
@@ -33,3 +33,4 @@ Each plan is a single line linking to its detail file. All detailed information 
 
 - [-] [**20260916-0728-r2-resource-service R2 resource service**](20260916-0728-r2-resource-service.md) `2026-09-16`
 - [ ] [**20260916-0757-system-status-site System status site**](20260916-0757-system-status-site.md) `2026-09-16`
+- [-] [**20260917-0852-public-resource-framework Public resource publishing framework**](20260917-0852-public-resource-framework.md) `2026-09-17`

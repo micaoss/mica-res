@@ -1,5 +1,55 @@
 # mica-res - Changelog
 
+## 2026-09-17 16:30 [progress]
+
+F1-F5 of the public resource framework in code: the `resource` module
+(SQLite catalog, R2 objects under readable keys, snapshots, deletion with
+grace, CDN purges, access keys, v1 import), the edge plane (listings,
+redirects, registry, S3 read API) in front of the Durable Object, the home
+page `apps/site`, the admin resources page, `infra.yml` provisioning and
+deploy, and `packages/mica-sync` publishing through the control plane. All
+local gates pass; deployment waits on the Cloudflare credentials.
+
+## 2026-09-17 16:30 [pitfall]
+
+Two client behaviours found with real S3 clients against workerd: aws-cli
+does not follow a 307 on GetObject, so aws-cli downloads use the download
+host as the endpoint; and Cloudflare rewrites `Accept-Encoding`, which
+aws-sdk-go-v2 signs, so SigV4 verification tries the common original values.
+Also: `wrangler dev` rewrites `Host` and `Origin` to the first route, so the
+local dev vars allow `http://res.micaos.dev` as an origin.
+
+## 2026-09-17 11:40 [progress]
+
+F0 of the public resource framework: bun-tpl merged and rebranded, the legacy
+mirror moved to `packages/mica-sync`, the template's `item`, `document`,
+`issue` and `cron` modules dropped, `bun run check` green. The `file` module is
+kept to avoid rewriting template surface. The app does not boot yet: the
+policy guard needs at least one route binding, which the F1 `resource` module
+provides.
+
+## 2026-09-17 11:40 [pitfall]
+
+`packages/mica-sync/src/cli.ts` carried a double blank line that failed its
+own `eslint` gate at HEAD; removed while moving the package.
+
+## 2026-09-17 10:05 [decision]
+
+The public resource framework plan's read plane was revised again before
+approval: public resources are downloaded from R2 directly (user), so public
+objects are stored under their readable keys behind an R2 custom domain, the
+Worker answers listings and redirects only, and uploads go to R2 through
+presigned URLs. The Worker-proxied, content-addressed read plane of the
+previous revision is superseded.
+
+## 2026-09-17 09:20 [decision]
+
+The public resource framework plan (`20260917-0852-public-resource-framework`)
+was revised before approval: the first draft kept the JSON-only catalogue and
+the no-delete invariant; the user asked for SQLite, a normative layout,
+protected namespaces in a separate bucket, `s3.res.micaos.dev`, deletable
+resources and a rebuild on bun-tpl, so the draft is superseded.
+
 ## 2026-09-16 08:20 [progress]
 
 Phase 1 of the mirror: the uploader, the named write routes (index, site and

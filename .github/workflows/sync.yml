@@ -1,8 +1,9 @@
 name: sync
-# The mirror sync. On a schedule and by hand it enumerates what the bucket
-# should hold from the producers' locks and releases; with `apply` it uploads
-# the missing bytes through the Worker's content-addressed write endpoint and
-# writes the index, the pointer and the site pages. It never deletes anything.
+# The mirror sync. On a schedule and by hand it enumerates what the service
+# should hold from the producers' locks and releases; with `apply` it publishes
+# the missing objects through the control plane with a `res:publish` API token
+# (bytes are pulled server-side or put to presigned R2 URLs). It never deletes
+# anything: the token's scope has no delete route.
 on:
   schedule:
     # Daily, after the usual release hours.
@@ -48,28 +49,26 @@ jobs:
             args+=(--apply --kinds "${KINDS}")
             [ -n "${LIMIT}" ] && args+=(--limit "${LIMIT}")
           fi
-          bun src/cli.ts "${args[@]}"
+          bun packages/mica-sync/src/cli.ts "${args[@]}"
         env:
           APPLY: ${{ inputs.apply || false }}
           KINDS: ${{ inputs.kinds || 'deb,source' }}
           LIMIT: ${{ inputs.limit }}
           SIZES: ${{ inputs.sizes || false }}
           GITHUB_TOKEN: ${{ github.token }}
-          MICA_RES_WRITE_TOKEN: ${{ secrets.WRITE_TOKEN }}
+          MICA_RES_TOKEN: ${{ secrets.MICA_RES_TOKEN }}
       # The consumer contract for a git pack, walked against the live mirror:
       # fetch the manifest, join the chunks, import, check out the pinned
       # commit, fsck. What mica-boards implements is a path verified here.
       - name: Verify a mirrored git pack end to end
-        run: bun src/cli.ts verify-pack
+        run: bun packages/mica-sync/src/cli.ts verify-pack
 
-      # The published invariant check, and it is the last step on purpose: it
-      # reads the published index and the bucket, neither of which this run
-      # produced, and fails the run on any disagreement. A writer cannot catch
-      # an error in its own model of the world.
-      - name: Audit the published index against the bucket
-        run: bun src/cli.ts audit
-        env:
-          MICA_RES_WRITE_TOKEN: ${{ secrets.WRITE_TOKEN }}
+      # The published invariant check: it reads the edge's catalog listings and
+      # the download host, neither of which this run produced, and fails the
+      # run on any disagreement. A writer cannot catch an error in its own
+      # model of the world.
+      - name: Audit the published catalog against the download host
+        run: bun packages/mica-sync/src/cli.ts audit
 
       # Bit-identity proven by a client that refuses rather than reports: for
       # every mirrored build-env `base` image, pull it by digest from the

@@ -1,6 +1,6 @@
 # mica-res - Task List
 
-> Updated: 2026-09-16
+> Updated: 2026-09-17
 
 ## Usage
 
@@ -35,3 +35,4 @@ Each task is a single line linking to its detail file. All detailed information 
 
 - [x] [**20260916-0728-r2-resource-service-phase-0 R2 resource service, phase 0**](20260916-0728-r2-resource-service-phase-0.md) `P1`
 - [ ] [**20260916-0757-system-status-site System status site**](20260916-0757-system-status-site.md) `P2`
+- [-] [**20260917-0852-public-resource-framework Public resource publishing framework**](20260917-0852-public-resource-framework.md) `P1`

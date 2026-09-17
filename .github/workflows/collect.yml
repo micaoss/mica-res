@@ -24,10 +24,12 @@ jobs:
       - run: bun install --frozen-lockfile
       # Without the status bearer the snapshots are still rendered and kept as
       # a workflow artifact, so a cycle is never lost while the secret is set.
-      - run: bun src/cli.ts collect ${{ secrets.STATUS_WRITE_TOKEN != '' && '--apply' || '' }} --out "${RUNNER_TEMP}/status"
+      # The status token is a `res:publish` API token of a user who may publish
+      # to the `status` namespace and nothing else.
+      - run: bun packages/mica-sync/src/cli.ts collect ${{ secrets.MICA_RES_STATUS_TOKEN != '' && '--apply' || '' }} --out "${RUNNER_TEMP}/status"
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          MICA_RES_STATUS_TOKEN: ${{ secrets.STATUS_WRITE_TOKEN }}
+          MICA_RES_TOKEN: ${{ secrets.MICA_RES_STATUS_TOKEN }}
       - uses: actions/upload-artifact@v7
         with:
           name: status-${{ github.run_id }}

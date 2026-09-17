@@ -1,0 +1,25 @@
+{
+  "name": "@app/mica-sync",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "node_modules/typescript7/bin/tsc --noEmit",
+    "test": "bun test src",
+    "check": "bun run lint && bun run typecheck && bun run test"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@stylistic/eslint-plugin": "5.10.0",
+    "@types/bun": "1.4.2",
+    "eslint": "10.10.0",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
+    "typescript-eslint": "8.70.0",
+    "typescript7": "npm:typescript@7.0.2"
+  },
+  "homepage": "https://github.com/micaoss/mica-res",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/micaoss/mica-res.git"
+  }
+}

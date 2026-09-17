@@ -1,0 +1,106 @@
+{
+  "page": {
+    "title": "资源",
+    "description": "资源服务的命名空间、已发布对象、访问密钥和 CDN 缓存清除。"
+  },
+  "tabs": {
+    "namespaces": "命名空间",
+    "objects": "对象",
+    "keys": "访问密钥",
+    "purges": "CDN 清除",
+    "site": "站点与导入"
+  },
+  "loadFailed": "加载失败。",
+  "saveFailed": "保存失败。",
+  "actionFailed": "操作失败。",
+  "saved": "已保存。",
+  "edit": "编辑",
+  "cancel": "取消",
+  "save": "保存",
+  "done": "完成",
+  "visibility": {
+    "public": "公开",
+    "protected": "受保护"
+  },
+  "namespace": {
+    "create": "新建命名空间",
+    "edit": "编辑 {{name}}",
+    "name": "命名空间",
+    "title": "标题",
+    "description": "说明",
+    "visibility": "可见性",
+    "cachePolicy": "缓存策略",
+    "store": "存储桶",
+    "listable": "允许列目录",
+    "immutable": "不可变",
+    "siteMode": "站点模式（返回 index.html）",
+    "examples": "示例路径（每行一个）"
+  },
+  "objects": {
+    "prefix": "前缀",
+    "show": {
+      "exclude": "有效",
+      "include": "有效和已删除",
+      "only": "已删除"
+    },
+    "deletePrefix": "删除该前缀",
+    "path": "路径",
+    "size": "大小",
+    "published": "发布时间",
+    "empty": "没有对象。",
+    "purgeAt": "{{at}} 删除字节",
+    "restore": "恢复",
+    "purge": "立即清除",
+    "delete": "删除",
+    "confirmTitle": "删除 {{count}} 个对象？",
+    "confirmDescription": "{{target}} 会在 30 秒内从列表消失；字节保留到宽限期结束，此前都可以恢复。",
+    "reason": "原因",
+    "totp": "TOTP 验证码",
+    "totpRequired": "请输入 TOTP 验证码确认。",
+    "deleted": "已删除 {{count}} 个对象。",
+    "restored": "已恢复。",
+    "purged": "已安排清除。"
+  },
+  "keys": {
+    "noProtected": "还没有受保护的命名空间，请先在 protect 存储桶中创建。",
+    "hint": "密钥可读取受保护的命名空间：{{names}}。",
+    "create": "新建访问密钥",
+    "name": "名称",
+    "grants": "授权",
+    "grantsHint": "每行一个 namespace:prefix；前缀留空表示整个命名空间。",
+    "expires": "过期时间",
+    "revoked": "已吊销",
+    "sign": "签名 URL",
+    "revoke": "吊销",
+    "confirmRevoke": "吊销 {{name}}？客户端会在 30 秒内失去访问权限。",
+    "createdTitle": "访问密钥已创建",
+    "createdDescription": "密钥只显示这一次，请立即保存。",
+    "signPath": "namespace/path"
+  },
+  "purges": {
+    "created": "入队时间",
+    "state": "状态",
+    "error": "最近错误",
+    "empty": "没有清除任务。",
+    "retry": "重试",
+    "states": {
+      "pending": "等待中",
+      "done": "已完成",
+      "skipped": "已跳过"
+    }
+  },
+  "site": {
+    "home": "首页",
+    "title": "标题",
+    "description": "说明",
+    "publish": "立即发布目录",
+    "catalog": {
+      "published": "目录已发布。",
+      "pending": "发布失败，后台任务会重试。"
+    },
+    "import": "导入 v1 镜像",
+    "importHint": "在 R2 内部把每个已镜像的 v1 blob 复制到可读路径并记录，旧名称映射为跳转。可重复执行。",
+    "importRun": "开始导入",
+    "importProgress": "已处理 {{done}}/{{total}}，新建 {{created}}"
+  }
+}

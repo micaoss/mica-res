@@ -187,6 +187,13 @@ each upstream tag; your fork's `Unreleased` block sits at the top.
 
 ### Fixed
 
+- On Bun, a raw `db.get(sql\`...\`)` that matched no row threw `Failed query`
+  instead of returning `undefined`. drizzle's libsql driver maps the first row
+  with `Object.keys` without checking there is one; the builder `.get()` and
+  the Durable Object driver already returned `undefined`. The libsql prepared
+  query now returns `undefined` for an empty raw result, inside transactions
+  too, so code behaves the same on both runtimes.
+
 - A module could not add a policy namespace without editing
   `namespace-config.ts`, and `loadNamespaces()` — which tests call to reset —
   cleared the registry back to the shipped list. `registerNamespace` (exported

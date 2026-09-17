@@ -4,7 +4,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { createClient } from "@libsql/client";
-import { drizzle } from "drizzle-orm/libsql";
+import { drizzle, LibSQLPreparedQuery } from "drizzle-orm/libsql";
 import { migrate } from "drizzle-orm/libsql/migrator";
 import { AppError } from "@/shared/lib/errors";
 import { ROOT_DIR } from "../root";
@@ -183,6 +183,25 @@ function gateWrites(client: Client, lock: WriteLock): Client {
     },
   });
 }
+
+// ─── Empty raw get ───
+
+// drizzle's libsql driver maps a raw `db.get(sql)` result by calling
+// Object.keys on the first row, so a query matching nothing threw "Failed
+// query" instead of returning undefined, as the builder `.get()` and the
+// Durable Object driver do. Patched on the prototype so transactions, which
+// build their own session and prepared queries, are covered too.
+interface MapGetResult {
+  mapGetResult: (rows: unknown, isFromBatch?: boolean) => unknown;
+}
+const libsqlQuery = LibSQLPreparedQuery.prototype as unknown as MapGetResult & { fields?: unknown; customResultMapper?: unknown };
+const mapGetResult = libsqlQuery.mapGetResult;
+libsqlQuery.mapGetResult = function (this: typeof libsqlQuery, rows, isFromBatch) {
+  const list = (isFromBatch === true ? (rows as { rows: unknown[] }).rows : rows) as unknown[];
+  if (list[0] === undefined && this.fields === undefined && this.customResultMapper === undefined)
+    return undefined;
+  return mapGetResult.call(this, rows, isFromBatch);
+};
 
 /**
  * Open the local libsql database. Bun-only: it needs a filesystem, a

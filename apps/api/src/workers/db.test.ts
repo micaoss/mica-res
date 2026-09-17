@@ -148,3 +148,11 @@ describe("Durable Object database adapter — the code paths that broke", () => 
     expect(await db.select().from(users).where(eq(users.id, "ghost")).get()).toBeUndefined();
   });
 });
+
+describe("Durable Object database adapter — reads", () => {
+  test("a raw db.get(sql) with no matching row returns undefined, as on Bun", async () => {
+    const db = await createWorkersDb(fakeDurableStorage());
+    expect(await db.get(sql`SELECT 1 AS x WHERE 0`)).toBeUndefined();
+    expect(await db.get<{ x: number }>(sql`SELECT 1 AS x`)).toEqual({ x: 1 });
+  });
+});

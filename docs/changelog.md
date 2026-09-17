@@ -1,5 +1,14 @@
 # mica-res - Changelog
 
+## 2026-09-17 15:30 [progress]
+
+Delivered the code (`81f1d14`, CI green) and provisioned what is additive:
+the protected bucket, CORS on the public bucket and `dl.res.micaos.dev`,
+which already serves from R2. The Worker is not switched yet: the cutover
+waits on the OIDC provider and the R2 API token, without which nobody could
+sign in to import the v1 mirror and consumers' `/d/` and `/blob/` URLs would
+break.
+
 ## 2026-09-17 16:30 [progress]
 
 F1-F5 of the public resource framework in code: the `resource` module

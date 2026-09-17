@@ -529,3 +529,22 @@ the Cache Rule for `dl.res.micaos.dev`, sign in and run the v1 import
 hosts, and switch `sync.yml` / `collect.yml` to the new tokens. Until then
 this plan stays `implementing`.
 
+### Delivery, 2026-09-17
+
+- Merged and pushed as `81f1d14`. On GitHub: `ci` green on ubuntu and macOS
+  (lint, typecheck, tests, build, docs drift, security scans, CodeQL, docker,
+  e2e) and `workers` (workerd smoke) green.
+- `RES_KEY_KEK` generated and stored as a repository secret (value never
+  printed).
+- `infra.yml` run with `deploy=false`: `protect-res-micaos-dev` created, CORS
+  on `res-micaos-dev`, `dl.res.micaos.dev` attached. The download host answers
+  from R2 (`/index/current.json` 200).
+- **Not deployed.** The live `res.micaos.dev` still runs the v1 Worker.
+  Deploying now would put a Worker in front of an empty catalog that no admin
+  can sign in to, and every `/d/` and `/blob/` URL consumers use would fail
+  until the import runs. The cutover needs, from the user: the OIDC provider
+  (`OAUTH_ISSUER`, `OAUTH_CLIENT_ID` variables, `OAUTH_CLIENT_SECRET` secret,
+  `DEFAULT_ADMIN`), an R2 API token for the two buckets
+  (`R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`), optionally `CF_PURGE_TOKEN`
+  and `CF_ZONE_ID`, and the go-ahead for the switch.
+

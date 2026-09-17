@@ -34,3 +34,8 @@ Designing the public resource framework and the Worker refactor
 - 2026-09-17 16:30: F1-F5 implemented and verified locally (see the plan's
   "F1-F5 implementation" section). Open: deployment and the gates that need
   the live hosts.
+- 2026-09-17 15:30: pushed `81f1d14` (CI green), `RES_KEY_KEK` set,
+  `infra.yml deploy=false` provisioned the protected bucket, CORS and
+  `dl.res.micaos.dev`. Blocked on the OIDC provider, the R2 API token and the
+  go-ahead for the cutover.
+

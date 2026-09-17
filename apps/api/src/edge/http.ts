@@ -187,13 +187,24 @@ async function objectRedirect(ns: CatalogNamespace, object: CatalogObject, deps:
   const key = `${ns.name}/${object.path}`;
   if (ns.visibility === "public")
     return redirect(downloadUrl(base, key), 302, OBJECT_REDIRECT_CACHE);
-  try {
-    const url = await deps.store(ns.store).presignGet(key, deps.presignTtlSeconds ?? 300);
+  const store = deps.store(ns.store);
+  const url = await store.presignGet(key, deps.presignTtlSeconds ?? 300);
+  if (url !== null)
     return redirect(url, 302, "private, no-store");
-  }
-  catch {
-    return jsonError(503, "PRESIGN_UNAVAILABLE", "Protected downloads are not configured");
-  }
+  // No S3 credentials to sign with: a protected object is streamed here.
+  // Public objects never take this path -- they are redirected above.
+  const streamed = await store.getStream(key);
+  if (!streamed)
+    return jsonError(404, "NOT_FOUND", "No such object");
+  return new Response(streamed.body, {
+    headers: {
+      "content-type": streamed.info.contentType ?? object.contentType,
+      "content-length": String(streamed.info.size),
+      "etag": `"${streamed.info.etag}"`,
+      "x-checksum-sha256": object.sha256,
+      "cache-control": "private, no-store",
+    },
+  });
 }
 
 async function serveAsset(request: Request, url: URL, deps: EdgeDeps, fallback: string): Promise<Response> {

@@ -104,6 +104,49 @@ jobs:
         if: inputs.deploy
         run: bun run build:worker
 
+      # Only what actually has a value is passed on. An empty var or secret
+      # would be published as an empty string, which the config schema refuses
+      # at boot. `R2_*` are optional: without them copies stream
+      # binding-to-binding, uploads come through the service and protected
+      # downloads are streamed rather than signed. `CF_PURGE_TOKEN` is optional
+      # too: without it CDN purges are marked skipped.
+      - name: Decide what to deploy with
+        if: inputs.deploy
+        id: plan
+        env:
+          OAUTH_CLIENT_SECRET: ${{ secrets.OAUTH_CLIENT_SECRET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          CF_PURGE_TOKEN: ${{ secrets.CF_PURGE_TOKEN }}
+          RES_KEY_KEK: ${{ secrets.RES_KEY_KEK }}
+          OAUTH_ISSUER: ${{ vars.OAUTH_ISSUER }}
+          OAUTH_CLIENT_ID: ${{ vars.OAUTH_CLIENT_ID }}
+          DEFAULT_ADMIN: ${{ vars.DEFAULT_ADMIN }}
+          CF_ZONE_ID: ${{ vars.CF_ZONE_ID }}
+          R2_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          command="deploy"
+          for name in OAUTH_ISSUER OAUTH_CLIENT_ID DEFAULT_ADMIN CF_ZONE_ID R2_ACCOUNT_ID; do
+            if [ -n "${!name}" ]; then
+              command="${command} --var ${name}:${!name}"
+            else
+              echo "::warning::${name} is not set; deploying without it"
+            fi
+          done
+          {
+            echo "command=${command}"
+            echo "secrets<<EOF"
+            for name in OAUTH_CLIENT_SECRET R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY CF_PURGE_TOKEN RES_KEY_KEK; do
+              if [ -n "${!name}" ]; then
+                echo "${name}"
+              else
+                echo "::warning::${name} is not set; deploying without it"
+              fi
+            done
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
       - name: Deploy the Worker
         if: inputs.deploy
         uses: cloudflare/wrangler-action@v4
@@ -113,22 +156,11 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: apps/api
           # Non-secret configuration travels as vars in the same deploy.
-          command: >-
-            deploy
-            --var OAUTH_ISSUER:${{ vars.OAUTH_ISSUER }}
-            --var OAUTH_CLIENT_ID:${{ vars.OAUTH_CLIENT_ID }}
-            --var DEFAULT_ADMIN:${{ vars.DEFAULT_ADMIN }}
-            --var R2_ACCOUNT_ID:${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-            --var CF_ZONE_ID:${{ vars.CF_ZONE_ID }}
+          command: ${{ steps.plan.outputs.command }}
           # Bound on every deploy from the repository's secrets, so what the
           # Worker holds is provably what the repository holds. Nobody runs
           # `wrangler secret put` by hand.
-          secrets: |
-            OAUTH_CLIENT_SECRET
-            R2_ACCESS_KEY_ID
-            R2_SECRET_ACCESS_KEY
-            CF_PURGE_TOKEN
-            RES_KEY_KEK
+          secrets: ${{ steps.plan.outputs.secrets }}
         env:
           OAUTH_CLIENT_SECRET: ${{ secrets.OAUTH_CLIENT_SECRET }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}

@@ -15,8 +15,9 @@ export interface MemoryStore extends ResStore {
  * for tests and for a local control plane with no R2 at all. Presigned URLs
  * point at a fake host; nothing can fetch them.
  */
-export function createMemoryStore(bucket: string, peers?: Map<string, MemoryStore>): MemoryStore {
+export function createMemoryStore(bucket: string, peers?: Map<string, MemoryStore>, opts: { canPresign?: boolean } = {}): MemoryStore {
   const objects = new Map<string, Entry>();
+  const canPresign = opts.canPresign ?? true;
 
   const store: MemoryStore = {
     bucket,
@@ -38,6 +39,10 @@ export function createMemoryStore(bucket: string, peers?: Map<string, MemoryStor
         throw new Error(`stream length ${bytes.length} is not the declared ${size}`);
       return write(key, bytes, meta);
     },
+    async getStream(key) {
+      const entry = objects.get(key);
+      return entry ? { body: new Response(entry.bytes as BodyInit).body!, info: entry.info } : null;
+    },
     async copyFrom(source, key, meta) {
       const from = source.bucket === bucket ? store : peers?.get(source.bucket);
       const entry = from?.objects.get(source.key);
@@ -54,9 +59,11 @@ export function createMemoryStore(bucket: string, peers?: Map<string, MemoryStor
       objects.delete(key);
     },
     async presignGet(key, expiresSeconds) {
-      return `https://memory.invalid/${bucket}/${key}?expires=${expiresSeconds}`;
+      return canPresign ? `https://memory.invalid/${bucket}/${key}?expires=${expiresSeconds}` : null;
     },
     async presignPut(key, opts) {
+      if (!canPresign)
+        return null;
       return {
         url: `https://memory.invalid/${bucket}/${key}?put`,
         headers: { "content-type": opts.contentType },

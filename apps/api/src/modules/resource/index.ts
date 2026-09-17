@@ -29,6 +29,7 @@ registerTokenScope({
     { method: "PUT", path: "/res/namespaces/:name/objects" },
     { method: "POST", path: "/res/namespaces/:name/batch" },
     { method: "POST", path: "/res/namespaces/:name/uploads" },
+    { method: "PUT", path: "/res/uploads/:id/content" },
     { method: "POST", path: "/res/namespaces/:name/uploads/pull" },
     { method: "GET", path: "/res/namespaces/:name/aliases" },
     { method: "PUT", path: "/res/namespaces/:name/aliases" },
@@ -79,7 +80,10 @@ export async function initResourceModule(db: AppDatabase, config: Config, logger
       registerStore(binding, createMemoryStore(bucket, peers));
     }
   }
-  if (bindings.size > 0 && !s3)
-    logger.warn("R2 S3 credentials are not configured: uploads, copies and signed URLs will fail");
+  if (bindings.size > 0 && !s3) {
+    logger.warn(
+      "R2 S3 credentials are not configured: copies stream binding-to-binding, uploads come through this service (about 95 MiB at most) and protected downloads are streamed rather than signed",
+    );
+  }
   await seedResources(db, config);
 }

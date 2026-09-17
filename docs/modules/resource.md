@@ -175,6 +175,21 @@ that header, so verification tries the common original values; and `wrangler
 dev` rewrites `Host` and `Origin` to the first route, which is why local S3
 checks need `--local-upstream` set to the host the client uses.
 
+## With and without R2 S3 credentials
+
+The bucket bindings cover reads, writes, deletes and listings. Two things a
+binding cannot do are done through R2's S3 API when `R2_ACCOUNT_ID`,
+`R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` are configured, and have a
+binding-only fallback when they are not.
+
+| | With S3 credentials | Without |
+|---|---|---|
+| Copy (publish, metadata rewrite, v1 import) | `CopyObject`, server-side | Streamed binding-to-binding inside Cloudflare, sha256 still enforced by R2. No egress either way. |
+| Upload of bytes the client holds | Presigned PUT straight to R2, up to 5 GiB | `PUT /api/res/uploads/:id/content` through this service, bounded by the platform's request-body limit (about 95 MiB). Objects with an origin URL are unaffected: they are pulled server-side. |
+| Protected download | 302 to a 5-minute presigned R2 URL | Streamed by the Worker. Public objects are never affected -- they are always a redirect to the download host. |
+
+Public bytes never pass through a Worker in either mode.
+
 ## Protected namespaces and access keys
 
 - Create a namespace in the `protect` store, then an access key with grants
@@ -191,10 +206,10 @@ checks need `--local-upstream` set to the host the client uses.
 
 1. Repository secrets: `CLOUDFLARE_API_TOKEN` (Workers, R2, zone DNS and R2
    custom domains), `CLOUDFLARE_ACCOUNT_ID`, `OAUTH_CLIENT_SECRET`,
-   `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` (R2 token scoped to both res
-   buckets, object read and write), `CF_PURGE_TOKEN` (zone Cache Purge),
    `RES_KEY_KEK` (`openssl rand -base64 32`), `MICA_RES_TOKEN`,
-   `MICA_RES_STATUS_TOKEN`.
+   `MICA_RES_STATUS_TOKEN`. Optional: `R2_ACCESS_KEY_ID` /
+   `R2_SECRET_ACCESS_KEY` (see below) and `CF_PURGE_TOKEN` (zone Cache
+   Purge; without it purges are marked skipped).
 2. Repository variables: `OAUTH_ISSUER`, `OAUTH_CLIENT_ID`, `DEFAULT_ADMIN`,
    `CF_ZONE_ID`. Register `https://res.micaos.dev/admin/api/account/auth/callback`
    with the OIDC provider.

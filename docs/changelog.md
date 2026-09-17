@@ -1,5 +1,14 @@
 # mica-res - Changelog
 
+## 2026-09-17 17:10 [decision]
+
+R2 S3 credentials are optional (user): the bindings cover everything except a
+server-side copy and a presigned URL, so a copy now streams
+binding-to-binding, an upload the store cannot presign is taken by the
+service itself (about 95 MiB at most), and a protected download is streamed
+rather than signed. Public bytes are still never proxied. Deployment no
+longer needs an R2 API token.
+
 ## 2026-09-17 15:30 [progress]
 
 Delivered the code (`81f1d14`, CI green) and provisioned what is additive:

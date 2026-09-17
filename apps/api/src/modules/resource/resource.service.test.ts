@@ -30,6 +30,7 @@ import {
   setOciTag,
   sweepDeletedObjects,
   updateNamespace,
+  writeUploadBody,
 } from "./resource.service";
 import { resObjects, resPurges } from "./schema";
 import { createMemoryStore, seedMemoryObject } from "./storage/memory-store";
@@ -326,5 +327,33 @@ describe("access keys", () => {
     await publishAccessSnapshot(db);
     expect((JSON.parse((await protectStore.getText(ACCESS_SNAPSHOT_KEY))!) as { keys: unknown[] }).keys).toEqual([]);
     expect((await listAccessKeys(db))[0]!.revokedAt).not.toBeNull();
+  });
+});
+
+describe("without R2 S3 credentials", () => {
+  // The store cannot presign, so uploads come through the service and
+  // protected downloads are streamed; copies still happen inside the store.
+  beforeEach(async () => {
+    __resetStoresForTests();
+    const peers = new Map<string, MemoryStore>();
+    publicStore = createMemoryStore(config.RES_PUBLIC_BUCKET, peers, { canPresign: false });
+    protectStore = createMemoryStore(config.RES_PROTECT_BUCKET, peers, { canPresign: false });
+    registerStore(PUBLIC_BINDING, publicStore);
+    registerStore(PROTECT_BINDING, protectStore);
+  });
+
+  test("an upload is offered on this service and its bytes are checked on arrival", async () => {
+    const text = "bytes through the service";
+    const created = await createUpload(db, config, { sha256: await sha256Hex(text), size: text.length, contentType: "text/plain", actorId });
+    expect(created).toMatchObject({ direct: true, url: `https://res.example.test/admin/api/res/uploads/${created.id}/content` });
+
+    const wrong = new Response("other bytes").body!;
+    await expect(writeUploadBody(db, created.id, wrong, actorId)).rejects.toMatchObject({ code: "SHA256_MISMATCH" });
+    await expect(writeUploadBody(db, created.id, new Response(text).body!, "someone-else")).rejects.toMatchObject({ statusCode: 404 });
+
+    expect(await writeUploadBody(db, created.id, new Response(text).body!, actorId)).toEqual({ id: created.id, size: text.length });
+    const published = await publishObject(db, { namespace: "brand", path: "note.txt", source: { kind: "upload", uploadId: created.id }, actorId });
+    expect(published.outcome).toBe("created");
+    expect(publicStore.objects.get("brand/note.txt")!.info.sha256).toBe(await sha256Hex(text));
   });
 });

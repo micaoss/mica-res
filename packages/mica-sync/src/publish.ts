@@ -100,8 +100,11 @@ export async function stagePull(publisher: Publisher, namespace: string, input: 
 /** Upload bytes this process holds straight to R2 through a presigned PUT. */
 export async function stageBytes(publisher: Publisher, namespace: string, bytes: Uint8Array, contentType: string): Promise<string> {
   const sha256 = Bun.SHA256.hash(bytes, 'hex')
-  const upload = await call<{ id: string, url: string, headers: Record<string, string> }>(publisher, 'POST', `/res/namespaces/${namespace}/uploads`, { sha256, size: bytes.length, contentType })
-  const put = await (publisher.fetcher ?? fetch)(upload.url, { method: 'PUT', headers: upload.headers, body: bytes })
+  const upload = await call<{ id: string, url: string, headers: Record<string, string>, direct?: boolean }>(publisher, 'POST', `/res/namespaces/${namespace}/uploads`, { sha256, size: bytes.length, contentType })
+  // `direct` means the service takes the bytes itself because its store
+  // cannot presign; that endpoint needs the token, a presigned R2 URL does not.
+  const headers = upload.direct === true ? { ...upload.headers, authorization: `Bearer ${publisher.token}` } : upload.headers
+  const put = await (publisher.fetcher ?? fetch)(upload.url, { method: 'PUT', headers, body: bytes })
   if (!put.ok)
     throw new Error(`upload: ${put.status} ${(await put.text()).slice(0, 300)} for ${sha256}`)
   return upload.id

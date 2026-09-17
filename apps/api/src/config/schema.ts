@@ -147,8 +147,10 @@ export const configSchema = z.object({
   // public bucket has a custom domain.
   RES_PUBLIC_BUCKET: z.string().min(1).default("res-micaos-dev"),
   RES_PROTECT_BUCKET: z.string().min(1).default("protect-res-micaos-dev"),
-  // R2's S3 API, for the operations a binding cannot do: server-side copy
-  // and presigned URLs. Scope the token to the res buckets.
+  // R2's S3 API, for the two operations a binding cannot do: server-side copy
+  // and presigned URLs. Scope the token to the res buckets. Optional: without
+  // them copies stream binding-to-binding, uploads come through this service
+  // and protected downloads are streamed (see docs/modules/resource.md).
   R2_ACCOUNT_ID: z.string().min(1).optional(),
   R2_ACCESS_KEY_ID: z.string().min(1).optional(),
   R2_SECRET_ACCESS_KEY: z.string().min(1).optional(),

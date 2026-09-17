@@ -34,6 +34,7 @@ import {
   setOciTag,
   setRedirect,
   updateNamespace,
+  writeUploadBody,
 } from "./resource.service";
 
 const nameParam = z.object({ name: z.string().min(1) });
@@ -216,6 +217,18 @@ export function resourceRoutes() {
     await getNamespace(c.get("db"), c.req.valid("param").name);
     const upload = await createUpload(c.get("db"), c.get("config"), { ...c.req.valid("json"), actorId: c.get("user")!.id });
     return c.json({ success: true, data: upload }, 201);
+  });
+
+  // Used only when the store cannot presign (no R2 S3 credentials): the
+  // body is streamed into staging here, bounded by the platform's
+  // request-body limit. The upload's own row carries the sha256 and size R2
+  // enforces, so this endpoint cannot store anything else.
+  router.put("/res/uploads/:id/content", doc("Upload a staged object's bytes", { ...jsonOk(), ...errors(401, 403, 404, 409, 413) }), validator("param", idParam), async (c) => {
+    const body = c.req.raw.body;
+    if (!body)
+      throw new AppError("The request has no body", 400, "VALIDATION_ERROR");
+    const result = await writeUploadBody(c.get("db"), c.req.valid("param").id, body as ReadableStream<Uint8Array>, c.get("user")!.id);
+    return c.json({ success: true, data: result });
   });
 
   router.post("/res/namespaces/:name/uploads/pull", doc("Pull an origin into a staged upload", { ...jsonCreated(), ...errors(400, 401, 403, 404, 409, 422, 502) }), validator("param", nameParam), validator("json", z.object({ origin: z.string().url().max(4096), sha256, contentType: z.string().min(1).max(200) })), async (c) => {

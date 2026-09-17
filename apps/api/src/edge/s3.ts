@@ -145,12 +145,16 @@ async function getObject(ns: CatalogNamespace, object: CatalogObject, downloadBa
     location = `${downloadBase.replace(/\/+$/, "")}/${encodeKeyPath(key)}`;
   }
   else {
-    try {
-      location = await deps.store(ns.store).presignGet(key, 300);
+    const signed = await deps.store(ns.store).presignGet(key, 300);
+    if (signed === null) {
+      // Nothing to sign with: a protected object is streamed here. S3
+      // clients do not all follow a redirect, and these bytes are not public.
+      const streamed = await deps.store(ns.store).getStream(key);
+      if (!streamed)
+        return s3Error(404, "NoSuchKey", "The specified key does not exist.", resource);
+      return new Response(streamed.body, { status: 200, headers: { ...objectHeaders(object), "cache-control": "private, no-store" } });
     }
-    catch {
-      return s3Error(503, "ServiceUnavailable", "Protected downloads are not configured.", resource);
-    }
+    location = signed;
   }
   return new Response(null, { status: 307, headers: { "location": location, "x-amz-request-id": requestId(), "cache-control": ns.visibility === "public" ? "public, max-age=300" : "private, no-store" } });
 }

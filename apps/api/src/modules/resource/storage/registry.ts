@@ -19,6 +19,11 @@ export function getStore(binding: string): ResStore {
   return store;
 }
 
+/** The store holding a bucket, for a copy whose source is another bucket. */
+export function storeByBucket(bucket: string): ResStore | undefined {
+  return [...stores.values()].find(store => store.bucket === bucket);
+}
+
 export function hasStore(binding: string): boolean {
   return stores.has(binding);
 }

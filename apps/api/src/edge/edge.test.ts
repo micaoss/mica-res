@@ -8,7 +8,7 @@ import { resolve } from "node:path";
 import { createDb } from "@/db";
 import { createAccessKey, mintSignedUrl, publishAccessSnapshot, revokeAccessKey } from "@/modules/resource/access/keys";
 import { publishCatalog } from "@/modules/resource/publisher";
-import { createNamespace, createUpload, PROTECT_BINDING, PUBLIC_BINDING, publishObject, seedResources, setAlias, setOciTag, setRedirect } from "@/modules/resource/resource.service";
+import { createNamespace, createUpload, PROTECT_BINDING, PUBLIC_BINDING, publishObject, seedResources, setAlias, setOciTag, setRedirect, writeUploadBody } from "@/modules/resource/resource.service";
 import { createMemoryStore, seedMemoryObject } from "@/modules/resource/storage/memory-store";
 import { __resetStoresForTests, getStore, registerStore } from "@/modules/resource/storage/registry";
 import { sha256Hex, signHeaders } from "@/modules/resource/storage/sigv4";
@@ -39,7 +39,10 @@ const shas: Record<string, string> = {};
 async function put(namespace: string, path: string, text: string, contentType?: string): Promise<void> {
   const sha256 = await sha256Hex(text);
   const upload = await createUpload(db, config, { sha256, size: text.length, contentType: contentType ?? "application/octet-stream", actorId });
-  await seedMemoryObject(protectStore, new URL(upload.url).pathname.split("/").slice(2).join("/"), text);
+  if (upload.direct)
+    await writeUploadBody(db, upload.id, new Response(text).body!, actorId);
+  else
+    await seedMemoryObject(protectStore, new URL(upload.url).pathname.split("/").slice(2).join("/"), text);
   await publishObject(db, { namespace, path, source: { kind: "upload", uploadId: upload.id }, contentType, actorId });
   shas[`${namespace}/${path}`] = sha256;
 }
@@ -168,6 +171,42 @@ describe("res host", () => {
     expect((await res("/vault/team/secret.bin", bearer))!.status).toBe(302);
     clock += 31_000;
     expect((await res("/vault/team/secret.bin", bearer))!.status).toBe(403);
+  });
+});
+
+describe("without R2 S3 credentials", () => {
+  // Public objects are still redirected to the download host; a protected one
+  // cannot be signed for, so the edge streams it instead.
+  beforeEach(async () => {
+    const peers = new Map<string, MemoryStore>();
+    const publicStore = createMemoryStore(config.RES_PUBLIC_BUCKET, peers, { canPresign: false });
+    protectStore = createMemoryStore(config.RES_PROTECT_BUCKET, peers, { canPresign: false });
+    // Re-register and rebuild the world the presign-less stores hold.
+    __resetStoresForTests();
+    registerStore(PUBLIC_BINDING, publicStore);
+    registerStore(PROTECT_BINDING, protectStore);
+    await put("mica", "a/public.bin", "public bytes");
+    await put("vault", "team/secret.bin", "protected bytes");
+    await publishCatalog(db, config);
+    clock = Date.now();
+  });
+
+  test("streams a protected object and still redirects a public one", async () => {
+    const created = await createAccessKey(db, config, { name: "stream", grants: [{ namespace: "vault", prefix: "" }], actorId });
+    await publishAccessSnapshot(db);
+    const bearer = { headers: { authorization: `Bearer ${created.bearer}` } };
+
+    const streamed = (await res("/vault/team/secret.bin", bearer))!;
+    expect(streamed.status).toBe(200);
+    expect(streamed.headers.get("cache-control")).toBe("private, no-store");
+    expect(await streamed.text()).toBe("protected bytes");
+
+    const s3Streamed = (await s3("/vault/team/secret.bin", { headers: await signHeaders({ method: "GET", url: new URL("https://s3.example.test/vault/team/secret.bin"), credentials: { accessKeyId: created.key.id, secretAccessKey: created.secret }, scope: { region: "auto", service: "s3" }, payloadHash: "UNSIGNED-PAYLOAD" }) }))!;
+    expect(s3Streamed.status).toBe(200);
+    expect(await s3Streamed.text()).toBe("protected bytes");
+
+    expect((await res("/mica/a/public.bin"))!.status).toBe(302);
+    expect((await s3("/mica/a/public.bin"))!.status).toBe(307);
   });
 });
 

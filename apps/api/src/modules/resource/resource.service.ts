@@ -12,7 +12,7 @@ import { getStore } from "./storage/registry";
 
 export type ResourceConfig = Pick<
   Config,
-  "RES_DOWNLOAD_URL" | "RES_PUBLIC_BUCKET" | "RES_PROTECT_BUCKET" | "RES_DELETE_GRACE_SECONDS" | "RES_UPLOAD_TTL_SECONDS"
+  "RES_HOME_URL" | "RES_DOWNLOAD_URL" | "RES_PUBLIC_BUCKET" | "RES_PROTECT_BUCKET" | "RES_DELETE_GRACE_SECONDS" | "RES_UPLOAD_TTL_SECONDS"
 >;
 
 export const PUBLIC_STORE = "public";
@@ -386,6 +386,12 @@ export function contentTypeFor(path: string): string {
 
 // ─── Uploads ───
 
+/**
+ * Start an upload. With R2 S3 credentials the client PUTs straight to R2
+ * through a presigned URL; without them it PUTs to this service, which
+ * streams the body into staging (bounded by the platform's request-body
+ * limit, so about 95 MiB).
+ */
 export async function createUpload(db: AppDatabase, config: ResourceConfig, input: { sha256: string; size: number; contentType: string; actorId: string }) {
   assertSha(input.sha256);
   if (!Number.isSafeInteger(input.size) || input.size <= 0 || input.size > 5 * 1024 ** 3)
@@ -410,7 +416,29 @@ export async function createUpload(db: AppDatabase, config: ResourceConfig, inpu
     createdBy: input.actorId,
     createdAt: now(),
   }).run();
-  return { id, url: presigned.url, headers: presigned.headers, expiresAt };
+  return presigned === null
+    ? { id, url: `${config.RES_HOME_URL.replace(/\/+$/, "")}/admin/api/res/uploads/${id}/content`, headers: { "content-type": input.contentType }, direct: true, expiresAt }
+    : { id, url: presigned.url, headers: presigned.headers, direct: false, expiresAt };
+}
+
+/** Receive an upload's bytes here when the store cannot presign. */
+export async function writeUploadBody(db: AppDatabase, id: string, body: ReadableStream<Uint8Array>, actorId: string): Promise<{ id: string; size: number }> {
+  const upload = await db.select().from(resUploads).where(eq(resUploads.id, id)).get();
+  if (!upload || upload.state !== "pending" || upload.createdBy !== actorId)
+    throw new NotFoundError("upload", id);
+  if (new Date(upload.expiresAt) <= new Date())
+    throw new AppError("The upload has expired", 409, "UPLOAD_EXPIRED");
+  try {
+    await getStore(PROTECT_BINDING).putStream(upload.stagingKey, body, upload.size, {
+      sha256: upload.sha256,
+      contentType: upload.contentType,
+      cacheControl: "no-store",
+    });
+  }
+  catch {
+    throw new AppError("The uploaded bytes do not match the declared sha256 and size", 409, "SHA256_MISMATCH");
+  }
+  return { id, size: upload.size };
 }
 
 /**

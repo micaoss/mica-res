@@ -50,7 +50,7 @@
 | `OIDC_LOGOUT_URL` | url | — | no | RP-Initiated Logout endpoint. When set the `/account/auth/logout` flow redirects the browser here after revoking the local session so the IdP also tears down its SSO cookie. |
 | `PORT` | number | `3000` | no | Port the API listens on. The bundled SPA is served from the same port. |
 | `R2_ACCESS_KEY_ID` | string | — | no | R2 S3 access key id. Scope the token to the res buckets. |
-| `R2_ACCOUNT_ID` | string | — | no | Cloudflare account id, used to reach R2's S3 endpoint for server-side copies and presigned URLs. |
+| `R2_ACCOUNT_ID` | string | — | no | Cloudflare account id, used to reach R2's S3 endpoint for server-side copies and presigned URLs. Optional: without these three, copies stream binding-to-binding, uploads come through this service (about 95 MiB at most) and protected downloads are streamed rather than signed. |
 | `R2_S3_ENDPOINT` | url | — | no | Override for the R2 S3 endpoint (tests, MinIO). |
 | `R2_SECRET_ACCESS_KEY` | string | — | no | R2 S3 secret access key. Keep it a secret, never a var. |
 | `RAW_API_RATE_LIMIT_PER_MINUTE` | number | `120` | no | Per-client cap on the raw API (${BASE_PATH}/api/raw/*), the bare surface other services integrate with. That surface carries no security headers, CSRF guard, CORS policy or session middleware; this limit is the only protection applied to every route on it. Counted per IP in a one-minute window. 0 = unlimited. |

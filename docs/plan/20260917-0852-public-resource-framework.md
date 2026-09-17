@@ -548,3 +548,21 @@ this plan stays `implementing`.
   (`R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`), optionally `CF_PURGE_TOKEN`
   and `CF_ZONE_ID`, and the go-ahead for the switch.
 
+### R2 S3 credentials made optional, 2026-09-17
+
+The user asked why the bindings are not enough. They are, for everything but
+a server-side copy and a presigned URL, so both now have a binding-only
+fallback and `R2_*` is optional:
+
+- copy streams binding-to-binding inside Cloudflare, with R2 still enforcing
+  the sha256 (covered by `storage/r2-store.test.ts` against a fake binding);
+- an upload the store cannot presign is taken by
+  `PUT /api/res/uploads/:id/content`, bounded by the platform's request-body
+  limit (~95 MiB); objects with an origin are pulled server-side as before;
+- a protected download the store cannot sign for is streamed by the Worker.
+  Public bytes are still never proxied.
+
+`infra.yml` now passes only the vars and secrets that have a value: an empty
+one would be published as an empty string and refused by the config schema at
+boot.
+

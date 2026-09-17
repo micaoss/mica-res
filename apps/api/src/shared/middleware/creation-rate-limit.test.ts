@@ -103,6 +103,8 @@ describe("discoverCreationRoutes", () => {
       "member",
       "resource-group",
       "share",
+      // Minting personal API tokens is throttled like any other create.
+      "token",
       "totp",
       "tuple",
     ]);

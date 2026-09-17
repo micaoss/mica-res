@@ -1,5 +1,6 @@
 export * from "@/modules/account/auth/schema";
 export * from "@/modules/account/groups/schema";
+export * from "@/modules/account/tokens/schema";
 export * from "@/modules/account/users/schema";
 export * from "@/modules/audit/schema";
 export * from "@/modules/cron/schema";

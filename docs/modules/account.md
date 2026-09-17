@@ -111,6 +111,44 @@ can be deleted (a later login recreates them). Many IdPs only send the claim
 when a scope asks for it — add it with `OAUTH_SCOPES`, for example
 `openid profile email groups`.
 
+## Personal API Tokens
+
+A signed-in user can mint tokens for scripts and other services under
+**Settings → API tokens**, or through the API:
+
+| Method | Path | Access | Description |
+|---|---|---|---|
+| GET | `/api/account/token-scopes` | Session | Scopes registered by modules. |
+| GET | `/api/account/me/tokens` | Session | The caller's tokens, without secrets. |
+| POST | `/api/account/me/tokens` | Session | Creates a token (`name`, `scopes`, optional `expiresInDays`); the response carries the secret once. |
+| DELETE | `/api/account/me/tokens/:id` | Session | Revokes a token. |
+
+A token is sent as `Authorization: Bearer pat_…`, needs no CSRF header, and
+acts as its user — role, policy checks and creation quota all apply. Only a
+SHA-256 of the token is stored.
+
+Access is deny-by-default. A module registers each scope with the routes it
+opens, from its `index.ts`:
+
+```ts
+import { registerTokenScope } from "@/shared/lib/token-scopes";
+
+registerTokenScope({
+  name: "invoices:read",
+  description: "Read invoices",
+  routes: [{ method: "GET", path: "/invoices" }, { method: "GET", path: "/invoices/*" }],
+});
+```
+
+Paths are relative to `/api`; `:name` matches one segment and a trailing `*`
+matches the rest. A token on a route that none of its scopes lists gets 403,
+so routes nobody registered — token management itself, admin settings — stay
+closed to tokens. An unknown, expired or revoked token, or one whose user is
+disabled, is unauthenticated (401). Shipped scopes: `account:read`,
+`issues:read`, `issues:write`, `documents:read`, `documents:write`.
+
+Tokens are not part of backups, like sessions.
+
 ## Policy Integration
 
 Users and groups are policy subjects. Resource grants to users and to groups

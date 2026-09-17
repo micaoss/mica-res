@@ -13,6 +13,16 @@ each upstream tag; your fork's `Unreleased` block sits at the top.
 
 ### Added
 
+- Personal API tokens. Users create them under Settings → API tokens or at
+  `/api/account/me/tokens`; the secret is shown once and only its SHA-256 is
+  stored. A token (`Authorization: Bearer pat_…`) acts as its user but only
+  on routes its scopes list — modules register scopes with
+  `registerTokenScope`, and every other route, token management included,
+  answers 403. It is authenticated by a provider added to the auth chain
+  after the session provider. **Schema:** new `api_tokens` table in the
+  regenerated `0000_init` migration; a deployed database needs it created by
+  hand.
+
 - Group memberships from the identity provider. With `OAUTH_GROUPS_CLAIM`
   set, each OIDC login makes the user's memberships in IdP-managed groups
   match the claim, creating missing groups as `source: "idp"`. Local groups

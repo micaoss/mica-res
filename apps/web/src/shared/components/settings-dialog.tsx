@@ -1,6 +1,7 @@
 import { Check, Copy, Loader2, Mail, Plus, Shield, ShieldAlert, Smartphone, Trash2, User as UserIcon, UsersRound } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { ApiTokensTab } from "@/shared/components/api-tokens-tab";
 import { Avatar, AvatarFallback } from "@/shared/components/ui/avatar";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
@@ -53,6 +54,7 @@ export function SettingsDialog({
           <TabsList variant="line">
             <TabsTrigger value="profile">{t("settings:tabProfile")}</TabsTrigger>
             <TabsTrigger value="security">{t("settings:tabSecurity")}</TabsTrigger>
+            <TabsTrigger value="tokens">{t("settings:tabTokens")}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="profile">
@@ -60,6 +62,9 @@ export function SettingsDialog({
           </TabsContent>
           <TabsContent value="security">
             <TotpTab />
+          </TabsContent>
+          <TabsContent value="tokens">
+            <ApiTokensTab />
           </TabsContent>
         </Tabs>
       </DialogContent>

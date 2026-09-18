@@ -566,3 +566,24 @@ fallback and `R2_*` is optional:
 one would be published as an empty string and refused by the config schema at
 boot.
 
+### Cutover, 2026-09-18
+
+- OIDC: `login.gid.io/oidc` (Logto), public client with PKCE and no secret,
+  `DEFAULT_ADMIN=a@roy.me`, set as repository variables (user).
+- `infra.yml` deployed the new Worker to `res.micaos.dev`. Production smoke
+  in OIDC mode 5/5 (health, raw API, SPA, OAuth mode, PKCE redirect to the
+  issuer with the right callback). The first catalog is published.
+- Two defects found by the first deploy and fixed before the catalog went
+  live:
+  - `infra.yml` wrote its warnings into the secrets list; the deploy was
+    refused before anything changed.
+  - The resource jobs never ran on Workers: an alarm wakes a fresh Durable
+    Object instance, a module-level guard skipped registering on its
+    scheduler, and the 20-second first-run delay pushed the task past the
+    alarm that woke it. The template's `file-gc` sweep has the same guard.
+- Open: `s3.res.micaos.dev` already has an externally managed DNS record, so
+  Cloudflare refused the Worker custom domain (the deploy step reports a
+  partial trigger update; everything else is live). The v1 import has not run
+  yet, so `/d/` and `/blob/` answer 404 until it does -- consumers fall back
+  upstream by design.
+

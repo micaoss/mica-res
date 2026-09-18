@@ -1,5 +1,22 @@
 # mica-res - Changelog
 
+## 2026-09-18 16:10 [progress]
+
+Cut over: `res.micaos.dev` runs the resource service, signs in through
+`login.gid.io` with PKCE, and has published its first catalog. The v1 import
+and the `s3.res.micaos.dev` custom domain (blocked by an existing DNS record)
+are still to do.
+
+## 2026-09-18 16:05 [BUG-P1]
+
+The resource jobs never ran on Workers, so a fresh deployment never
+published its catalog. An alarm wakes a new Durable Object instance in the
+same isolate; the jobs' "already started" guard skipped the new scheduler,
+and their first-run delay pushed the task past the alarm that woke it on
+every wake. Fixed by re-registering per scheduler and running at once on
+Workers; a regression test covers both. The template's `file-gc` sweep keeps
+the same guard.
+
 ## 2026-09-17 17:10 [decision]
 
 R2 S3 credentials are optional (user): the bindings cover everything except a

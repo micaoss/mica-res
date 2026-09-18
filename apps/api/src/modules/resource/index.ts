@@ -4,6 +4,7 @@ import type { AppDatabase } from "@/db";
 import type { Logger } from "@/shared/lib/logger";
 import { registerBackupContribution } from "@/modules/backup/registry";
 import { registerTokenScope } from "@/shared/lib/token-scopes";
+import { hasPublishedCatalog, markCatalogDirty } from "./publisher";
 import { resourceBackupContribution } from "./resource.backup";
 import { PROTECT_BINDING, PUBLIC_BINDING, seedResources } from "./resource.service";
 import { createMemoryStore } from "./storage/memory-store";
@@ -86,4 +87,8 @@ export async function initResourceModule(db: AppDatabase, config: Config, logger
     );
   }
   await seedResources(db, config);
+  // A fresh deployment has no snapshot, so every edge path would answer 503
+  // until the first change; the background job publishes one instead.
+  if (!(await hasPublishedCatalog(db)))
+    await markCatalogDirty(db);
 }

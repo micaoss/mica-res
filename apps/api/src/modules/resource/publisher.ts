@@ -139,6 +139,16 @@ export async function republish(db: AppDatabase, config: PublisherConfig, logger
   }
 }
 
+/** Ask the background job to publish; used when no snapshot exists yet. */
+export async function markCatalogDirty(db: AppDatabase): Promise<void> {
+  await setSetting(db, DIRTY_KEY, "1");
+}
+
+/** Whether any catalog snapshot has ever been written. */
+export async function hasPublishedCatalog(db: AppDatabase): Promise<boolean> {
+  return (await db.select({ version: resSnapshots.version }).from(resSnapshots).limit(1).get()) !== undefined;
+}
+
 export async function isCatalogDirty(db: AppDatabase): Promise<boolean> {
   return (await getSetting(db, DIRTY_KEY)) === "1";
 }

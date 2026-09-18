@@ -357,3 +357,15 @@ describe("without R2 S3 credentials", () => {
     expect(publicStore.objects.get("brand/note.txt")!.info.sha256).toBe(await sha256Hex(text));
   });
 });
+
+describe("first boot", () => {
+  test("a database with no snapshot is marked for publishing, and publishing clears it", async () => {
+    const { hasPublishedCatalog, isCatalogDirty, markCatalogDirty, republish } = await import("./publisher");
+    expect(await hasPublishedCatalog(db)).toBe(false);
+    await markCatalogDirty(db);
+    expect(await isCatalogDirty(db)).toBe(true);
+    expect(await republish(db, config, { warn: () => {} })).toBe("published");
+    expect(await hasPublishedCatalog(db)).toBe(true);
+    expect(await isCatalogDirty(db)).toBe(false);
+  });
+});

@@ -134,16 +134,20 @@ jobs:
               echo "::warning::${name} is not set; deploying without it"
             fi
           done
+          # Collected first and written after: anything echoed inside the
+          # output block, a warning included, would become part of the list.
+          secrets=""
+          for name in OAUTH_CLIENT_SECRET R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY CF_PURGE_TOKEN RES_KEY_KEK; do
+            if [ -n "${!name}" ]; then
+              secrets="${secrets}${name}"$'\n'
+            else
+              echo "::warning::${name} is not set; deploying without it"
+            fi
+          done
           {
             echo "command=${command}"
             echo "secrets<<EOF"
-            for name in OAUTH_CLIENT_SECRET R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY CF_PURGE_TOKEN RES_KEY_KEK; do
-              if [ -n "${!name}" ]; then
-                echo "${name}"
-              else
-                echo "::warning::${name} is not set; deploying without it"
-              fi
-            done
+            printf '%s' "${secrets}"
             echo "EOF"
           } >> "${GITHUB_OUTPUT}"
 

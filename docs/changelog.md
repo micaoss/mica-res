@@ -1,5 +1,14 @@
 # mica-res - Changelog
 
+## 2026-09-18 17:00 [decision]
+
+Consumers move to the new URLs rather than the service keeping the legacy
+ones (user). `docs/notices/20260918-mirror-url-migration.md` asks
+mica-system-base, mica-boards, mica-build and mica to switch; `/d/...` and
+`/index/...` go once all four have, and not before 2026-10-02. `/blob/...`
+(lookup by digest) and `/v2` stay. `s3.res.micaos.dev` moved from the R2
+bucket to the Worker (user detached it) and serves the S3 read API.
+
 ## 2026-09-18 16:10 [progress]
 
 Cut over: `res.micaos.dev` runs the resource service, signs in through

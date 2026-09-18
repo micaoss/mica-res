@@ -135,7 +135,6 @@ export function App() {
           </div>
           <div className="flex items-center gap-3 text-sm">
             <button type="button" className="text-slate-600 hover:underline dark:text-slate-400" onClick={() => setLang(lang === "zh" ? "en" : "zh")}>{t.language}</button>
-            <a className="text-slate-600 hover:underline dark:text-slate-400" href="/admin/">Admin</a>
           </div>
         </header>
 

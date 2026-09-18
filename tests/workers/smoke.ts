@@ -233,6 +233,16 @@ const oidcCases: Case[] = [
     },
   },
   {
+    // Asking the asset pipeline for index.html by name answers a redirect,
+    // which the SPA turned into a loop between /admin/ and /admin/login.
+    name: "an admin SPA route is served as the SPA, not redirected",
+    async run() {
+      const res = await fetch(`${baseUrl}/admin/login?redirect=%2Fadmin%2F`, { redirect: "manual" });
+      assert(res.status === 200, `/admin/login returned ${res.status} ${res.headers.get("location") ?? ""}`);
+      assert((await res.text()).toLowerCase().includes("<!doctype html"), "/admin/login was not HTML");
+    },
+  },
+  {
     name: "login mode reports a configured OAuth provider",
     async run() {
       const res = await call("/admin/api/account/auth/mode");

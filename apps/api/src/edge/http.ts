@@ -65,7 +65,7 @@ export async function handleResHost(request: Request, deps: EdgeDeps): Promise<R
   if (path === admin)
     return redirect(`${admin}/`, 301, LEGACY_REDIRECT_CACHE);
   if (path.startsWith(`${admin}/`))
-    return serveAsset(request, url, deps, `${admin}/index.html`);
+    return serveAsset(request, url, deps, `${admin}/`);
 
   if (request.method === "OPTIONS")
     return new Response(null, { status: 204, headers: { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, HEAD", "access-control-allow-headers": "authorization, range" } });
@@ -73,7 +73,7 @@ export async function handleResHost(request: Request, deps: EdgeDeps): Promise<R
     return jsonError(405, "METHOD_NOT_ALLOWED", "Only GET and HEAD are served here", { allow: "GET, HEAD" });
 
   if (path === "/" || path === "/index.html" || path.startsWith("/_site/") || path === "/favicon.ico" || path === "/favicon.svg")
-    return serveAsset(request, url, deps, "/index.html");
+    return serveAsset(request, url, deps, "/");
   if (path === "/.well-known/res.json")
     return siteJson(deps);
   if (path === "/v2" || path.startsWith("/v2/"))
@@ -207,6 +207,12 @@ async function objectRedirect(ns: CatalogNamespace, object: CatalogObject, deps:
   });
 }
 
+/**
+ * An asset, or the SPA's entry for a client-side route. The fallback is the
+ * directory, never `index.html` by name: the asset pipeline answers that with
+ * a 307 to the directory, which the SPA then sends to its login route, which
+ * falls back again -- a redirect loop.
+ */
 async function serveAsset(request: Request, url: URL, deps: EdgeDeps, fallback: string): Promise<Response> {
   if (!deps.assets)
     return jsonError(404, "NOT_FOUND", "No static assets are bound");

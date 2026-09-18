@@ -29,6 +29,20 @@ const config = {
 };
 const actorId = "u_admin";
 
+// Cloudflare's asset pipeline as it behaves in production: a directory
+// answers with its index.html, and a request for an index.html by name is
+// redirected (307) to the directory.
+async function fakeAssets(req: Request): Promise<Response> {
+  const path = new URL(req.url).pathname;
+  if (path === "/")
+    return new Response("<!doctype html>home");
+  if (path === "/admin/")
+    return new Response("<!doctype html>admin");
+  if (path.endsWith("/index.html"))
+    return new Response(null, { status: 307, headers: { location: path.slice(0, -"index.html".length) } });
+  return new Response("nope", { status: 404 });
+}
+
 let db: AppDatabase;
 let dir: string;
 let protectStore: MemoryStore;
@@ -77,7 +91,7 @@ beforeEach(async () => {
   deps = {
     reader: createCatalogReader({ store: getStore, publicBinding: PUBLIC_BINDING, protectBinding: PROTECT_BINDING, now: () => clock }),
     store: getStore,
-    assets: { fetch: async req => new URL(req.url).pathname === "/index.html" ? new Response("<!doctype html>home") : new Response("nope", { status: 404 }) },
+    assets: { fetch: fakeAssets },
     kek: config.RES_KEY_KEK,
     adminBase: "/admin",
   };
@@ -95,7 +109,16 @@ describe("res host", () => {
   test("hands the admin API to the Durable Object and serves everything else itself", async () => {
     expect(await res("/admin/api/res/namespaces")).toBeNull();
     expect((await res("/"))!.status).toBe(200);
-    expect(await (await res("/admin/resources"))!.text()).toBe("nope");
+    expect(await (await res("/admin/resources"))!.text()).toBe("<!doctype html>admin");
+  });
+
+  test("serves an admin SPA route as the SPA itself, never as a redirect", async () => {
+    // A redirect here loops: the SPA sends /admin/ to /admin/login, which
+    // would be sent back to /admin/.
+    const login = (await res("/admin/login?redirect=%2Fadmin%2F"))!;
+    expect(login.status).toBe(200);
+    expect(await login.text()).toBe("<!doctype html>admin");
+    expect((await res("/"))!.status).toBe(200);
   });
 
   test("redirects an object to the download host and never serves its bytes", async () => {

@@ -94,8 +94,28 @@ export async function listHeld(publisher: Publisher, namespace: string): Promise
 }
 
 /** Stream an https origin into staging on the server side. */
+// A 429 or a 5xx from the origin means "ask later", not "this object cannot be
+// mirrored": GitHub rate-limits release downloads, and a single 429 used to
+// abort a whole apply. Retried with backoff; anything else fails at once.
+function transient(error: unknown): boolean {
+  const text = error instanceof Error ? error.message : String(error)
+  return /answered (429|5\d\d)/.test(text) || / (429|502|503|504) /.test(text)
+}
+
 export async function stagePull(publisher: Publisher, namespace: string, input: { origin: string, sha256: string, contentType: string }): Promise<string> {
-  return (await call<{ id: string }>(publisher, 'POST', `/res/namespaces/${namespace}/uploads/pull`, input)).id
+  const waits = [5_000, 15_000, 45_000]
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return (await call<{ id: string }>(publisher, 'POST', `/res/namespaces/${namespace}/uploads/pull`, input)).id
+    }
+    catch (error) {
+      const wait = waits[attempt]
+      if (wait === undefined || !transient(error))
+        throw error
+      console.log(`  origin busy for ${input.sha256.slice(0, 12)}, retrying in ${wait / 1000}s`)
+      await Bun.sleep(wait)
+    }
+  }
 }
 
 /** Upload bytes this process holds straight to R2 through a presigned PUT. */

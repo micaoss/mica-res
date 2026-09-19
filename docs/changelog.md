@@ -1,5 +1,27 @@
 # mica-res - Changelog
 
+## 2026-09-19 20:50 [progress]
+
+The collector publishes again and the history is recovered. Its first run with
+a token published **269 snapshots**; the backfill from the workflow artifacts
+added **44** more that had aged out of the API window, and a second backfill
+run reported **313 snapshots, 0 published, 313 already held** -- a checkable
+confirmation rather than an assertion. The window recovered is
+**2026-09-15T01:55:52Z to 2026-09-19T20:32:27Z**, which covers the whole gap
+from the 2026-09-18 16:10 cutover.
+
+The same run closed the CI-health issue by itself: every default branch was
+green, including mica-build, which had been red for 57.6 hours. Opened at
+57.6 h with `suites` named as the first failing job, updated, closed on
+recovery -- the mechanism's full lifecycle, on the case that motivated it.
+
+One authority to keep in mind rather than forget: `MICA_RES_STATUS_TOKEN`
+carries the same token as `MICA_RES_TOKEN` (user decision, 2026-09-19: the
+scope grants routes and the namespaces come from the user's policy, so a
+status-only token needs a separate restricted user). The collector can
+therefore write outside `status` today. If a restricted user is created later,
+the secret is replaced and nothing else changes.
+
 ## 2026-09-19 20:40 [progress]
 
 The reconciliation of the catalog against the producers' locks runs read-only

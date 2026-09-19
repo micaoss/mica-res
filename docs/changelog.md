@@ -1,5 +1,22 @@
 # mica-res - Changelog
 
+## 2026-09-19 21:45 [decision]
+
+Four things recorded from the evening's exchange rather than left in the
+reports: **44 keys against 43 digests** with their units, because a bare
+number is wrong for whichever question the reader is not asking; the
+**carry-forward's measured scope** (nearly everything once during a
+restoration, nothing on a normal release); the **one-cycle lag** behind a
+release as the steady state rather than a defect; and the practice that
+**someone should occasionally do what a consumer does, by hand**, because the
+next gap will be in whatever the automated checks are not about either.
+
+The repaired name is verified independently: both
+`uefi-x64-kernel/f717995c....pack.00` and the arm64 name serve bytes hashing
+to `0a833fa8...`, the digest both manifests declare. One object, two names,
+which is what the contract needed and what the earlier claim asserted without
+being true.
+
 ## 2026-09-19 21:30 [BUG-P0]
 
 **A consumer-breaking gap that both the audit and the reconciliation reported

@@ -94,6 +94,14 @@ jobs:
       # the download host, neither of which this run produced, and fails the
       # run on any disagreement. A writer cannot catch an error in its own
       # model of the world.
+      # The catalog against the producers' locks: what agrees, what the locks
+      # name and the catalog lacks, and -- the column nobody has looked at --
+      # what the catalog holds that no lock names. Read-only and token-free.
+      - name: Reconcile the catalog against the locks
+        run: bun packages/mica-sync/src/cli.ts reconcile
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
       - name: Audit the published catalog against the download host
         run: bun packages/mica-sync/src/cli.ts audit
 

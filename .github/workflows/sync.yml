@@ -53,8 +53,13 @@ jobs:
           echo 'current (download host, direct from R2):'
           probe https://dl.res.micaos.dev/upstream/git/cx3576-rkbin/ecb4fcbe954edf38b3ae037d5de6d9f5bccf81f4.json
           probe https://dl.res.micaos.dev/mica/uefi-x64/20260916-0845/mica-uefi-x64-dev-20260916-0845.img.gz
-          echo 'by digest (unchanged surface):'
+          echo 'by digest (res host only; a hit is a 302 to the download host):'
           probe https://res.micaos.dev/blob/1e/1e2b5f31fc826e1af25e2a12e37cd8d361ff25feaf224c6bbef3cc5d6cd2596b
+          probe https://dl.res.micaos.dev/blob/1e/1e2b5f31fc826e1af25e2a12e37cd8d361ff25feaf224c6bbef3cc5d6cd2596b
+          echo 'what the service actually holds, per namespace:'
+          for ns in upstream mica build-env oci status; do
+            printf '  %-12s %s\n' "$ns" "$(curl -sS -H 'accept: application/json' --max-time 20 "https://res.micaos.dev/$ns/" | head -c 240)"
+          done
 
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2

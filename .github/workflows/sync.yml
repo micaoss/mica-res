@@ -26,6 +26,10 @@ on:
         description: Ask every origin for the size of each object (implied by apply)
         type: boolean
         default: false
+      repair:
+        description: Republish a git pack chunk that does not resolve under its own name
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -110,9 +114,10 @@ jobs:
       # that is how uefi-x64-kernel pack.00 was absent while everything
       # reported clean.
       - name: Walk the git pack contract
-        run: bun packages/mica-sync/src/cli.ts packs
+        run: bun packages/mica-sync/src/cli.ts packs ${{ inputs.repair && '--repair' || '' }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          MICA_RES_TOKEN: ${{ secrets.MICA_RES_TOKEN }}
 
       - name: Audit the published catalog against the download host
         run: bun packages/mica-sync/src/cli.ts audit

@@ -7,6 +7,8 @@
 //   bun src/cli.ts audit                          the published invariant check
 //   bun src/cli.ts reconcile                      the catalog against the locks
 //   bun src/cli.ts backfill --dir <tree>          republish artifact snapshots
+//   bun src/cli.ts packs [--repair]               every declared chunk under
+//                                                 its own manifest's name
 //   bun src/cli.ts image-pins                     which build-env releases a
 //                                                 published release still names
 //   bun src/cli.ts index --check <file>           read an index snapshot
@@ -36,6 +38,8 @@ import { pinnedImageReleases } from './imagepins.ts'
 import { REPOSITORIES } from './producers.ts'
 import { ghcrToken, resolveRedirect } from './ghcr.ts'
 import { parseSnapshotFile, windowOf } from './backfill.ts'
+import { manifestKey, missingChunks } from './packs.ts'
+import type { PackManifest } from './packs.ts'
 import { carriedOrigin } from './carry.ts'
 import { derivedPrefixes, reconcile, summary } from './reconcile.ts'
 import { chunkBytes, chunkNames, manifestName, packObjects, producePack, renderManifest, verifyPack } from './gitpack.ts'
@@ -467,6 +471,52 @@ async function backfill(argv: string[]): Promise<void> {
   console.log(`  window recovered: ${covered === undefined ? 'none' : `${covered.from} .. ${covered.to}`}`)
 }
 
+// Walks the consumer contract for every git pack: the manifest a tree names,
+// and every chunk that manifest declares, under that manifest's own name. With
+// --repair it republishes a missing name from the bytes the service already
+// holds; the digest is verified by the service while staging, so a repair
+// cannot invent content.
+async function packs(argv: string[]): Promise<void> {
+  const home = process.env['MICA_RES_BASE'] ?? DEFAULT_BASE
+  const download = process.env['MICA_RES_DOWNLOAD_BASE'] ?? 'https://dl.res.micaos.dev'
+  const repair = argv.includes('--repair')
+  const publisher = repair ? publisherFromEnv() : undefined
+
+  const { gitTrees } = await enumerate()
+  let checked = 0
+  let repaired = 0
+  const problems: string[] = []
+  for (const tree of gitTrees) {
+    const key = manifestKey(tree.name, tree.commit)
+    const answer = await fetch(`${download}/${key}`)
+    if (!answer.ok) {
+      problems.push(`${key}: ${answer.status} from the download host`)
+      continue
+    }
+    const manifest = await answer.json() as PackManifest
+    const missing = await missingChunks(download, tree.name, manifest)
+    checked += manifest.chunks.length
+    for (const chunk of missing) {
+      problems.push(`${chunk.key}: declared by the manifest and does not resolve under its own name`)
+      if (publisher === undefined)
+        continue
+      // The bytes are already in the service under their digest; the repair is
+      // a name, not an upload.
+      const origin = await resolveRedirect(`${home}/blob/${chunk.sha256.slice(0, 2)}/${chunk.sha256}`, {})
+      const uploadId = await stagePull(publisher, 'upstream', { origin, sha256: chunk.sha256, contentType: 'application/octet-stream' })
+      await publishBatch(publisher, 'upstream', [{ path: chunk.key.slice('upstream/'.length), source: { uploadId }, contentType: 'application/octet-stream' }])
+      repaired += 1
+      console.log(`  repaired ${chunk.key} from ${chunk.sha256}`)
+    }
+  }
+
+  console.log(`packs: ${gitTrees.length} manifests, ${checked} declared chunks, ${problems.length} problem(s)${repair ? `, ${repaired} repaired` : ''}`)
+  for (const problem of problems)
+    console.log(`  ${problem}`)
+  if (problems.length > repaired)
+    throw new Error(`packs refused: ${problems.length - repaired} chunk(s) do not resolve under the name the contract tells a consumer to use`)
+}
+
 async function reconcileCommand(): Promise<void> {
   const home = process.env['MICA_RES_BASE'] ?? DEFAULT_BASE
   const site = await (await fetch(`${home}/.well-known/res.json`)).json() as { namespaces: SiteNamespace[], snapshot: { version: string } }
@@ -531,6 +581,9 @@ const [command, ...argv] = process.argv.slice(2)
 switch (command) {
   case 'sync':
     await sync(argv)
+    break
+  case 'packs':
+    await packs(argv)
     break
   case 'backfill':
     await backfill(argv)

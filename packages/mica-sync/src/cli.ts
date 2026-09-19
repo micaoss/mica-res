@@ -7,6 +7,7 @@
 //   bun src/cli.ts audit                          the published invariant check
 //   bun src/cli.ts reconcile                      the catalog against the locks
 //   bun src/cli.ts backfill --dir <tree>          republish artifact snapshots
+//   bun src/cli.ts mirrors                        the index mirror URLs, by digest
 //   bun src/cli.ts packs [--repair]               every declared chunk under
 //                                                 its own manifest's name
 //   bun src/cli.ts image-pins                     which build-env releases a
@@ -38,6 +39,8 @@ import { pinnedImageReleases } from './imagepins.ts'
 import { REPOSITORIES } from './producers.ts'
 import { ghcrToken, resolveRedirect } from './ghcr.ts'
 import { parseSnapshotFile, windowOf } from './backfill.ts'
+import { fetchJson, fetchText, githubHeaders } from './fetch.ts'
+import { checkMirrors, mirrorEntries } from './mirrors.ts'
 import { manifestKey, missingChunks } from './packs.ts'
 import type { PackManifest } from './packs.ts'
 import { carriedOrigin } from './carry.ts'
@@ -476,6 +479,35 @@ async function backfill(argv: string[]): Promise<void> {
 // --repair it republishes a missing name from the bytes the service already
 // holds; the digest is verified by the service while staging, so a repair
 // cannot invent content.
+// Fetches every mirror URL the newest version index names and compares the
+// bytes' digest with the one the index states beside it -- the check a device
+// would do.
+async function mirrors(): Promise<void> {
+  const releases = await fetchJson<{ tag_name: string, assets: { name: string, browser_download_url: string }[] }[]>(
+    'https://api.github.com/repos/micaoss/mica-build/releases?per_page=100', githubHeaders())
+  const index = releases.find(release => /^mica\.[0-9]{8}-[0-9]{4}$/.test(release.tag_name))
+  if (index === undefined)
+    throw new Error('no-index-release: mica-build publishes no mica.<stamp> release')
+  const asset = index.assets.find(one => one.name === 'mica-index.json')
+  if (asset === undefined) {
+    console.log(`mirrors: ${index.tag_name} has no mica-index.json attached yet`)
+    return
+  }
+
+  const document = JSON.parse(await fetchText(asset.browser_download_url, githubHeaders())) as Parameters<typeof mirrorEntries>[0]
+  const entries = mirrorEntries(document)
+  if (entries.length === 0) {
+    console.log(`mirrors: ${index.tag_name} names no mirror URL`)
+    return
+  }
+  const problems = await checkMirrors(entries)
+  console.log(`mirrors: ${index.tag_name} names ${entries.length} mirror URL(s), ${problems.length} problem(s)`)
+  for (const problem of problems)
+    console.log(`  ${problem}`)
+  if (problems.length > 0)
+    throw new Error(`mirrors refused: ${problems.length} of ${entries.length} mirror URL(s) do not serve the bytes the index names`)
+}
+
 async function packs(argv: string[]): Promise<void> {
   const home = process.env['MICA_RES_BASE'] ?? DEFAULT_BASE
   const download = process.env['MICA_RES_DOWNLOAD_BASE'] ?? 'https://dl.res.micaos.dev'
@@ -581,6 +613,9 @@ const [command, ...argv] = process.argv.slice(2)
 switch (command) {
   case 'sync':
     await sync(argv)
+    break
+  case 'mirrors':
+    await mirrors()
     break
   case 'packs':
     await packs(argv)

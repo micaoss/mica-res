@@ -125,6 +125,15 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           MICA_RES_TOKEN: ${{ secrets.MICA_RES_TOKEN }}
 
+      # The mirrors member, checked the way a device would: fetch the mirror URL
+      # the index names and compare the bytes' digest with the one the index
+      # states beside it. A mirror is a source and never a trust anchor, which
+      # is only true if somebody verifies it.
+      - name: Verify the index mirror URLs by digest
+        run: bun packages/mica-sync/src/cli.ts mirrors
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
       - name: Audit the published catalog against the download host
         run: bun packages/mica-sync/src/cli.ts audit
 

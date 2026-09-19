@@ -25,7 +25,17 @@ export interface Reconciliation {
   conflicts: { key: string, lock: string, catalog: string }[]
 }
 
-export function reconcile(pinned: PinnedObject[], held: CatalogObject[]): Reconciliation {
+/**
+ * A git pack is not named by a lock row: its key is derived from a commit the
+ * lock pins (`upstream/git/<name>/<commit>.json` and `.pack.NN`). Those keys
+ * are pinned BY DERIVATION, and counting them as "named by no lock" would make
+ * the interesting column mostly noise.
+ */
+export function derivedPrefixes(trees: { name: string, commit: string }[]): string[] {
+  return trees.map(tree => `upstream/git/${tree.name}/${tree.commit}.`)
+}
+
+export function reconcile(pinned: PinnedObject[], held: CatalogObject[], derived: string[] = []): Reconciliation {
   const byKey = new Map(held.map(object => [object.key, object]))
   const pinnedKeys = new Set(pinned.map(object => object.key))
 
@@ -47,7 +57,7 @@ export function reconcile(pinned: PinnedObject[], held: CatalogObject[]): Reconc
   return {
     agreed,
     missing,
-    unpinned: held.filter(object => !pinnedKeys.has(object.key)),
+    unpinned: held.filter(object => !pinnedKeys.has(object.key) && !derived.some(prefix => object.key.startsWith(prefix))),
     conflicts,
   }
 }

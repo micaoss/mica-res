@@ -35,7 +35,7 @@ import { pinnedImageReleases } from './imagepins.ts'
 import { REPOSITORIES } from './producers.ts'
 import { ghcrToken, resolveRedirect } from './ghcr.ts'
 import { carriedOrigin } from './carry.ts'
-import { reconcile, summary } from './reconcile.ts'
+import { derivedPrefixes, reconcile, summary } from './reconcile.ts'
 import { chunkBytes, chunkNames, manifestName, packObjects, producePack, renderManifest, verifyPack } from './gitpack.ts'
 import type { GitTree } from './enumerate.ts'
 import { canonicalKey, listHeld, objectMeta, publishBatch, publisherFromEnv, registryTags, setTag, splitKey, stageBytes, stagePull } from './publish.ts'
@@ -437,7 +437,7 @@ async function reconcileCommand(): Promise<void> {
     return key === undefined ? [] : [{ key, sha256: object.sha256 }]
   })
 
-  const answer = reconcile(pinned, held)
+  const answer = reconcile(pinned, held, derivedPrefixes(gitTrees))
   console.log(`reconcile: catalog ${site.snapshot.version} holds ${held.length}, the locks name ${pinned.length} (${gitTrees.length} git trees are packed on demand and not counted)`)
   console.log(summary(answer))
   for (const conflict of answer.conflicts)

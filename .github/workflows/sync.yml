@@ -57,6 +57,8 @@ jobs:
           echo 'by digest (res host only; a hit is a 302 to the download host):'
           probe https://res.micaos.dev/blob/1e/1e2b5f31fc826e1af25e2a12e37cd8d361ff25feaf224c6bbef3cc5d6cd2596b
           probe https://dl.res.micaos.dev/blob/1e/1e2b5f31fc826e1af25e2a12e37cd8d361ff25feaf224c6bbef3cc5d6cd2596b
+          echo 'a digest lookup, followed to the end (does the key it names serve bytes?):'
+          printf '  %s\n' "$(curl -sSL -o /dev/null --max-time 30 -w 'final %{http_code} after %{num_redirects} redirect(s): %{url_effective}' https://res.micaos.dev/blob/1e/1e2b5f31fc826e1af25e2a12e37cd8d361ff25feaf224c6bbef3cc5d6cd2596b || echo unreachable)"
           echo 'what the service actually holds, per namespace:'
           for ns in upstream mica build-env oci status; do
             printf '  %-12s %s\n' "$ns" "$(curl -sS -H 'accept: application/json' --max-time 20 "https://res.micaos.dev/$ns/" | head -c 240)"

@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { reconcile } from './reconcile.ts'
+import { derivedPrefixes, reconcile } from './reconcile.ts'
 
 const sha = (letter: string) => letter.repeat(64)
 const pinned = [
@@ -36,4 +36,16 @@ test('the same bytes under a different key are not agreement', () => {
   expect(answer.agreed).toEqual([])
   expect(answer.unpinned.map(o => o.key)).toEqual(['upstream/deb/elsewhere/b.deb'])
   expect(answer.missing).toHaveLength(3)
+})
+
+test('a git pack of a pinned commit is pinned by derivation, not unpinned', () => {
+  const commit = 'f'.repeat(40)
+  const answer = reconcile(pinned, [
+    { key: `upstream/git/cx3576-kernel/${commit}.json`, size: 1, sha256: sha('g') },
+    { key: `upstream/git/cx3576-kernel/${commit}.pack.00`, size: 2, sha256: sha('h') },
+    { key: 'upstream/git/cx3576-kernel/0000000000000000000000000000000000000000.json', size: 3, sha256: sha('i') },
+  ], derivedPrefixes([{ name: 'cx3576-kernel', commit }]))
+  // The pack of the pinned commit is accounted for; the pack of a commit
+  // nothing pins any more is the interesting column.
+  expect(answer.unpinned.map(o => o.key)).toEqual(['upstream/git/cx3576-kernel/0000000000000000000000000000000000000000.json'])
 })

@@ -5,6 +5,7 @@
 //   bun src/cli.ts collect [--apply] [--out <dir>]
 //   bun src/cli.ts verify-pack [--name <tree>]    walk the consumer contract
 //   bun src/cli.ts audit                          the published invariant check
+//   bun src/cli.ts reconcile                      the catalog against the locks
 //   bun src/cli.ts image-pins                     which build-env releases a
 //                                                 published release still names
 //   bun src/cli.ts index --check <file>           read an index snapshot
@@ -34,6 +35,7 @@ import { pinnedImageReleases } from './imagepins.ts'
 import { REPOSITORIES } from './producers.ts'
 import { ghcrToken, resolveRedirect } from './ghcr.ts'
 import { carriedOrigin } from './carry.ts'
+import { reconcile, summary } from './reconcile.ts'
 import { chunkBytes, chunkNames, manifestName, packObjects, producePack, renderManifest, verifyPack } from './gitpack.ts'
 import type { GitTree } from './enumerate.ts'
 import { canonicalKey, listHeld, objectMeta, publishBatch, publisherFromEnv, registryTags, setTag, splitKey, stageBytes, stagePull } from './publish.ts'
@@ -418,6 +420,36 @@ async function imagePins(): Promise<void> {
 // Reads what the edge publishes and what the download host serves, neither of
 // which this process produced, and refuses on any disagreement. It imports
 // the audit module and nothing that enumerates or publishes.
+// What the service's catalog holds against what the producers' locks name.
+// Read-only and token-free: the listings are public. Where the two disagree
+// the locks win, so a conflicting key is reported, never republished over.
+async function reconcileCommand(): Promise<void> {
+  const home = process.env['MICA_RES_BASE'] ?? DEFAULT_BASE
+  const site = await (await fetch(`${home}/.well-known/res.json`)).json() as { namespaces: SiteNamespace[], snapshot: { version: string } }
+
+  const held: ListedObject[] = []
+  for (const namespace of site.namespaces.filter(n => n.visibility === 'public' && n.listable))
+    held.push(...await walkNamespace(home, namespace.name))
+
+  const { objects, gitTrees } = await enumerate()
+  const pinned = mergeObjects(objects).flatMap((object) => {
+    const key = canonicalKey(object)
+    return key === undefined ? [] : [{ key, sha256: object.sha256 }]
+  })
+
+  const answer = reconcile(pinned, held)
+  console.log(`reconcile: catalog ${site.snapshot.version} holds ${held.length}, the locks name ${pinned.length} (${gitTrees.length} git trees are packed on demand and not counted)`)
+  console.log(summary(answer))
+  for (const conflict of answer.conflicts)
+    console.log(`  CONFLICT ${conflict.key}: the lock names ${conflict.lock}, the catalog holds ${conflict.catalog}`)
+  for (const object of answer.unpinned.slice(0, 20))
+    console.log(`  unpinned ${object.key} ${object.sha256}`)
+  if (answer.unpinned.length > 20)
+    console.log(`  ... and ${answer.unpinned.length - 20} more unpinned`)
+  if (answer.conflicts.length > 0)
+    throw new Error(`reconcile refused: ${answer.conflicts.length} key(s) hold a digest no lock names; the locks win and this needs a decision`)
+}
+
 async function audit(): Promise<void> {
   const home = process.env['MICA_RES_BASE'] ?? DEFAULT_BASE
   const answer = await fetch(`${home}/.well-known/res.json`)
@@ -451,6 +483,9 @@ const [command, ...argv] = process.argv.slice(2)
 switch (command) {
   case 'sync':
     await sync(argv)
+    break
+  case 'reconcile':
+    await reconcileCommand()
     break
   case 'audit':
     await audit()

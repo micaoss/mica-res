@@ -31,10 +31,13 @@ test('refuses a count that disagrees with the listings, a bad digest and a dupli
   expect(problems).toHaveLength(3)
 })
 
-test('compares the length the download host serves with the catalog', async () => {
+test('a length that agrees settles it; one that does not is settled by the bytes', async () => {
+  // `a` agrees on the header alone. `b` disagrees, so the bytes decide, and
+  // they hash to something else. `c` does not serve at all.
   const fetcher = routes({
     'HEAD https://dl.test/mica/a': () => new Response(null, { headers: { 'content-length': '1' } }),
     'HEAD https://dl.test/mica/b': () => new Response(null, { headers: { 'content-length': '9' } }),
+    'GET https://dl.test/mica/b': () => new Response(new TextEncoder().encode('xy')),
     'HEAD https://dl.test/mica/c': () => new Response(null, { status: 404 }),
   })
   const problems = await checkBytes('https://dl.test', [
@@ -42,5 +45,27 @@ test('compares the length the download host serves with the catalog', async () =
     { key: 'mica/b', size: 2, sha256: digest('b') },
     { key: 'mica/c', size: 3, sha256: digest('c') },
   ], fetcher)
-  expect(problems.sort()).toEqual(['mica/b: the download host serves 9 bytes, the catalog says 2', 'mica/c: 404 from the download host'])
+  expect(problems).toHaveLength(2)
+  expect(problems.find(p => p.startsWith('mica/b'))).toContain('hashing to')
+  expect(problems).toContain('mica/c: 404 from the download host')
+})
+
+test('a HEAD without a content-length is settled by hashing the bytes, not called missing', async () => {
+  const bytes = new TextEncoder().encode('{"schema":"x"}')
+  const object = { key: 'status/current.json', size: bytes.length, sha256: Bun.SHA256.hash(bytes, 'hex') }
+  const stub = (async (_input: string | URL | Request, init?: RequestInit) => {
+    // The download host answers HEAD without a content-length, as it does for
+    // a compressible object, and serves the bytes on GET.
+    return init?.method === 'HEAD' ? new Response(null, { status: 200 }) : new Response(bytes)
+  }) as unknown as typeof fetch
+  expect(await checkBytes('https://dl.example.test', [object], stub)).toEqual([])
+})
+
+test('bytes that hash to something else are still a problem', async () => {
+  const object = { key: 'status/current.json', size: 3, sha256: 'a'.repeat(64) }
+  const stub = (async (_input: string | URL | Request, init?: RequestInit) =>
+    init?.method === 'HEAD' ? new Response(null, { status: 200 }) : new Response(new TextEncoder().encode('xyz'))) as unknown as typeof fetch
+  const problems = await checkBytes('https://dl.example.test', [object], stub)
+  expect(problems).toHaveLength(1)
+  expect(problems[0]).toContain('hashing to')
 })

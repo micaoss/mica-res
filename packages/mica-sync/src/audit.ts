@@ -82,10 +82,28 @@ export async function checkBytes(download: string, objects: ListedObject[], fetc
         return
       const url = `${download}/${object.key.split('/').map(encodeURIComponent).join('/')}`
       const answer = await fetcher(url, { method: 'HEAD' })
-      if (!answer.ok)
+      if (!answer.ok) {
         problems.push(`${object.key}: ${answer.status} from the download host`)
-      else if (answer.headers.get('content-length') !== String(object.size))
-        problems.push(`${object.key}: the download host serves ${answer.headers.get('content-length')} bytes, the catalog says ${object.size}`)
+        continue
+      }
+      if (answer.headers.get('content-length') === String(object.size))
+        continue
+
+      // A HEAD without a matching content-length is NOT evidence of missing
+      // bytes: a compressible object (every JSON here) is served encoded, so
+      // the header is absent or describes the encoded length. Reporting that
+      // as "serves null bytes" is the same defect this check exists to
+      // catch -- a missing answer treated as an answer -- so the bytes are
+      // fetched and HASHED instead, which settles it whatever the encoding.
+      const got = await fetcher(url, { headers: { 'accept-encoding': 'identity' } })
+      if (!got.ok) {
+        problems.push(`${object.key}: ${got.status} from the download host on GET`)
+        continue
+      }
+      const bytes = new Uint8Array(await got.arrayBuffer())
+      const digest = Bun.SHA256.hash(bytes, 'hex')
+      if (digest !== object.sha256)
+        problems.push(`${object.key}: the download host serves ${bytes.length} bytes hashing to ${digest}, the catalog says ${object.size} bytes and ${object.sha256}`)
     }
   }))
   return problems

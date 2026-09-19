@@ -471,8 +471,12 @@ async function reconcileCommand(): Promise<void> {
   const home = process.env['MICA_RES_BASE'] ?? DEFAULT_BASE
   const site = await (await fetch(`${home}/.well-known/res.json`)).json() as { namespaces: SiteNamespace[], snapshot: { version: string } }
 
+  // `status` is the collector's own output and `brand` the repository's
+  // assets: neither is named by any producer lock, so counting them as
+  // "held and named by no lock" would drown the one column worth reading.
+  const ours = new Set(['status', 'brand', 'docs'])
   const held: ListedObject[] = []
-  for (const namespace of site.namespaces.filter(n => n.visibility === 'public' && n.listable))
+  for (const namespace of site.namespaces.filter(n => n.visibility === 'public' && n.listable && !ours.has(n.name)))
     held.push(...await walkNamespace(home, namespace.name))
 
   const { objects, gitTrees } = await enumerate()

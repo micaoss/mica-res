@@ -1,5 +1,46 @@
 # mica-res - Changelog
 
+## 2026-09-19 20:40 [progress]
+
+The reconciliation of the catalog against the producers' locks runs read-only
+and token-free in `sync.yml` (`cli.ts reconcile`): the public listings give
+key, size and sha256, so nothing needs a credential to compare them with what
+the locks name. Measured against catalog `01m2xnjtvxazkkd24a66arbrbd` while
+the owner's v1 import was still filling the service: **344 in both, 148 named
+by a lock and missing, 0 held and named by no lock, 0 conflicting digests.**
+So the retired service's catalog and the current pins agree wherever both have
+a key.
+
+Two things the run caught that matter more than the numbers:
+
+- **A pack of a pinned commit is pinned by derivation.** The first run
+  reported 29 objects "held and named by no lock", every one a git-pack
+  manifest or chunk, because a pack's key comes from a commit a lock pins
+  rather than from a lock row. Counting them as unpinned would have made the
+  one interesting column noise; the classification now accounts for them and
+  the column reads 0.
+- **The audit refuses nine objects the catalog claims**: the git-pack
+  manifests of `aardvark-dns`, `conmon`, `cx3576-kernel`, `cx3576-uboot`,
+  `netavark`, `podman`, `s905x5m-uboot`, `uefi-arm64-kernel` and
+  `uefi-x64-kernel` are registered with a size while the download host serves
+  no bytes at the key. The same nine across three catalog snapshots
+  (275, 350, 375 objects), so it is not a mid-import race. It is not a general
+  "key without bytes" either: a digest lookup for a Debian archive follows one
+  redirect to the download host and ends 200.
+
+## 2026-09-19 20:35 [decision]
+
+The default that points at "fine" is the one to hunt: failing loudly is a
+recoverable mistake, reassuring falsely is not. Three instances now -- an
+absent asset digest, a release with no lock attached, a cancelled run read as
+a verdict -- and only the third made a mechanism report health on the failure
+it was built to catch.
+
+Status snapshots are outside what a re-publish restores: they are the
+collector's own output, in no lock, so an import of the old mirror cannot
+bring them back. The gap is 2026-09-18 16:10 until the collector's token
+arrives, and the 90-day workflow artifacts are the only copy.
+
 ## 2026-09-19 20:30 [progress]
 
 The collector answers "is anything broken right now, and for how long": per

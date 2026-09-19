@@ -243,9 +243,15 @@ produces.
 | mica-podman | crun, netavark, aardvark-dns, conmon, catatonit | 0.8 MiB together | 1 s each |
 
 **1.33 GiB for all thirteen**, inside the 1.0-1.5 GB the proposal estimated,
-and every tree fetched without a failure. The two `uefi-*` kernels are the same
-commit of `linux-stable`, so their packs are the same bytes and the bucket
-holds one object, not two: the real figure is about 1.07 GiB once deduplicated.
+and every tree fetched without a failure.
+
+**Corrected 2026-09-19: a pack is per tree, and the deduplication claim was
+wrong.** The two `uefi-*` kernels are the same `linux-stable` commit, and their
+packs are NOT the same bytes -- `git pack-objects` is not byte-deterministic,
+the two pack digests differ, and only their FIRST 64 MiB chunk coincides. So
+the saving is 64 MiB, not the ~260 MiB a shared pack would have saved, and the
+"about 1.07 GiB deduplicated" figure assumed determinism the tool does not
+give. Each tree has its own manifest and its own chunk list.
 
 ## What offline means, and where it stops
 

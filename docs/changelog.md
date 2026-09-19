@@ -1,5 +1,34 @@
 # mica-res - Changelog
 
+## 2026-09-19 21:30 [BUG-P0]
+
+**A consumer-breaking gap that both the audit and the reconciliation reported
+clean**: `upstream/git/uefi-x64-kernel/f717995c....pack.00` did not resolve,
+while the manifest declared it and every other chunk served. The shared first
+chunk of the two uefi kernel packs was stored under the arm64 name only, so
+the x64 name was one the catalogue never carried. mica-boards would have hit
+it on its first mirrored fetch of the largest thing it pulls.
+
+Why nothing saw it: an object-set comparison cancels a missing NAME out on
+both sides -- the object exists, so the audit is satisfied; the key is derived
+rather than lock-named, so the reconciliation excludes it. The gap was not in
+the checks' implementation but in what they are about. Found by the
+coordinator following the consumer contract by hand.
+
+The fix is a check over the CONTRACT (`cli.ts packs`, in `sync.yml` on every
+run): for every git-pack manifest, every chunk it declares must resolve under
+THAT MANIFEST'S OWN NAME -- not by digest, not under a sibling. It reproduced
+the gap immediately (13 manifests, 31 declared chunks, 1 problem), and
+answers the question of whether others exist: no, exactly one. `--repair`
+republished the name from the digest the service already held; the audit then
+read 851 objects, 0 problems.
+
+**And the "one-object gap" was this defect, not my arithmetic.** The
+coordinator's 536 counted KEYS and was right; my 43 counted distinct DIGESTS
+and was also right; the missing key was the difference. Telling the
+coordinator the gap was my own arithmetic error was wrong, and its refusal to
+guess which way it fell was better judgement than my explanation.
+
 ## 2026-09-19 21:05 [BUG-P1]
 
 **The audit's own byte check was the defect, not the import.** It HEADed each

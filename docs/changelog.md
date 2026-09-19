@@ -1,5 +1,45 @@
 # mica-res - Changelog
 
+## 2026-09-19 21:05 [BUG-P1]
+
+**The audit's own byte check was the defect, not the import.** It HEADed each
+object and compared `content-length` with the catalog's size; for a
+compressible object -- every JSON here, so every git-pack manifest and every
+status snapshot -- the download host answers without that header or with the
+encoded length, and the check rendered that as "the download host serves null
+bytes". It produced 9, then 13, then 328 false positives, and I reported the
+first nine as a finding against the owner's import. The coordinator's
+independent `GET` of six of them (200, bytes served) is what exposed it.
+
+It is the class I had been naming all evening, committed inside the check whose
+whole purpose is to not be confidently wrong: **a missing answer is not an
+answer**. A HEAD without a matching `content-length` now settles by fetching
+the bytes with `accept-encoding: identity` and comparing their sha256 with the
+catalog's, which is both stronger and immune to encoding. Two tests cover it.
+
+Second correction, the coordinator's: "persistent across three snapshots" was
+not evidence of permanence. Three samples inside a window that ran from 125 to
+535 objects only showed the condition outlasted a few minutes. Persistence
+must be stated across what -- a duration, a fraction of the writer's work, or
+its completion.
+
+## 2026-09-19 21:00 [progress]
+
+**The mirror is whole and the reconciliation is clean.** Against catalog
+`01m2xptkys2zbfznnwpbyf6w4s`:
+
+    in the catalog and in the locks: 492
+    in the locks and missing:          0
+    in the catalog, named by no lock:  0
+    same key, different digest:        0
+
+535 mirror objects = the 492 the locks name plus 43 git-pack objects derived
+from the 13 pinned commits. The audit reports **0 problems over 850 public
+objects** with the digest-based byte check, and the sync workflow is green for
+the first time since the cutover. Nothing was left to publish: the owner's
+import restored exactly what the locks name, so the difference this repository
+was authorised to publish is empty.
+
 ## 2026-09-19 20:50 [progress]
 
 The collector publishes again and the history is recovered. Its first run with

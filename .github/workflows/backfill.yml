@@ -1,0 +1,47 @@
+name: backfill
+# Recovers the run history the collector rendered while it had no publish
+# token: between the 2026-09-18 cutover and 2026-09-19 20:28 every cycle wrote
+# its snapshots to a workflow artifact and nothing else, and those artifacts
+# are the only copy. By hand only, and idempotent -- a snapshot already in the
+# namespace is left alone.
+on:
+  workflow_dispatch:
+    inputs:
+      since:
+        description: Download the artifacts of collect runs created at or after this ISO date
+        type: string
+        default: '2026-09-18T16:00:00Z'
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: backfill
+jobs:
+  backfill:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - name: Download every collect artifact since the cutover
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/artifacts"
+          runs=$(gh run list --workflow collect.yml --limit 200 \
+            --json databaseId,createdAt,conclusion \
+            --jq "[.[] | select(.conclusion == \"success\") | select(.createdAt >= \"${SINCE}\") | .databaseId] | .[]")
+          echo "$runs" | wc -l | xargs -I{} echo "collect runs to read: {}"
+          for id in ${runs}; do
+            gh run download "${id}" --dir "${RUNNER_TEMP}/artifacts/${id}" || echo "  run ${id}: no artifact"
+          done
+          find "${RUNNER_TEMP}/artifacts" -name '*.json' -path '*runs*' | wc -l | xargs -I{} echo "snapshot files downloaded: {}"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SINCE: ${{ inputs.since }}
+      - name: Republish them into the status namespace
+        run: bun packages/mica-sync/src/cli.ts backfill --dir "${RUNNER_TEMP}/artifacts"
+        env:
+          MICA_RES_TOKEN: ${{ secrets.MICA_RES_STATUS_TOKEN }}

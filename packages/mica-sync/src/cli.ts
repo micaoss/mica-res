@@ -6,6 +6,7 @@
 //   bun src/cli.ts verify-pack [--name <tree>]    walk the consumer contract
 //   bun src/cli.ts audit                          the published invariant check
 //   bun src/cli.ts reconcile                      the catalog against the locks
+//   bun src/cli.ts backfill --dir <tree>          republish artifact snapshots
 //   bun src/cli.ts image-pins                     which build-env releases a
 //                                                 published release still names
 //   bun src/cli.ts index --check <file>           read an index snapshot
@@ -34,6 +35,7 @@ import type { ListedObject, SiteNamespace } from './audit.ts'
 import { pinnedImageReleases } from './imagepins.ts'
 import { REPOSITORIES } from './producers.ts'
 import { ghcrToken, resolveRedirect } from './ghcr.ts'
+import { parseSnapshotFile, windowOf } from './backfill.ts'
 import { carriedOrigin } from './carry.ts'
 import { derivedPrefixes, reconcile, summary } from './reconcile.ts'
 import { chunkBytes, chunkNames, manifestName, packObjects, producePack, renderManifest, verifyPack } from './gitpack.ts'
@@ -423,6 +425,48 @@ async function imagePins(): Promise<void> {
 // What the service's catalog holds against what the producers' locks name.
 // Read-only and token-free: the listings are public. Where the two disagree
 // the locks win, so a conflicting key is reported, never republished over.
+// Republishes run snapshots from a downloaded artifact tree: the only copy of
+// the history the collector rendered while it had no token.
+async function backfill(argv: string[]): Promise<void> {
+  const dir = argv.includes('--dir') ? argv[argv.indexOf('--dir') + 1]! : 'tmp/artifacts'
+  const publisher = publisherFromEnv()
+  const held = await listHeld(publisher, 'status')
+
+  const files = [...new Bun.Glob('**/runs/*.json').scanSync({ cwd: dir, absolute: true })]
+  const seen = new Set<string>()
+  const items: PublishItem[] = []
+  const snapshots: { startedAt: string }[] = []
+  let already = 0
+  for (const file of files) {
+    const parsed = parseSnapshotFile(file)
+    if (parsed === undefined || seen.has(parsed.key))
+      continue
+    seen.add(parsed.key)
+
+    const text = await Bun.file(file).text()
+    const snapshot = JSON.parse(text) as { startedAt?: string }
+    if (snapshot.startedAt !== undefined)
+      snapshots.push({ startedAt: snapshot.startedAt })
+
+    const path = parsed.key.slice('status/'.length)
+    if (held.has(path)) {
+      already += 1
+      continue
+    }
+    items.push({ path, source: { uploadId: await stageBytes(publisher, 'status', new TextEncoder().encode(text), 'application/json') }, contentType: 'application/json' })
+    if (items.length >= 50) {
+      await publishBatch(publisher, 'status', items.splice(0))
+      console.log(`  published ${seen.size - already} so far`)
+    }
+  }
+  if (items.length > 0)
+    await publishBatch(publisher, 'status', items)
+
+  const covered = windowOf(snapshots)
+  console.log(`backfill: ${seen.size} snapshots in ${files.length} file(s), ${seen.size - already} published, ${already} already held`)
+  console.log(`  window recovered: ${covered === undefined ? 'none' : `${covered.from} .. ${covered.to}`}`)
+}
+
 async function reconcileCommand(): Promise<void> {
   const home = process.env['MICA_RES_BASE'] ?? DEFAULT_BASE
   const site = await (await fetch(`${home}/.well-known/res.json`)).json() as { namespaces: SiteNamespace[], snapshot: { version: string } }
@@ -483,6 +527,9 @@ const [command, ...argv] = process.argv.slice(2)
 switch (command) {
   case 'sync':
     await sync(argv)
+    break
+  case 'backfill':
+    await backfill(argv)
     break
   case 'reconcile':
     await reconcileCommand()

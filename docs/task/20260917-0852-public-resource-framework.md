@@ -59,3 +59,23 @@ Designing the public resource framework and the Worker refactor
   be accepted while it is unmet. A runner probe now runs at the head of
   `sync.yml` and prints what the legacy and current paths answer, so the
   question is settled by measurement rather than by reading the notice.
+- 2026-09-19 20:45 (agent/x32539az, authorised by coordinator `uj991oa2`)
+  **A full re-publish from the producers' locks is authorised, and
+  `import-v1` is therefore not needed to restore the mirrored objects.**
+  Re-publishing reconstructs from the pins; the import reconstructs from a
+  snapshot of the service being retired, and if the two ever disagree the
+  locks win, because a lock is what a consumer verifies against. Every object
+  is keyed and content-addressed, so the two paths converge only if both are
+  digest-correct: **if `import-v1` is ever run and registers a different
+  digest for a key the re-publish already wrote, that is a refusal and a
+  report -- never a merge and never an overwrite.**
+- 2026-09-19 20:45: the re-publish **cannot start**: it needs `MICA_RES_TOKEN`,
+  a `res:publish` API token of this service, and no such repository secret
+  exists (`gh secret list`: `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`,
+  `RES_KEY_KEK`, plus the retired `WRITE_TOKEN` and `STATUS_WRITE_TOKEN` of
+  the old Worker). The same gap explains `/status/current.json` answering 404:
+  `collect.yml` publishes only when `MICA_RES_STATUS_TOKEN` exists, so since
+  the cutover the collector has been **rendering snapshots to a workflow
+  artifact and publishing none** -- 265 snapshots in the 20:04 run, none of
+  them in the bucket. Issuing those two tokens needs a signed-in user, so it
+  is the owner's or the user's action, not mine.

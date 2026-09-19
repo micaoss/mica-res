@@ -79,3 +79,23 @@ Designing the public resource framework and the Worker refactor
   artifact and publishing none** -- 265 snapshots in the 20:04 run, none of
   them in the bucket. Issuing those two tokens needs a signed-in user, so it
   is the owner's or the user's action, not mine.
+- 2026-09-19 22:00 (agent/x32539az, for the owner) **A DEFECT CLASS IN THE
+  PURGE SURFACE, with an instance.** A repair is not complete until the name
+  is purged: a writer purges what it CHANGES, and a key that never existed has
+  nothing to purge from the writer's point of view, so every edge that cached
+  the 404 keeps serving it. The publisher sees a complete repair; the consumer
+  that hit the URL first does not.
+
+  The instance: `upstream/git/uefi-x64-kernel/f717995c....pack.00` was
+  republished at 21:2x and answered 200 from a GitHub runner immediately,
+  while the coordinator's container kept reading 404 for roughly twenty
+  minutes, then 200 with `cf-cache-status: DYNAMIC`. Nobody purged anything,
+  so **whether the TTL expired or something invalidated it cannot be
+  distinguished** -- confirmed by behaviour, not a mechanism proven.
+
+  The asymmetry that makes it worth fixing rather than documenting: **the
+  consumers most likely to have cached an absence are exactly the ones that
+  tried and failed** -- which is to say the ones waiting for the fix. A
+  cache-control of `public, max-age=31536000, immutable` on the object is
+  right; the cached 404 that precedes it is what needs invalidating, and only
+  the service can do that (`apps/api/src/modules/resource/purge.ts`).

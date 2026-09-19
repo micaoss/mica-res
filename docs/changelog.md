@@ -1,5 +1,23 @@
 # mica-res - Changelog
 
+## 2026-09-19 22:00 [pitfall]
+
+**A newly published name needs a purge precisely because its absence was
+cacheable.** The repaired `uefi-x64-kernel pack.00` served 200 from a runner
+at once while another vantage read 404 for about twenty minutes, then 200 with
+`cf-cache-status: DYNAMIC`; nobody purged, so TTL expiry and invalidation
+cannot be told apart -- confirmed by behaviour, not a mechanism proven. Raised
+with the framework owner as a defect class in the purge surface
+(`docs/task/20260917-0852-public-resource-framework.md`), with the asymmetry
+that decides it: the consumers most likely to hold a cached absence are the
+ones that tried and failed, which is to say the ones waiting for the fix.
+
+Fifth instance today of a non-answer treated as an answer -- a cancelled run
+as a verdict, an absent asset digest as a wrong one, a release with no lock as
+a broken one, a missing content-length as missing bytes, and a 429 as a
+refusal. The split that resolves the family: **retry what means later, refuse
+what means no.**
+
 ## 2026-09-19 21:45 [decision]
 
 Four things recorded from the evening's exchange rather than left in the

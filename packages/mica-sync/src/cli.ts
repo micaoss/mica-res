@@ -487,7 +487,7 @@ async function reconcileCommand(): Promise<void> {
 
   const answer = reconcile(pinned, held, derivedPrefixes(gitTrees))
   console.log(`reconcile: catalog ${site.snapshot.version} holds ${held.length}, the locks name ${pinned.length} (${gitTrees.length} git trees are packed on demand and not counted)`)
-  console.log(summary(answer))
+  console.log(summary(answer, held.length))
   for (const conflict of answer.conflicts)
     console.log(`  CONFLICT ${conflict.key}: the lock names ${conflict.lock}, the catalog holds ${conflict.catalog}`)
   for (const object of answer.unpinned.slice(0, 20))

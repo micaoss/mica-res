@@ -62,11 +62,15 @@ export function reconcile(pinned: PinnedObject[], held: CatalogObject[], derived
   }
 }
 
-export function summary(answer: Reconciliation): string {
+export function summary(answer: Reconciliation, held: number): string {
   return [
-    `  in the catalog and in the locks: ${answer.agreed.length}`,
-    `  in the locks and missing:        ${answer.missing.length}`,
+    `  in the catalog and in the locks:  ${answer.agreed.length}`,
+    `  in the locks and missing:         ${answer.missing.length}`,
     `  in the catalog, named by no lock: ${answer.unpinned.length}`,
-    `  same key, different digest:      ${answer.conflicts.length}`,
+    `  same key, different digest:       ${answer.conflicts.length}`,
+    // The remainder is accounted for rather than unexplained: a pack's key
+    // comes from a commit a lock pins, and the two uefi kernels are the same
+    // commit, so they share one pack under two names.
+    `  derived from a pinned commit:     ${held - answer.agreed.length - answer.unpinned.length - answer.conflicts.length} (git packs)`,
   ].join('\n')
 }

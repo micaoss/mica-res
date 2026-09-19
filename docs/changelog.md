@@ -1,5 +1,26 @@
 # mica-res - Changelog
 
+## 2026-09-19 20:30 [progress]
+
+The collector answers "is anything broken right now, and for how long": per
+repository it computes the default branch's state from the snapshots it
+already takes, with the moment it went red, the hours since, and whether
+anything has run since. A cancelled run carries no verdict -- taking one as a
+verdict read mica-build as green while it had been failing since Thursday.
+A repository red past six hours is announced as one GitHub issue in this
+repository, updated while anything is red and closed when everything is green,
+so the state reaches a person without anyone opening a page. Measured on the
+live workspace: `mica-build red for 57.6h, 3 run(s) since`.
+
+## 2026-09-19 20:10 [pitfall]
+
+Measured from a runner: `dl.res.micaos.dev/blob/<aa>/<sha256>` answers **200**
+while `res.micaos.dev/blob/...` answers 404. The bytes of the v1 mirror are
+still in the public bucket under their old keys; what is missing is the
+catalog, so the service cannot resolve a digest and the namespaces `upstream`
+and `mica` list empty. The download host serving those old keys is an
+accident of the bucket, not a designed route: nothing should be built on it.
+
 ## 2026-09-19 19:55 [BUG-P1]
 
 Measured from a CI runner: **the service serves none of the mirrored objects**

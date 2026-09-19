@@ -23,7 +23,10 @@ import type { IndexDocument } from './index-doc.ts'
 import { mergeObjects } from './objects.ts'
 import type { Kind, ResourceObject } from './objects.ts'
 import { resolveSizes } from './sizes.ts'
+import { apply as announce, decide, openIssue } from './announce.ts'
 import { concluded, listJobs, listRuns, renderCurrent, renderRun, runKey, runSnapshot } from './collect.ts'
+import { healthOf, redRepositories } from './health.ts'
+import type { Health } from './health.ts'
 import type { CurrentRun } from './collect.ts'
 import { checkBytes, checkListing, walkNamespace } from './audit.ts'
 import type { ListedObject, SiteNamespace } from './audit.ts'
@@ -261,6 +264,7 @@ async function collect(argv: string[]): Promise<void> {
 
   await mkdir(`${out}/runs`, { recursive: true })
   const repositories: { repository: string, runs: CurrentRun[] }[] = []
+  const healths: Health[] = []
   const items: PublishItem[] = []
   let written = 0
   let already = 0
@@ -297,8 +301,40 @@ async function collect(argv: string[]): Promise<void> {
       written += 1
     }
     repositories.push({ repository, runs: summaries })
+    healths.push(healthOf(repository, runs.map(run => ({
+      id: run.id,
+      workflow: run.path.replace('.github/workflows/', ''),
+      event: run.event,
+      branch: run.head_branch,
+      status: run.status,
+      conclusion: run.conclusion,
+      startedAt: run.run_started_at,
+      completedAt: concluded(run) ? run.updated_at : null,
+    })), Date.now()))
     console.log(`  ${repository.padEnd(18)} ${String(runs.length).padStart(3)} runs`)
   }
+
+  // Is anything broken right now, and for how long? A red run is an event; a
+  // red default branch for two days is a state, and a repository that failed
+  // and then went quiet is the shape that hides it.
+  const now = Date.now()
+  const red = redRepositories(healths, Number(process.env['MICA_RES_RED_HOURS'] ?? '6'))
+  for (const one of healths.toSorted((a, b) => a.repository.localeCompare(b.repository))) {
+    const age = one.redHours === undefined ? '' : ` for ${one.redHours.toFixed(1)}h`
+    const since = one.state.startsWith('red') ? `, ${one.runsSince === 0 ? 'nothing has run since' : `${one.runsSince} run(s) since`}` : ''
+    console.log(`  ${one.repository.padEnd(18)} ${one.state}${age}${since}`)
+  }
+  const health = `${JSON.stringify({ schema: 'mica/status-health/v1', generatedAt: new Date(now).toISOString(), repositories: healths })}\n`
+  await Bun.write(`${out}/health.json`, health)
+  if (publisher !== undefined)
+    items.push({ path: 'health.json', source: { uploadId: await stageBytes(publisher, 'status', new TextEncoder().encode(health), 'application/json') }, contentType: 'application/json' })
+
+  // It reaches a person without anyone remembering to look: one GitHub issue,
+  // updated while anything is red, closed when everything is green.
+  if (process.env['MICA_RES_ANNOUNCE'] === '1')
+    console.log(`announce: ${await announce(decide(red, await openIssue(), now))}`)
+  else if (red.length > 0)
+    console.log(`announce: skipped (MICA_RES_ANNOUNCE is not 1); ${red.length} repository/ies would be announced`)
 
   const current = renderCurrent({ generatedAt: new Date().toISOString(), repositories })
   await Bun.write(`${out}/current.json`, current)

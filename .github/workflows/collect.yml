@@ -9,6 +9,9 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  # One issue, opened while a default branch is red and closed when it is
+  # green again: how the state reaches a person without anyone opening a page.
+  issues: write
 concurrency:
   group: collect
   cancel-in-progress: false
@@ -29,6 +32,7 @@ jobs:
       - run: bun packages/mica-sync/src/cli.ts collect ${{ secrets.MICA_RES_STATUS_TOKEN != '' && '--apply' || '' }} --out "${RUNNER_TEMP}/status"
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          MICA_RES_ANNOUNCE: '1'
           MICA_RES_TOKEN: ${{ secrets.MICA_RES_STATUS_TOKEN }}
       - uses: actions/upload-artifact@v7
         with:

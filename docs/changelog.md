@@ -1,5 +1,25 @@
 # mica-res - Changelog
 
+## 2026-09-19 19:55 [BUG-P1]
+
+Measured from a CI runner: **the service serves none of the mirrored objects**
+-- the legacy `/d/upstream/git/...` and `/d/mica/...`, the new keys on both
+`res.micaos.dev` and `dl.res.micaos.dev`, and `/blob/<aa>/<sha256>` all answer
+404; only `/index/current.json` answers (302). The v1 import has not run since
+the 2026-09-18 cutover, so the mirror has been empty of Mica artefacts since
+then. Consumers fall back upstream, which is why nothing is broken, but the
+acceptance criterion of `20260917-0852-public-resource-framework` -- "every
+URL an external repository already uses keeps answering with the same bytes"
+-- is not met. A probe at the head of `sync.yml` now measures this on every
+run.
+
+The scheduled sync is red for the right reason: `kind-vanished` refuses to
+publish a catalog with no git packs when the previous one had 43. The
+half-migrated lookup inside `packages/mica-sync` (publishing under the new
+key, looking up the retired `/d/` URL) was fixed in `7b95e47`, authorised by
+the coordinator while the framework task was in flight; the remaining red is
+the empty service, not the reader.
+
 ## 2026-09-18 17:00 [decision]
 
 Consumers move to the new URLs rather than the service keeping the legacy

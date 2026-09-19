@@ -3,9 +3,15 @@
 - **From**: mica-res
 - **To**: mica-system-base, mica-boards, mica-build, mica
 - **Date**: 2026-09-18
-- **Action required**: yes -- update to the URLs below. The legacy `/d/...`
-  and `/index/...` paths on `res.micaos.dev` will be removed once all four
-  changes have landed, and not before 2026-10-02.
+- **Action required**: yes -- update to the URLs below.
+- **Correction, 2026-09-19, measured from a CI runner** (the probe at the head
+  of `.github/workflows/sync.yml`): the legacy `/d/...` paths answer **404
+  today**, and so do the new keys, on both hosts. Nothing in this notice
+  should be read as "the old URLs keep working until 2026-10-02": they do not
+  work now, because the v1 import has not run and the new service holds none
+  of the mirrored objects yet. A consumer that switched sees 404 and falls
+  back upstream, which is the designed behaviour and why nothing is broken --
+  but the mirror is serving nothing until the import or a re-publish runs.
 
 ## What changed
 
@@ -141,11 +147,12 @@ fallback path, and it is unchanged.
 
 ## Timeline
 
-1. mica-res runs the v1 import; until then the new keys and the legacy
-   paths both answer 404 and every consumer falls back to upstream.
+1. mica-res runs the v1 import (or re-publishes); **until then the new keys
+   and the legacy paths both answer 404** and every consumer falls back
+   upstream. Measured 2026-09-19: still not done.
 2. Each repository lands the change above and reports it.
-3. When all four have landed, and not before 2026-10-02, mica-res removes
-   `/d/...` and `/index/...` from `res.micaos.dev`. `/blob/...` and `/v2`
-   stay.
+3. When all four have landed, mica-res drops the legacy `/d/...` redirects and
+   `/index/...`. `/blob/...` and `/v2` stay. There is nothing to wait for on
+   the legacy side, since it already answers 404.
 
 Questions: open an issue on `micaoss/mica-res`.

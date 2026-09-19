@@ -8,7 +8,12 @@ Each task is a single line linking to its detail file. All detailed information 
 
 ### Format
 
+A specimen, not an entry -- there is no such task and no such
+detail file:
+
+```markdown
 - [ ] [**20260907-1428-add-endpoint Add endpoint**](20260907-1428-add-endpoint.md) `P1`
+```
 
 ### Status Markers
 

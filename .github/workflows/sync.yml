@@ -35,6 +35,27 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
+      # Does the retired `/d/` prefix still answer? Neither the agent
+      # containers on the workspace host nor the coordinator can reach the zone,
+      # so the question is settled from a runner, which can. Prints codes and
+      # never fails the run: it is a measurement, not a gate.
+      - name: Probe the legacy and current paths
+        run: |
+          set -uo pipefail
+          probe() { printf '  %-78s %s\n' "$1" "$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "$1" || echo unreachable)"; }
+          echo 'legacy (res host, no redirect followed):'
+          probe https://res.micaos.dev/d/upstream/git/cx3576-rkbin/ecb4fcbe954edf38b3ae037d5de6d9f5bccf81f4.json
+          probe https://res.micaos.dev/d/mica/uefi-x64/20260916-0845/mica-uefi-x64-dev-20260916-0845.img.gz
+          probe https://res.micaos.dev/index/current.json
+          echo 'current (res host, redirects to the download host):'
+          probe https://res.micaos.dev/upstream/git/cx3576-rkbin/ecb4fcbe954edf38b3ae037d5de6d9f5bccf81f4.json
+          probe https://res.micaos.dev/mica/uefi-x64/20260916-0845/mica-uefi-x64-dev-20260916-0845.img.gz
+          echo 'current (download host, direct from R2):'
+          probe https://dl.res.micaos.dev/upstream/git/cx3576-rkbin/ecb4fcbe954edf38b3ae037d5de6d9f5bccf81f4.json
+          probe https://dl.res.micaos.dev/mica/uefi-x64/20260916-0845/mica-uefi-x64-dev-20260916-0845.img.gz
+          echo 'by digest (unchanged surface):'
+          probe https://res.micaos.dev/blob/1e/1e2b5f31fc826e1af25e2a12e37cd8d361ff25feaf224c6bbef3cc5d6cd2596b
+
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:

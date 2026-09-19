@@ -26,7 +26,7 @@ test('maps asset rows to readable product paths, with the release size', () => {
   const sizes = new Map([['mica-uefi-x64-dev-20260916-0845.img.gz', 82], ['mica-uefi-x64-dev-20260916-0845.kernel.micaupd', 16]])
   const objects = assetObjects('uefi-x64.20260916-0845', assetRows(lock), sizes, 'mica-build')
   expect(objects.map(object => object.kind)).toEqual(['product-image', 'update-archive'])
-  expect(objects[0]?.readable).toEqual(['/d/mica/uefi-x64/20260916-0845/mica-uefi-x64-dev-20260916-0845.img.gz'])
+  expect(objects[0]?.readable).toEqual(['mica/uefi-x64/20260916-0845/mica-uefi-x64-dev-20260916-0845.img.gz'])
   expect(objects[0]?.sha256).toBe('a'.repeat(64))
   expect(objects[1]?.size).toBe(16)
   expect(objects[0]?.pins[0]?.release).toBe('uefi-x64.20260916-0845')

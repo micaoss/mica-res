@@ -56,7 +56,7 @@ function fileName(url: string): string {
 // what lets a consumer use the mirror with a CI variable and no code change.
 function debianPoolAlias(url: string): string | undefined {
   const index = url.indexOf('/pool/')
-  return index < 0 ? undefined : `/d/upstream/debian/pool/${url.slice(index + '/pool/'.length)}`
+  return index < 0 ? undefined : `upstream/debian/pool/${url.slice(index + '/pool/'.length)}`
 }
 
 export function objectFromSourceRow(row: SourceRow | UpstreamRow, pin: PinSource): ResourceObject {
@@ -68,7 +68,7 @@ export function objectFromSourceRow(row: SourceRow | UpstreamRow, pin: PinSource
     origin: row.url,
     path: blobPath(row.sha256),
     readable: [
-      `/d/upstream/${kind}/${row.name}/${fileName(row.url)}`,
+      `upstream/${kind}/${row.name}/${fileName(row.url)}`,
       ...(alias === undefined ? [] : [alias]),
     ],
     pins: [{ ...pin, row: `source ${row.name} ${row.arch}` }],

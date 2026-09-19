@@ -29,14 +29,15 @@ export interface PublishItem {
   meta?: Record<string, string>
 }
 
-// A canonical key per object: the readable name a consumer already uses, with
-// the `/d/` prefix gone, preferring the Debian pool shape; OCI blobs by digest.
+// A canonical key per object: the readable name a consumer already uses, which
+// is the object's own key, preferring the Debian pool shape; OCI blobs by
+// digest. A name with a leading slash is a registry name, not a key, so it is
+// never a candidate (see `registryTags`).
 export function canonicalKey(object: Pick<ResourceObject, 'kind' | 'sha256' | 'readable'>): string | undefined {
   if (object.kind === 'oci-blob')
     return `oci/blobs/sha256/${object.sha256}`
-  const names = object.readable.filter(name => name.startsWith('/d/')).sort()
-  const chosen = names.find(name => name.startsWith('/d/upstream/debian/pool/')) ?? names[0]
-  return chosen?.slice('/d/'.length)
+  const names = object.readable.filter(name => !name.startsWith('/')).sort()
+  return names.find(name => name.startsWith('upstream/debian/pool/')) ?? names[0]
 }
 
 export function splitKey(key: string): { namespace: string, path: string } {

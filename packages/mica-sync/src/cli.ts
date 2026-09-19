@@ -54,7 +54,7 @@ function mib(bytes: number): string {
 // lookup runs in a dry run too, so the index and the site state what the bucket
 // holds rather than only what an apply touched.
 async function heldTree(tree: GitTree, base: string): Promise<ResourceObject[] | undefined> {
-  const held = await fetch(`${base}${manifestName(tree)}`)
+  const held = await fetch(`${base}/${manifestName(tree)}`)
   if (!held.ok)
     return undefined
   const manifest = await held.json() as { pack: { sha256: string, size: number }, chunks: { sha256: string, size: number }[] }
@@ -72,7 +72,7 @@ async function mirrorTree(tree: GitTree, publisher: Publisher): Promise<{ object
   const names = chunkNames(tree, chunks.length)
   const items: PublishItem[] = []
   for (const [index, piece] of pieces.entries())
-    items.push({ path: splitKey(names[index]!.slice('/d/'.length)).path, source: { uploadId: await stageBytes(publisher, 'upstream', piece, 'application/octet-stream') } })
+    items.push({ path: splitKey(names[index]!).path, source: { uploadId: await stageBytes(publisher, 'upstream', piece, 'application/octet-stream') } })
 
   const whole = { sha256: Bun.SHA256.hash(pack, 'hex'), size: pack.length }
   const manifest = renderManifest(tree, whole, chunks)
@@ -80,7 +80,7 @@ async function mirrorTree(tree: GitTree, publisher: Publisher): Promise<{ object
   // finds every chunk it names.
   await publishBatch(publisher, 'upstream', items)
   const manifestId = await stageBytes(publisher, 'upstream', new TextEncoder().encode(manifest), 'application/json')
-  await publishBatch(publisher, 'upstream', [{ path: splitKey(manifestName(tree).slice('/d/'.length)).path, source: { uploadId: manifestId }, contentType: 'application/json' }])
+  await publishBatch(publisher, 'upstream', [{ path: splitKey(manifestName(tree)).path, source: { uploadId: manifestId }, contentType: 'application/json' }])
   console.log(`  ${tree.name}: ${(pack.length / 1048576).toFixed(1)} MiB in ${chunks.length} chunk(s) at ${names[0]}`)
   return { objects: packObjects(tree, whole, chunks, manifest), produced: true }
 }

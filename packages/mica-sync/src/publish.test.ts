@@ -18,14 +18,14 @@ function recorder(routes: Record<string, (init: RequestInit | undefined) => Resp
 }
 
 test('the canonical key prefers the Debian pool name and addresses OCI blobs by digest', () => {
-  expect(canonicalKey({ kind: 'deb', sha256: sha, readable: ['/d/upstream/deb/bash/b.deb', '/d/upstream/debian/pool/main/b/bash/b.deb'] })).toBe('upstream/debian/pool/main/b/bash/b.deb')
-  expect(canonicalKey({ kind: 'product-image', sha256: sha, readable: ['/d/mica/uefi-x64/20260917-0000/x.img.gz'] })).toBe('mica/uefi-x64/20260917-0000/x.img.gz')
+  expect(canonicalKey({ kind: 'deb', sha256: sha, readable: ['upstream/deb/bash/b.deb', 'upstream/debian/pool/main/b/bash/b.deb'] })).toBe('upstream/debian/pool/main/b/bash/b.deb')
+  expect(canonicalKey({ kind: 'product-image', sha256: sha, readable: ['mica/uefi-x64/20260917-0000/x.img.gz'] })).toBe('mica/uefi-x64/20260917-0000/x.img.gz')
   expect(canonicalKey({ kind: 'oci-blob', sha256: sha, readable: ['/v2/micaoss/mica-build-env/manifests/base.1'] })).toBe(`oci/blobs/sha256/${sha}`)
   expect(canonicalKey({ kind: 'source', sha256: sha, readable: [] })).toBeUndefined()
 })
 
 test('registry tags come from manifest names that are not digests', () => {
-  expect(registryTags({ sha256: sha, readable: ['/v2/micaoss/env/manifests/base.1', `/v2/micaoss/env/manifests/sha256:${sha}`, '/d/x'] }))
+  expect(registryTags({ sha256: sha, readable: ['/v2/micaoss/env/manifests/base.1', `/v2/micaoss/env/manifests/sha256:${sha}`, 'x'] }))
     .toEqual([{ repository: 'micaoss/env', tag: 'base.1', digest: `sha256:${sha}` }])
 })
 

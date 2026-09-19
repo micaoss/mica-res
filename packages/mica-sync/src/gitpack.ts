@@ -29,12 +29,15 @@ export interface Piece {
   size: number
 }
 
+// A name is the object's KEY -- `<namespace>/<path>`, which is at once the
+// bucket key and the path on the download host. The retired `/d/` prefix is
+// gone; a caller builds a URL as `<base>/<key>`.
 export function manifestName(tree: GitTree): string {
-  return `/d/upstream/git/${tree.name}/${tree.commit}.json`
+  return `upstream/git/${tree.name}/${tree.commit}.json`
 }
 
 export function chunkNames(tree: GitTree, count: number): string[] {
-  return Array.from({ length: count }, (_, index) => `/d/upstream/git/${tree.name}/${tree.commit}.pack.${String(index).padStart(2, '0')}`)
+  return Array.from({ length: count }, (_, index) => `upstream/git/${tree.name}/${tree.commit}.pack.${String(index).padStart(2, '0')}`)
 }
 
 export function renderManifest(tree: GitTree, pack: Piece, chunks: Piece[]): string {
@@ -147,12 +150,12 @@ export function readManifest(text: string): Manifest {
 // pinned commit. Git verifies every object it imports, so a wrong byte fails
 // the import rather than producing a wrong tree.
 export async function verifyPack(base: string, tree: { name: string, commit: string }, work: string): Promise<{ pack: number, chunks: number }> {
-  const manifest = readManifest(await (await fetch(`${base}${manifestName(tree as GitTree)}`)).text())
+  const manifest = readManifest(await (await fetch(`${base}/${manifestName(tree as GitTree)}`)).text())
   const names = chunkNames(tree as GitTree, manifest.chunks.length)
   const packFile = join(work, 'joined.pack')
   const writer = Bun.file(packFile).writer()
   for (const [index, name] of names.entries()) {
-    const answer = await fetch(`${base}${name}`)
+    const answer = await fetch(`${base}/${name}`)
     if (!answer.ok)
       throw new Error(`chunk: ${answer.status} for ${name}`)
     const bytes = new Uint8Array(await answer.arrayBuffer())

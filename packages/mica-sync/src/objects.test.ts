@@ -22,8 +22,8 @@ test('a .deb row becomes a deb object under the deb route', () => {
   expect(object.kind).toBe('deb')
   expect(object.path).toBe(`blob/aa/${'a'.repeat(64)}`)
   expect(object.readable).toEqual([
-    '/d/upstream/deb/bash/bash_5.3.3-1_amd64.deb',
-    '/d/upstream/debian/pool/main/b/bash/bash_5.3.3-1_amd64.deb',
+    'upstream/deb/bash/bash_5.3.3-1_amd64.deb',
+    'upstream/debian/pool/main/b/bash/bash_5.3.3-1_amd64.deb',
   ])
   expect(object.origin).toBe(deb.url)
   expect(object.pins).toEqual([{ ...pin, row: 'source bash amd64' }])
@@ -32,7 +32,7 @@ test('a .deb row becomes a deb object under the deb route', () => {
 test('a tarball row becomes a source object under the source route', () => {
   const object = objectFromSourceRow(tarball, pin)
   expect(object.kind).toBe('source')
-  expect(object.readable).toEqual(['/d/upstream/source/source.busybox/busybox-1.38.0.tar.bz2'])
+  expect(object.readable).toEqual(['upstream/source/source.busybox/busybox-1.38.0.tar.bz2'])
 })
 
 test('the same bytes pinned twice give one object with both pins', () => {
@@ -50,7 +50,7 @@ test('the same bytes pinned under two names keep both names', () => {
 })
 
 test('a Debian archive answers under the pool shape a consumer mirror rewrites to', () => {
-  expect(objectFromSourceRow(deb, pin).readable).toContain('/d/upstream/debian/pool/main/b/bash/bash_5.3.3-1_amd64.deb')
+  expect(objectFromSourceRow(deb, pin).readable).toContain('upstream/debian/pool/main/b/bash/bash_5.3.3-1_amd64.deb')
 })
 
 test('two different byte strings under one readable name are refused', () => {

@@ -4,11 +4,11 @@ import { chunkNames, manifestName, packObjects, renderManifest } from './gitpack
 const tree = { repository: 'mica-boards', name: 'cx3576-kernel', url: 'https://github.com/armbian/linux-rockchip.git', commit: 'c'.repeat(40) }
 
 test('a tree names its manifest and its chunks by commit', () => {
-  expect(manifestName(tree)).toBe(`/d/upstream/git/cx3576-kernel/${'c'.repeat(40)}.json`)
+  expect(manifestName(tree)).toBe(`upstream/git/cx3576-kernel/${'c'.repeat(40)}.json`)
   expect(chunkNames(tree, 3)).toEqual([
-    `/d/upstream/git/cx3576-kernel/${'c'.repeat(40)}.pack.00`,
-    `/d/upstream/git/cx3576-kernel/${'c'.repeat(40)}.pack.01`,
-    `/d/upstream/git/cx3576-kernel/${'c'.repeat(40)}.pack.02`,
+    `upstream/git/cx3576-kernel/${'c'.repeat(40)}.pack.00`,
+    `upstream/git/cx3576-kernel/${'c'.repeat(40)}.pack.01`,
+    `upstream/git/cx3576-kernel/${'c'.repeat(40)}.pack.02`,
   ])
 })
 
@@ -29,9 +29,9 @@ test('the objects of a tree are the chunks plus the manifest, every one content-
   expect(objects.every(object => object.kind === 'git-pack')).toBe(true)
   expect(objects.every(object => object.commit === 'c'.repeat(40))).toBe(true)
   expect(objects.map(object => object.readable[0])).toEqual([
-    `/d/upstream/git/cx3576-kernel/${'c'.repeat(40)}.pack.00`,
-    `/d/upstream/git/cx3576-kernel/${'c'.repeat(40)}.pack.01`,
-    `/d/upstream/git/cx3576-kernel/${'c'.repeat(40)}.json`,
+    `upstream/git/cx3576-kernel/${'c'.repeat(40)}.pack.00`,
+    `upstream/git/cx3576-kernel/${'c'.repeat(40)}.pack.01`,
+    `upstream/git/cx3576-kernel/${'c'.repeat(40)}.json`,
   ])
   expect(objects[0]?.path).toBe(`blob/bb/${'b'.repeat(64)}`)
   // A pack is verified by git at the consumer, so the mirror records no origin

@@ -71,7 +71,7 @@ export function descriptorObjects(manifest: Manifest, pin: PinSource, row: Image
       // a layer from the blobs endpoint.
       origin: mediaType !== undefined && mediaType.includes('manifest') ? manifestOrigin(repository, sha256) : blobOrigin(repository, sha256),
       path: blobPath(sha256),
-      readable: [`/d/build-env/${pin.release}/${row.name}.${row.platform}/${sha256}`],
+      readable: [`build-env/${pin.release}/${row.name}.${row.platform}/${sha256}`],
       pins: [{ ...pin, row: `image ${row.name} ${row.platform}` }],
     }
   })
@@ -90,7 +90,7 @@ export function manifestObject(row: ImageRow, repository: string, bytes: number,
     origin: manifestOrigin(repository, row.digest),
     path: blobPath(row.digest),
     readable: [
-      `/d/build-env/${pin.release}/${row.name}.${row.platform}/${row.digest}`,
+      `build-env/${pin.release}/${row.name}.${row.platform}/${row.digest}`,
       ...(tag === undefined ? [] : [`/v2/micaoss/${repository}/manifests/${tag}`]),
     ],
     pins: [{ ...pin, row: `image ${row.name} ${row.platform}` }],

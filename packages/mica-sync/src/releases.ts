@@ -51,7 +51,7 @@ export function assetObjects(tag: string, rows: AssetRow[], sizes: Map<string, n
       size,
       origin: `https://github.com/micaoss/${repository}/releases/download/${tag}/${row.file}`,
       path: blobPath(row.sha256),
-      readable: [`/d/mica/${scope}/${stamp}/${row.file}`],
+      readable: [`mica/${scope}/${stamp}/${row.file}`],
       pins: [{ repository, lock: `${tag}:${repository}.lock`, release: tag, row: `asset ${row.product} ${row.type} ${row.kind}` }],
     }
   })

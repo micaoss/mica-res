@@ -7,7 +7,7 @@ const object = (digest: string) => ({
   size: 12,
   origin: 'https://snapshot.debian.org/x.deb',
   path: `blob/${digest.slice(0, 2)}/${digest}`,
-  readable: [`/d/upstream/deb/x/${digest.slice(0, 4)}.deb`],
+  readable: [`upstream/deb/x/${digest.slice(0, 4)}.deb`],
   pins: [{ repository: 'mica-system-base', lock: 'locks/upstream.lock', release: 'main', row: 'source x amd64' }],
 })
 

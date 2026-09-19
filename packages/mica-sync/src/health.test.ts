@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { healthOf, issueBody, redRepositories } from './health.ts'
+import { firstFailingJob, healthOf, issueBody, redRepositories } from './health.ts'
 
 const run = (over: Partial<Parameters<typeof healthOf>[1][number]>) => ({
   id: 1,
@@ -94,4 +94,29 @@ test('the issue body names the state, the age and what has run since', () => {
   expect(body).toContain('mica-build')
   expect(body).toContain('2026-09-17T10:27:00Z')
   expect(body).toContain('nothing has run since')
+})
+
+test('the run that started the streak is named, so its jobs can be read', () => {
+  const health = healthOf('mica-build', [
+    run({ id: 6, conclusion: 'failure', startedAt: '2026-09-19T08:00:00Z' }),
+    run({ id: 5, conclusion: 'failure', startedAt: '2026-09-17T10:27:00Z' }),
+    run({ id: 4, conclusion: 'success', startedAt: '2026-09-16T17:38:00Z' }),
+  ], now)
+  expect(health.redRunId).toBe(5)
+})
+
+test('the first failing job is the first in the run order, not the first alphabetically', () => {
+  expect(firstFailingJob([
+    { name: 'lint', conclusion: 'success' },
+    { name: 'suites', conclusion: 'failure' },
+    { name: 'boards', conclusion: 'failure' },
+  ])).toBe('suites')
+  expect(firstFailingJob([{ name: 'lint', conclusion: 'success' }])).toBeUndefined()
+  expect(firstFailingJob([{ name: 'a', conclusion: 'cancelled' }, { name: 'b', conclusion: 'timed_out' }])).toBe('b')
+})
+
+test('the issue body carries the diagnosis when it has one and says so when it does not', () => {
+  const red = healthOf('mica-build', [run({ id: 3, conclusion: 'failure', startedAt: '2026-09-17T10:27:00Z' })], now)
+  expect(issueBody([{ ...red, firstFailingJob: 'lint' }], now)).toContain('`lint`')
+  expect(issueBody([red], now)).toContain('unknown')
 })

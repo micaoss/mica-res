@@ -25,7 +25,7 @@ import type { Kind, ResourceObject } from './objects.ts'
 import { resolveSizes } from './sizes.ts'
 import { apply as announce, decide, openIssue } from './announce.ts'
 import { concluded, listJobs, listRuns, renderCurrent, renderRun, runKey, runSnapshot } from './collect.ts'
-import { healthOf, redRepositories } from './health.ts'
+import { firstFailingJob, healthOf, redRepositories } from './health.ts'
 import type { Health } from './health.ts'
 import type { CurrentRun } from './collect.ts'
 import { checkBytes, checkListing, walkNamespace } from './audit.ts'
@@ -33,6 +33,7 @@ import type { ListedObject, SiteNamespace } from './audit.ts'
 import { pinnedImageReleases } from './imagepins.ts'
 import { REPOSITORIES } from './producers.ts'
 import { ghcrToken, resolveRedirect } from './ghcr.ts'
+import { carriedOrigin } from './carry.ts'
 import { chunkBytes, chunkNames, manifestName, packObjects, producePack, renderManifest, verifyPack } from './gitpack.ts'
 import type { GitTree } from './enumerate.ts'
 import { canonicalKey, listHeld, objectMeta, publishBatch, publisherFromEnv, registryTags, setTag, splitKey, stageBytes, stagePull } from './publish.ts'
@@ -100,8 +101,25 @@ async function heldByKey(publisher: Publisher, namespaces: Iterable<string>): Pr
 
 // Stage one object's bytes: pulled server-side from an https origin, or, for a
 // registry manifest that needs a token to read, read here and put to R2.
+// Counted so the report can say how much of a restoration was carried rather
+// than re-fetched.
+const carried = { fromBucket: 0, fromUpstream: 0 }
+
 async function stage(publisher: Publisher, object: ResourceObject, namespace: string, registryHeaders: Record<string, string>): Promise<string> {
   const contentType = object.mediaType ?? 'application/octet-stream'
+
+  // The v1 mirror's bytes are still in this bucket under `blob/<aa>/<sha256>`.
+  // Where one is, it is the same bytes by definition of the key, so the
+  // service pulls it from there instead of from upstream; the digest is
+  // verified while staging either way.
+  const download = process.env['MICA_RES_DOWNLOAD_BASE'] ?? 'https://dl.res.micaos.dev'
+  const carry = await carriedOrigin(download, object.sha256)
+  if (carry !== undefined) {
+    carried.fromBucket += 1
+    return stagePull(publisher, namespace, { origin: carry, sha256: object.sha256, contentType })
+  }
+  carried.fromUpstream += 1
+
   if (object.origin === undefined)
     throw new Error(`no-origin: ${object.sha256} has no upstream to mirror from`)
   if (object.kind === 'oci-blob' && object.mediaType?.includes('manifest')) {
@@ -199,6 +217,7 @@ async function sync(argv: string[]): Promise<void> {
         await setTag(publisher!, tag)
     }
     console.log(`apply: ${staged} published, ${present} already published, 0 deleted`)
+    console.log(`  bytes: ${carried.fromBucket} carried from the bucket's existing keys, ${carried.fromUpstream} fetched from upstream`)
   }
 
   // Enumeration always covers every kind. `--kinds` gates what is UPLOADED and
@@ -319,6 +338,12 @@ async function collect(argv: string[]): Promise<void> {
   // and then went quiet is the shape that hides it.
   const now = Date.now()
   const red = redRepositories(healths, Number(process.env['MICA_RES_RED_HOURS'] ?? '6'))
+  // One extra call per announced repository, and only when one is announced:
+  // what broke first is what a reader needs before opening anything.
+  for (const one of red) {
+    if (one.redRunId !== undefined)
+      one.firstFailingJob = firstFailingJob(await listJobs(one.repository, one.redRunId))
+  }
   for (const one of healths.toSorted((a, b) => a.repository.localeCompare(b.repository))) {
     const age = one.redHours === undefined ? '' : ` for ${one.redHours.toFixed(1)}h`
     const since = one.state.startsWith('red') ? `, ${one.runsSince === 0 ? 'nothing has run since' : `${one.runsSince} run(s) since`}` : ''

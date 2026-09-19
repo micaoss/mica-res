@@ -31,6 +31,14 @@ export interface Health {
   /** Runs started after that moment, in flight included. */
   runsSince: number
   lastRunAt?: string
+  /** The run that started the streak, so its jobs can be read. */
+  redRunId?: number | undefined
+  /**
+   * The first job that failed in that run. "red since Thursday, first failing
+   * job: lint" is a diagnosis; "red since Thursday" is a notification that
+   * still costs the reader three runs to act on.
+   */
+  firstFailingJob?: string | undefined
 }
 
 const FAILED = new Set(['failure', 'timed_out', 'startup_failure', 'action_required'])
@@ -62,10 +70,12 @@ export function healthOf(repository: string, runs: HealthRun[], now: number): He
   // the newest: a repository failing every night since Thursday has been red
   // since Thursday.
   let redSince = newest.startedAt
+  let redRunId = newest.id
   for (const run of concluded.slice(1)) {
     if (!FAILED.has(run.conclusion!))
       break
     redSince = run.startedAt
+    redRunId = run.id
   }
 
   const runsSince = ordered.filter(run => Date.parse(run.startedAt) > Date.parse(newest.startedAt)).length
@@ -76,6 +86,7 @@ export function healthOf(repository: string, runs: HealthRun[], now: number): He
     redHours: (now - Date.parse(redSince)) / 3_600_000,
     runsSince,
     lastRunAt,
+    redRunId,
   }
 }
 
@@ -101,9 +112,9 @@ export function issueBody(red: Health[], now: number): string {
     'come from the run snapshots the mica-res collector takes every thirty',
     'minutes; nothing here is a live query.',
     '',
-    '| repository | red since | for | since then |',
-    '| --- | --- | --- | --- |',
-    ...red.map(one => `| \`${one.repository}\` | ${one.redSince} | ${age(one.redHours ?? 0)} | ${one.runsSince === 0 ? '**nothing has run since**' : `${one.runsSince} run(s)`} |`),
+    '| repository | red since | for | first failing job | since then |',
+    '| --- | --- | --- | --- | --- |',
+    ...red.map(one => `| \`${one.repository}\` | ${one.redSince} | ${age(one.redHours ?? 0)} | ${one.firstFailingJob === undefined ? 'unknown' : `\`${one.firstFailingJob}\``} | ${one.runsSince === 0 ? '**nothing has run since**' : `${one.runsSince} run(s)`} |`),
     '',
     'A repository that failed and then went quiet is the case worth looking at',
     'first: it looks healthy in any view that shows only the latest run per',
@@ -111,4 +122,9 @@ export function issueBody(red: Health[], now: number): string {
     '',
     `Updated ${new Date(now).toISOString()} by \`mica-res\` \`collect.yml\`. This issue closes itself when every default branch is green again.`,
   ].join('\n')
+}
+
+/** The first job of a run that failed, in the run's own job order. */
+export function firstFailingJob(jobs: { name: string, conclusion: string | null }[]): string | undefined {
+  return jobs.find(job => job.conclusion !== null && FAILED.has(job.conclusion))?.name
 }

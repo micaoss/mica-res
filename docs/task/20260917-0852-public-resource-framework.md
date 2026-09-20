@@ -131,3 +131,51 @@ Designing the public resource framework and the Worker refactor
     consumers' committed `locks/`.
   Reproducible as `bun packages/mica-sync/src/cli.ts coverage`, so the table
   is a query and not a memory.
+- 2026-09-20 07:30 (agent/x32539az) **The canonical instrument table, for
+  `mica-docs` to transcribe verbatim into the pause record.** Eight rows, not
+  two; the counts are index `20260916-1752` (535 objects) and sync run
+  35495033872, and every row is reproducible as
+  `bun packages/mica-sync/src/cli.ts coverage` and `... history`.
+
+  ```text
+  artefact                                        instrument that protects it
+  ----------------------------------------------  ---------------------------------------------
+  workflow run and job metadata                   the collector's snapshots: 427 over
+                                                  2026-09-15T01:55Z..2026-09-20T01:06Z, holes 0,
+                                                  page-one recovery margin 48 h or better
+  workflow logs and artifacts                     NOTHING -- a snapshot is the record of a run,
+                                                  never an archive of it
+  build-env image bytes                           the mirror, 115 objects; the ONLY ghcr package
+                                                  whose bytes the mirror holds
+  mica-build product images and update archives    the mirror, 12 + 18 objects (`asset` rows)
+  third-party debs, source archives, git trees    the mirror, 324 + 23 + 43 objects
+  our published Debian packages (the OCI pools)   NOTHING -- ghcr holds the only copy
+  mica-boards board components                    NOTHING -- ghcr holds the only copy
+  release locks and SHA256SUMS                    NOT IN THE BUCKET -- the release-to-digest
+                                                  binding survives only in the producer's GitHub
+                                                  release and in consumers' committed `locks/`
+                                                  and `locks/pins/`
+  ```
+
+  The last three rows are the accepted scope of 2026-09-16, which lists them
+  "out of scope and not to be re-added"; they are consequences of a user
+  decision, not defects. The trap the table exists to close: the 324 upstream
+  `deb` objects are Debian's, from `snapshot.debian.org`, and read exactly
+  like package coverage.
+- 2026-09-20 07:30 (agent/x32539az) **Cost of mirroring the locks, priced
+  because the coordinator recommended it and guessed "small".** It is small,
+  and it is still a scope reversal the user must take. The bytes: eight
+  producers and scopes times three kept releases times two files of a few KB
+  to a few hundred KB -- under 5 MB in total, against 1.8 GB already held.
+  The code: `enumerate()` already downloads every producer lock it reads
+  (`readLock` over `LOCK_SOURCES`), so the work is a `lock` kind in
+  `objects.ts` and `index-doc.ts` KINDS, a reader for `mica-pin v1` so the
+  pin's stated `SHA256SUMS` digest is what the publish verifies against
+  (making it a verification rather than a copy), the release-asset fetch for
+  producers other than mica-build, a readable route, and `classifyKey` plus
+  the audit's prefixes -- on the order of 150 to 250 lines with tests, inside
+  the existing `sync.yml`, no new workflow and no new credential.
+  **What it does NOT buy, so it is not read as a partial fix of the pools:**
+  the chain from the mirror would end at the lock, whose `package` rows point
+  into pools nothing mirrors. It makes the BINDING survivable, not the
+  packages.

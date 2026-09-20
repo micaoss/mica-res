@@ -1,5 +1,27 @@
 # mica-res - Changelog
 
+## 2026-09-20 07:30 [correction]
+
+**The pools are unmirrored BY DECISION, not by oversight, and the entry below
+is reclassified.** `docs/task/20260916-0728-r2-resource-service-phase-0.md`
+records the accepted scope of 2026-09-16 (user, through coordinator
+`uj991oa2`) and says in as many words: *"Out of scope and not to be re-added:
+our package pools, mica-boards board components, release locks and
+`SHA256SUMS`, the 21 upstream docker.io images, and the device update
+service."* So "nobody had a reason to look" is wrong about the cause: the
+records carried the decision all along, and `packages/mica-sync/src/producers.ts`
+states it at the top of the file.
+
+What stands, and is still worth a P1 label, is the **consequence and the
+substitution trap**: nothing tied that scope decision to what it implies for
+protection, so a retention argument could reach for the 324 upstream `deb`
+objects as evidence that our packages are mirrored. The measurement is
+unchanged -- ghcr holds the only copy of every pool -- and the finding is now
+where it belongs: a decision's consequence, measurable by
+`cli.ts coverage`, not a defect in the mirror. **Mirroring the locks or the
+pools would reverse "not to be re-added" and is the user's call, not a phase
+this repository can start.**
+
 ## 2026-09-20 07:05 [BUG-P1]
 
 **The mirror protects one ghcr package, not "the ghcr packages".** Measured

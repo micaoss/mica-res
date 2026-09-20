@@ -8,6 +8,8 @@
 //   bun src/cli.ts reconcile                      the catalog against the locks
 //   bun src/cli.ts backfill --dir <tree>          republish artifact snapshots
 //   bun src/cli.ts mirrors                        the index mirror URLs, by digest
+//   bun src/cli.ts prunable                       three lists: named, prunable
+//                                                 and mirrored, prunable and not
 //   bun src/cli.ts packs [--repair]               every declared chunk under
 //                                                 its own manifest's name
 //   bun src/cli.ts image-pins                     which build-env releases a
@@ -42,6 +44,9 @@ import { parseSnapshotFile, windowOf } from './backfill.ts'
 import { fetchJson, fetchText, githubHeaders } from './fetch.ts'
 import { checkMirrors, mirrorEntries } from './mirrors.ts'
 import { manifestKey, missingChunks } from './packs.ts'
+import { parseLock } from './locks.ts'
+import { indexCoverage, namesOf, prunableReport } from './prunable.ts'
+import type { ReleaseNode } from './prunable.ts'
 import type { PackManifest } from './packs.ts'
 import { carriedOrigin } from './carry.ts'
 import { derivedPrefixes, reconcile, summary } from './reconcile.ts'
@@ -482,6 +487,72 @@ async function backfill(argv: string[]): Promise<void> {
 // Fetches every mirror URL the newest version index names and compares the
 // bytes' digest with the one the index states beside it -- the check a device
 // would do.
+// The prunable set across the workspace, as three lists and no opinion.
+async function prunable(): Promise<void> {
+  const home = process.env['MICA_RES_BASE'] ?? DEFAULT_BASE
+  const nodes: ReleaseNode[] = []
+  const missingLock: string[] = []
+
+  for (const repository of REPOSITORIES.filter(one => one !== 'mica' && one !== 'mica-res')) {
+    const releases = await fetchJson<{ tag_name: string, assets: { name: string, browser_download_url: string }[] }[]>(
+      `https://api.github.com/repos/micaoss/${repository}/releases?per_page=100`, githubHeaders())
+    for (const release of releases) {
+      const asset = release.assets.find(one => one.name === `${repository}.lock`)
+      if (asset === undefined) {
+        missingLock.push(`${repository} ${release.tag_name}`)
+        continue
+      }
+      const lock = parseLock(await fetchText(asset.browser_download_url, githubHeaders()))
+      const row = lock.rows.find((candidate: { kind: string }) => candidate.kind === 'release')!
+      // `release <repository> <tag> <commit>`: the tag carries the scope, and
+      // the identity a lock row names is `<repository>[.<scope>]/<release>`.
+      const tag = row.fields[2]!
+      const dot = tag.indexOf('.')
+      const id = dot < 0 ? `${repository}/${tag}` : `${repository}.${tag.slice(0, dot)}/${tag.slice(dot + 1)}`
+      nodes.push({ id, repository, tag, names: namesOf(lock) })
+    }
+  }
+
+  // Mirrored: a mica-build scoped release is mirrored when its product
+  // directory holds objects; a build-env release when its registry tag
+  // resolves. Producer releases (boards, core, Base, podman) publish their
+  // packages to their own ghcr pools, which this mirror does not hold by
+  // decision, so they are never "mirrored" and their bytes live upstream.
+  const mirrored = new Set<string>()
+  const held = await walkNamespace(home, 'mica')
+  for (const node of nodes) {
+    const scope = node.tag.includes('.') ? node.tag.slice(0, node.tag.indexOf('.')) : undefined
+    const stamp = node.tag.includes('.') ? node.tag.slice(node.tag.indexOf('.') + 1) : node.tag
+    if (node.repository === 'mica-build' && scope !== undefined && scope !== 'mica') {
+      if (held.some(object => object.key.startsWith(`mica/${scope}/${stamp}/`)))
+        mirrored.add(node.id)
+    }
+    else if (node.repository === 'mica-build-env') {
+      const answer = await fetch(`${home}/v2/micaoss/mica-build-env/manifests/base.${stamp}`, { headers: { accept: 'application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json' } })
+      if (answer.ok)
+        mirrored.add(node.id)
+    }
+  }
+
+  const report = prunableReport(nodes, mirrored)
+  const covered = indexCoverage(nodes)
+
+  console.log(`prunable: ${nodes.length} published releases carrying a lock${missingLock.length > 0 ? `, ${missingLock.length} without one (${missingLock.join(', ')})` : ''}`)
+  console.log(`\n1. NAMED BY A PUBLISHED LOCK -- not prunable (${report.named.length})`)
+  for (const one of report.named)
+    console.log(`  ${one.id.padEnd(38)} named by ${String(one.by.length).padStart(2)}: ${one.by.slice(0, 4).join(', ')}${one.by.length > 4 ? ', ...' : ''}`)
+  console.log(`\n2. NAMED BY NOTHING, AND MIRRORED -- prunable under the rule (${report.prunableMirrored.length})`)
+  for (const one of report.prunableMirrored)
+    console.log(`  ${one.id.padEnd(38)} ${one.repository} ${one.tag}${(covered.get(one.id) ?? []).length > 0 ? `  [named by ${(covered.get(one.id) ?? []).length} index(es)]` : ''}`)
+  console.log(`\n3. NAMED BY NOTHING, AND NOT MIRRORED (${report.prunableUnmirrored.length})`)
+  for (const one of report.prunableUnmirrored)
+    console.log(`  ${one.id.padEnd(38)} ${one.repository} ${one.tag}`)
+
+  console.log('\nINDEX COVERAGE -- how many indexes lose full verifiability if the release is deleted')
+  for (const [id, indexes] of [...covered.entries()].toSorted((a, b) => b[1].length - a[1].length))
+    console.log(`  ${id.padEnd(38)} ${String(indexes.length).padStart(2)} index(es): ${indexes.slice(0, 5).join(', ')}${indexes.length > 5 ? ', ...' : ''}`)
+}
+
 async function mirrors(): Promise<void> {
   const releases = await fetchJson<{ tag_name: string, assets: { name: string, browser_download_url: string }[] }[]>(
     'https://api.github.com/repos/micaoss/mica-build/releases?per_page=100', githubHeaders())
@@ -613,6 +684,9 @@ const [command, ...argv] = process.argv.slice(2)
 switch (command) {
   case 'sync':
     await sync(argv)
+    break
+  case 'prunable':
+    await prunable()
     break
   case 'mirrors':
     await mirrors()

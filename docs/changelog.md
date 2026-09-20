@@ -1,5 +1,37 @@
 # mica-res - Changelog
 
+## 2026-09-20 08:47 [progress]
+
+**The `data` row of spec 1.2.4 is implemented, and the refusal that demanded
+it was correct.** `mica-system-base 20260920-0832` is the first release
+carrying producer-data rows (`mica-system-base-unowned.amd64.tsv` and
+`.arm64.tsv`), and this reader refused its lock with `kind-unknown: data` --
+which failed the `prunable` step of run 35500009030 and is exactly what
+`mica:docs/design/release-lock.md` 1.2.4 says should happen: the release goes,
+the stale consumer fails loudly, and each consumer implements the row before
+its next re-pin. Implemented as the spec fixes it: four columns, the digest
+checked, `dataRows()` for reading.
+
+**Nothing is mirrored for it**, per the same section -- a reader that does not
+own the datum may assume the file exists in that release, hashes to that value,
+is needed for nothing, and is always safe to skip. Mirroring producer data is
+not in the accepted scope and the user's amendment covered locks and
+`SHA256SUMS` only, so `prunable` now COUNTS the rows instead of passing over
+them: `producer data assets named by those locks and mirrored by NOTHING (spec
+1.2.4, out of scope): 2`. Whether they should join the locks in the mirror is a
+question for the user, raised with `uj991oa2`.
+
+## 2026-09-20 08:42 [progress]
+
+**The window is real and it is minutes wide.** Twenty minutes after the
+product backlog was closed, reconcile reported two objects the locks name and
+the mirror lacks -- `lock 16/18`, because a consumer re-pinned and the lock
+phase follows pins live. Published in run 35500009030 (2 published, 16 already
+published), lock back to 18/18, reconcile 0 missing, audit clean over 1124
+objects. The same fact the 2026-09-22 proposal has to state: with a dry-run
+scheduled sync, "the mirror holds what the locks name" is true between an
+apply and the next release or re-pin, and false in the window after it.
+
 ## 2026-09-20 08:31 [progress]
 
 **The guard's predicate now asks its own question, of the bytes.** It used to

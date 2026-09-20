@@ -51,7 +51,7 @@ import { parseSnapshotFile, windowOf } from './backfill.ts'
 import { fetchJson, fetchText, githubHeaders } from './fetch.ts'
 import { checkMirrors, mirrorEntries } from './mirrors.ts'
 import { manifestKey, missingChunks } from './packs.ts'
-import { parseLock } from './locks.ts'
+import { dataRows, parseLock } from './locks.ts'
 import { coverageOf, lockCoverage, poolsCovered, staleness } from './coverage.ts'
 import { guard, parseCandidate } from './guard.ts'
 import { classifyGaps, frontierOf, missingSnapshots, pageWindow, spanOf } from './history.ts'
@@ -638,6 +638,10 @@ async function prunable(): Promise<void> {
   const home = process.env['MICA_RES_BASE'] ?? DEFAULT_BASE
   const nodes: ReleaseNode[] = []
   const missingLock: string[] = []
+  // Producer data assets (spec 1.2.4): named by a lock, mirrored by nothing,
+  // and out of the accepted scope. Counted rather than assumed away -- the
+  // mirror holding no copy of them is a fact someone should be able to read.
+  const data: string[] = []
 
   for (const repository of REPOSITORIES.filter(one => one !== 'mica' && one !== 'mica-res')) {
     const releases = await fetchJson<{ tag_name: string, assets: { name: string, browser_download_url: string }[] }[]>(
@@ -654,6 +658,8 @@ async function prunable(): Promise<void> {
       // either separator keys the same as the identity a lock row spells.
       const tag = row.fields[2]!
       nodes.push({ id: releaseId(repository, tag), repository, tag, names: namesOf(lock) })
+      for (const row of dataRows(lock))
+        data.push(`${repository} ${tag} ${row.file}`)
     }
   }
 
@@ -685,6 +691,11 @@ async function prunable(): Promise<void> {
   const covered = indexCoverage(nodes)
 
   console.log(`prunable: ${nodes.length} published releases carrying a lock${missingLock.length > 0 ? `, ${missingLock.length} without one (${missingLock.join(', ')})` : ''}`)
+  if (data.length > 0) {
+    console.log(`  producer data assets named by those locks and mirrored by NOTHING (spec 1.2.4, out of scope): ${data.length}`)
+    for (const one of data.slice(0, 6))
+      console.log(`    ${one}`)
+  }
   console.log(`\n1. NAMED BY A PUBLISHED LOCK -- not prunable (${report.named.length})`)
   for (const one of report.named)
     console.log(`  ${one.id.padEnd(38)} named by ${String(one.by.length).padStart(2)}: ${one.by.slice(0, 4).join(', ')}${one.by.length > 4 ? ', ...' : ''}`)

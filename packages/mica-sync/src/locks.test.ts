@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { parseLock, sourceRows, upstreamRows } from './locks.ts'
+import { dataRows, parseLock, sourceRows, upstreamRows } from './locks.ts'
 
 const header = '# mica-lock v1\n'
 const debRow = 'source\tbash\tamd64\t5.3.3-1\t' + 'a'.repeat(64) + '\thttps://snapshot.debian.org/archive/debian/20260905T000000Z/pool/main/b/bash/bash_5.3.3-1_amd64.deb\n'
@@ -44,4 +44,11 @@ test('refuses an unknown kind', () => {
 test('refuses a row whose sha256 is not lowercase hex', () => {
   const bad = debRow.replace('a'.repeat(64), 'A'.repeat(64))
   expect(() => parseLock(header + bad)).toThrow('field-value')
+})
+
+test('a data row is read, column-checked and digest-checked, and mirrors nothing', () => {
+  const lock = parseLock(['# mica-lock v1', 'data\tunowned-paths\tunowned-paths.json\t' + 'a'.repeat(64)].join('\n'))
+  expect(dataRows(lock)).toEqual([{ name: 'unowned-paths', file: 'unowned-paths.json', sha256: 'a'.repeat(64) }])
+  expect(() => parseLock(['# mica-lock v1', 'data\tunowned-paths\tunowned-paths.json'].join('\n'))).toThrow('column-count')
+  expect(() => parseLock(['# mica-lock v1', 'data\tunowned-paths\tunowned-paths.json\tNOTADIGEST'].join('\n'))).toThrow('field-value')
 })

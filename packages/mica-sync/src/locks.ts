@@ -34,10 +34,19 @@ const KINDS = new Set([
   'release', 'image', 'pool', 'package', 'board', 'upstream', 'apt',
   'input', 'origin', 'built', 'index', 'product', 'bundle', 'asset',
   'source',
+  // `data <name> <file> <sha256>`: one producer-data release asset (spec
+  // 1.2.4, user 2026-09-20). The spec is explicit about what a reader that
+  // does not understand a `data` row may assume -- that the file exists in
+  // that release and hashes to that value, that it is needed for nothing, and
+  // that skipping it is always safe -- so this reader validates the row and
+  // mirrors nothing. Mirroring producer data is not in the accepted scope; it
+  // is a question for the user, and `prunable` counts the rows so the absence
+  // is visible rather than assumed.
+  'data',
 ])
 
 // Only the kinds mica-res reads are column-checked.
-const COLUMNS: Record<string, number> = { source: 6, upstream: 7, image: 5, git: 5, asset: 6 }
+const COLUMNS: Record<string, number> = { source: 6, upstream: 7, image: 5, git: 5, asset: 6, data: 4 }
 
 const SHA256 = /^[0-9a-f]{64}$/
 const COMMIT = /^[0-9a-f]{40}$/
@@ -66,11 +75,25 @@ export function parseLock(text: string): Lock {
       refuse('field-value', `${kind} ${fields[1]} has no lowercase sha256`)
     if (kind === 'asset' && !SHA256.test(fields[5]!))
       refuse('field-value', `asset ${fields[4]} has no lowercase sha256`)
+    if (kind === 'data' && !SHA256.test(fields[3]!))
+      refuse('field-value', `data ${fields[1]} has no lowercase sha256`)
     if (kind === 'git' && !COMMIT.test(fields[4]!))
       refuse('field-value', `git ${fields[1]} has no commit`)
     rows.push({ kind, fields })
   }
   return { rows }
+}
+
+export interface DataRow {
+  name: string
+  file: string
+  sha256: string
+}
+
+export function dataRows(lock: Lock): DataRow[] {
+  return lock.rows
+    .filter(row => row.kind === 'data')
+    .map(row => ({ name: row.fields[1]!, file: row.fields[2]!, sha256: row.fields[3]! }))
 }
 
 export function sourceRows(lock: Lock): SourceRow[] {

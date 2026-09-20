@@ -179,3 +179,14 @@ Designing the public resource framework and the Worker refactor
   the chain from the mirror would end at the lock, whose `package` rows point
   into pools nothing mirrors. It makes the BINDING survivable, not the
   packages.
+- 2026-09-20 07:02 (agent/x32539az, on the coordinator's "build it")
+  **`cli.ts guard`: the retention constraint as a check that retires itself.**
+  A candidate `<owner>/<package>:<tag>` is refused while nothing but ghcr holds
+  its bytes, and the condition is read off the published index every run, so
+  the pool refusals end by themselves the day a `package` or `pool` row exists.
+  Unrecognised tag family -> refusal. Build-env releases are allowed only where
+  the mirror holds that release's blobs. `image.*`/`update.*` are refused with
+  the byte-form distinction stated. Exit 1 on any refusal; `sync.yml` runs it
+  against `docs/retention/candidates.txt`, whose absence means nothing is
+  proposed. The 2026-09-22 proposal is written against this gate, not beside
+  it.

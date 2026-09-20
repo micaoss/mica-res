@@ -1,6 +1,6 @@
 # mica-res - Changelog
 
-## 2026-09-20 07:12 [progress]
+## 2026-09-20 07:02 [progress]
 
 **The prune refusal that retires itself.** `cli.ts guard` (new, in `sync.yml`)
 takes prune candidates as `<owner>/<package>:<tag>` and answers one verdict

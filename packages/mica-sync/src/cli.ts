@@ -45,7 +45,7 @@ import { fetchJson, fetchText, githubHeaders } from './fetch.ts'
 import { checkMirrors, mirrorEntries } from './mirrors.ts'
 import { manifestKey, missingChunks } from './packs.ts'
 import { parseLock } from './locks.ts'
-import { indexCoverage, namesOf, prunableReport } from './prunable.ts'
+import { indexCoverage, namesOf, prunableReport, releaseId } from './prunable.ts'
 import type { ReleaseNode } from './prunable.ts'
 import type { PackManifest } from './packs.ts'
 import { carriedOrigin } from './carry.ts'
@@ -504,12 +504,10 @@ async function prunable(): Promise<void> {
       }
       const lock = parseLock(await fetchText(asset.browser_download_url, githubHeaders()))
       const row = lock.rows.find((candidate: { kind: string }) => candidate.kind === 'release')!
-      // `release <repository> <tag> <commit>`: the tag carries the scope, and
-      // the identity a lock row names is `<repository>[.<scope>]/<release>`.
+      // Both sides of the join go through `releaseId`, so a tag written with
+      // either separator keys the same as the identity a lock row spells.
       const tag = row.fields[2]!
-      const dot = tag.indexOf('.')
-      const id = dot < 0 ? `${repository}/${tag}` : `${repository}.${tag.slice(0, dot)}/${tag.slice(dot + 1)}`
-      nodes.push({ id, repository, tag, names: namesOf(lock) })
+      nodes.push({ id: releaseId(repository, tag), repository, tag, names: namesOf(lock) })
     }
   }
 
@@ -521,8 +519,11 @@ async function prunable(): Promise<void> {
   const mirrored = new Set<string>()
   const held = await walkNamespace(home, 'mica')
   for (const node of nodes) {
-    const scope = node.tag.includes('.') ? node.tag.slice(0, node.tag.indexOf('.')) : undefined
-    const stamp = node.tag.includes('.') ? node.tag.slice(node.tag.indexOf('.') + 1) : node.tag
+    // Read back from the normalised identity rather than from the tag, so a
+    // slash-form release is looked up in the mirror under the same scope and
+    // stamp as a dot-form one.
+    const [left, stamp] = node.id.split('/') as [string, string]
+    const scope = left.includes('.') ? left.slice(left.indexOf('.') + 1) : undefined
     if (node.repository === 'mica-build' && scope !== undefined && scope !== 'mica') {
       if (held.some(object => object.key.startsWith(`mica/${scope}/${stamp}/`)))
         mirrored.add(node.id)

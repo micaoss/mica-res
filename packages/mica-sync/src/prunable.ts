@@ -26,6 +26,29 @@ export interface PrunableReport {
   prunableUnmirrored: ReleaseNode[]
 }
 
+/**
+ * THE ONE NORMALISED FORM, and every identity on both sides of the join is
+ * built through this function.
+ *
+ * A lock row spells a scoped input as `mica-build.cx3576` with the stamp in a
+ * separate field; a release tag spells the same thing as `cx3576.20260915-2230`
+ * or, before 2026-09-16, `cx3576/20260915-2230`. Keying the release by its tag
+ * verbatim produced `mica-build/cx3576/20260915-2230` against the row's
+ * `mica-build.cx3576/20260915-2230`, and THE JOIN SILENTLY FOUND NOTHING --
+ * two releases a published index names were reported as named by nobody.
+ *
+ * The chosen form is the row's: `<repository>.<scope>/<stamp>`, with
+ * `<repository>/<stamp>` when a release has no scope. A tag is split on either
+ * separator, so both tag forms normalise to it.
+ */
+export function releaseId(repository: string, tag: string): string {
+  const match = /^(?:(.+)[./])?([0-9]{8}-[0-9]{4})$/.exec(tag)
+  if (match === null)
+    throw new Error(`field-value: ${repository} ${tag} is not a release tag`)
+  const scope = match[1]
+  return scope === undefined ? `${repository}/${match[2]}` : `${repository}.${scope}/${match[2]}`
+}
+
 /** Every release identity a lock names: its inputs, its builts, its images. */
 export function namesOf(lock: Lock): string[] {
   const names = new Set<string>()

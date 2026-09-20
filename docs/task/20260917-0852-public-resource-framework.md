@@ -280,3 +280,22 @@ Designing the public resource framework and the Worker refactor
   outside the workspace fetched them is still unanswered (the analytics query
   is refused for want of `zone.analytics.read`). Deleting them is the user's
   call either way; the workspace evidence is that nothing here reads them.
+- 2026-09-20 16:25 (agent/x32539az, with coordinator `uj991oa2`) **The order
+  the bucket deletions run in, recorded before anyone runs them.**
+  1. The user grants R2 write (or deletes the prefixes themselves).
+  2. **List the `blob/` prefix.** The 8.0 GiB figure is what the retired v1
+     index ENUMERATES, and the bucket cannot be listed from here, so the real
+     figure can only be larger. Listing settles it and checks the delete list
+     against something other than the rendering being retired -- nobody should
+     delete from a description of the thing being deleted.
+  3. Delete `blob/` and `index/`.
+  `carry.ts`'s carry-forward probe is deleted **in the same commit as the
+  objects**, not before and not after: a check removed before the thing it
+  checks leaves a window in which nothing watches, and one removed after leaves
+  a check that must fail. The same commit is the only safe moment.
+- 2026-09-20 16:25 (agent/x32539az) **A data artefact's readers are not all in
+  the code.** I reported three readers of the index document after grepping the
+  TypeScript; there were five, because two were `jq` inside `sync.yml`. A
+  search space chosen by file type is an aperture like any other, and a
+  workflow step is a reader nobody greps for. Both were retired by deriving
+  their tags and digests from the producers' locks instead.

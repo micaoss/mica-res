@@ -40,8 +40,17 @@ jobs:
           }' > /tmp/query.json
           curl -sS -H "authorization: Bearer ${CLOUDFLARE_API_TOKEN}" -H 'content-type: application/json' \
             --data @/tmp/query.json https://api.cloudflare.com/client/v4/graphql > /tmp/answer.json
-          jq -r '.errors // empty | .[] | "API error: \(.message)"' /tmp/answer.json
+          # An API error is not an empty result, and the first version of this
+          # step printed "none in the window" underneath one: the same
+          # substitution this repository spent the day catching, in the script
+          # written to answer a question about it. A refused query answers
+          # nothing and must not look like a zero.
+          if jq -e '.errors // [] | length > 0' /tmp/answer.json >/dev/null; then
+            jq -r '.errors[] | "API error: \(.message)"' /tmp/answer.json
+            echo 'the query was refused, so this run says NOTHING about who reads the index'
+            exit 1
+          fi
           echo '--- paths under /index/ ---'
-          jq -r '[.data.viewer.zones[0].httpRequestsAdaptiveGroups[]? | select(.dimensions.clientRequestPath | startswith("/index/"))] | if length == 0 then "none in the window" else (.[] | "\(.count)\t\(.dimensions.clientRequestPath)") end' /tmp/answer.json
+          jq -r '[.data.viewer.zones[0].httpRequestsAdaptiveGroups[]? | select(.dimensions.clientRequestPath | startswith("/index/"))] | if length == 0 then "no request in the window" else (.[] | "\(.count)\t\(.dimensions.clientRequestPath)") end' /tmp/answer.json
           echo '--- the ten most requested paths, for scale ---'
           jq -r '[.data.viewer.zones[0].httpRequestsAdaptiveGroups[]?] | sort_by(-.count) | .[0:10][] | "\(.count)\t\(.dimensions.clientRequestPath)"' /tmp/answer.json

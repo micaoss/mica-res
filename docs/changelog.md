@@ -1,6 +1,6 @@
 # mica-res - Changelog
 
-## 2026-09-20 07:14 [BUG-P2]
+## 2026-09-20 07:11 [BUG-P2]
 
 **And the corrected frontier was still one pass too tight.** Using the last
 pass's own stamp left two `mica` runs as holes that concluded 70 and 14

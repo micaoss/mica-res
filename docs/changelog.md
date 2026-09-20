@@ -1,6 +1,6 @@
 # mica-res - Changelog
 
-## 2026-09-20 20:44 [progress]
+## 2026-09-20 20:37 [progress]
 
 `readers` now prints what the root CONTAINED, not only what it excluded
 (coordinator `uj991oa2`'s suggestion, taken): `searched 11 top-level

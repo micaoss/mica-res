@@ -1,6 +1,6 @@
 # mica-res - Changelog
 
-## 2026-09-20 21:02 [progress]
+## 2026-09-20 20:44 [progress]
 
 **A code sweep is the wrong instrument for a publicly served object, by
 construction.** `edge/http.ts` and `edge/s3.ts` serve ANY key taken from the

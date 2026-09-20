@@ -180,6 +180,8 @@ async function refuseRegression(document: IndexDocument): Promise<void> {
     return
   }
   const held = await heldObjects()
+  for (const row of held.unusable)
+    console.log(`  catalogue row the reader cannot describe: ${row.why}`)
   const before = summarise(held.objects)
   const after = new Map(summarise(document.objects).map(row => [row.kind, row.count]))
   for (const row of before) {
@@ -539,6 +541,14 @@ async function guardCandidates(argv: string[]): Promise<void> {
     return
   }
   const catalogue = await heldObjects()
+  // A verdict that ALLOWS a deletion is only as good as the picture it was
+  // read from, so an incomplete catalogue is a refusal here rather than a
+  // footnote. `packs --repair` is what closes it.
+  if (catalogue.unusable.length > 0) {
+    for (const row of catalogue.unusable)
+      console.log(`  ${row.why}`)
+    throw new Error(`catalogue-incomplete: ${catalogue.unusable.length} object(s) the reader cannot describe; no candidate can be cleared against a picture with holes in it`)
+  }
   const answer = coverageOf(catalogue.objects)
   const verdicts = guard(words.map(parseCandidate), answer)
   for (const one of verdicts) {
@@ -559,6 +569,8 @@ async function coverage(): Promise<void> {
   const catalogue = await heldObjects()
   const answer = coverageOf(catalogue.objects)
   console.log(`coverage of the catalogue: ${catalogue.objects.length} objects across ${catalogue.namespaces.join(', ')}`)
+  for (const row of catalogue.unusable)
+    console.log(`  NOT COUNTED, the reader cannot describe it: ${row.why}`)
   console.log('  ghcr packages whose bytes the mirror holds:')
   for (const [name, count] of [...answer.registry].toSorted())
     console.log(`    ${name.padEnd(30)} ${count} objects`)

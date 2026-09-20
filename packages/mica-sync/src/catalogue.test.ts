@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { objectFromRow } from './catalogue.ts'
+import { objectFromRow, readCatalogue } from './catalogue.ts'
 import { coverageOf, poolsCovered } from './coverage.ts'
 
 test('an object carries the fields the index carried, and is always mirrored', () => {
@@ -23,4 +23,17 @@ test('an object carries the fields the index carried, and is always mirrored', (
 test('an object with no kind in its metadata is refused, not bucketed', () => {
   expect(() => objectFromRow('mica', { path: 'x', sha256: 'b'.repeat(64), size: 1, meta: {} }))
     .toThrow('meta-kind')
+})
+
+test('a row the reader cannot describe is reported, not thrown, so a repair can still run', async () => {
+  const rows = [
+    { path: 'git/x/abc.pack.00', sha256: 'a'.repeat(64), size: 1, meta: {} },
+    { path: 'deb/bash.deb', sha256: 'b'.repeat(64), size: 2, meta: { kind: 'deb' } },
+  ]
+  const publisher = { base: 'https://example.invalid', token: 'x', fetcher: (async () => new Response(JSON.stringify({ data: rows }))) as unknown as typeof fetch }
+  const answer = await readCatalogue(publisher, ['upstream', 'status'])
+  expect(answer.objects).toHaveLength(1)
+  expect(answer.unusable).toHaveLength(1)
+  expect(answer.unusable[0]!.key).toBe('upstream/git/x/abc.pack.00')
+  expect(answer.namespaces).toEqual(['upstream'])
 })

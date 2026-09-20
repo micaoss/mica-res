@@ -1,5 +1,18 @@
 # mica-res - Changelog
 
+## 2026-09-20 14:27 [BUG-P2]
+
+**And the refusal blocked its own repair.** `readCatalogue` threw on the
+kindless chunk, so the sync's regression check failed before the `packs
+--repair` step could run: the check that finds the problem prevented the fix.
+The reader is shared, so it now REPORTS what it cannot describe
+(`unusable: { key, why }[]`) and each caller decides whether it can answer
+with those outstanding -- `coverage` prints them and counts what it can, the
+regression check prints them and proceeds, and **the guard refuses outright**,
+because a verdict that ALLOWS a deletion is only as good as the picture it was
+read from. A gate reading a catalogue with holes in it is the cached-404
+mistake in a different costume: absence read as an answer.
+
 ## 2026-09-20 14:20 [BUG-P2]
 
 **The catalogue reader's refusal found an object the mirror holds and cannot

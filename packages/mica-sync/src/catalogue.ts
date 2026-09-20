@@ -52,15 +52,28 @@ export function objectFromRow(namespace: string, row: CatalogueRow): ResourceObj
 export interface Catalogue {
   objects: ResourceObject[]
   namespaces: string[]
+  // Rows the reader cannot describe. Reported rather than thrown, because the
+  // reader is shared: refusing inside it blocked the very command that repairs
+  // the row it refused on. Each caller decides whether it can answer with
+  // these outstanding -- a report can, a gate that would ALLOW a deletion
+  // cannot.
+  unusable: { key: string, why: string }[]
 }
 
 export async function readCatalogue(publisher: Publisher, namespaces: string[]): Promise<Catalogue> {
   const objects: ResourceObject[] = []
   const walked: string[] = []
+  const unusable: { key: string, why: string }[] = []
   for (const namespace of namespaces.filter(name => !OURS.has(name))) {
     walked.push(namespace)
-    for (const row of await listCatalogue(publisher, namespace))
-      objects.push(objectFromRow(namespace, row))
+    for (const row of await listCatalogue(publisher, namespace)) {
+      try {
+        objects.push(objectFromRow(namespace, row))
+      }
+      catch (error) {
+        unusable.push({ key: `${namespace}/${row.path}`, why: error instanceof Error ? error.message : String(error) })
+      }
+    }
   }
-  return { objects, namespaces: walked }
+  return { objects, namespaces: walked, unusable }
 }

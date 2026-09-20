@@ -1,5 +1,43 @@
 # mica-res - Changelog
 
+## 2026-09-20 14:30 [BUG-P1]
+
+**The outside-readers query was refused, and the first version of the step
+printed a zero underneath the refusal.** `CLOUDFLARE_API_TOKEN` cannot read
+zone analytics (`does not have permission
+'com.cloudflare.api.account.zone.analytics.read' for zone micaos.dev`), and the
+step still printed `none in the window` because the error check only logged and
+carried on. **That is the exact substitution this repository spent the day
+catching -- a refused query rendered as an empty result -- committed in the
+script written to answer a question about aperture.** Fixed: any `errors`
+member fails the step with "the query was refused, so this run says NOTHING
+about who reads the index" and exit 1.
+
+So the question is unanswered, not answered negatively. Answering it needs the
+user to grant Zone Analytics:Read to that token (or issue a second one);
+`.github/workflows/index-readers.yml` is dispatch-only and waiting, and is to
+be deleted once the answer is recorded. The claim it could then make is scoped
+to the dataset's retention window -- "no request in the last N days", never
+"nothing reads it".
+
+## 2026-09-20 14:28 [BUG-P2]
+
+**The pack production path published bytes under a name and nothing else, the
+same omission the hand repair made, in the NORMAL route.** Looking for other
+paths that write less than the main one (the coordinator's question) found it
+immediately: `mirrorTree` published every chunk and the manifest with no
+`meta`, while the main sync path passes `objectMeta(object)`. Only one object
+showed up as kindless in the catalogue because every existing pack predates the
+cutover and was imported WITH its metadata -- the next pack produced would have
+landed blind. `packObjects` is now built before the publish and each item
+carries its object's metadata.
+
+Also checked and deliberately left: the `status` namespace publishes carry no
+object metadata, and the catalogue reader excludes `status`, `brand` and `docs`
+for the same reason `reconcile` does -- the collector's snapshots are not
+objects any producer lock names, and giving them a `kind` would invent
+vocabulary to satisfy a reader that never asks.
+
 ## 2026-09-20 14:11 [BUG-P2]
 
 **And the refusal blocked its own repair.** `readCatalogue` threw on the

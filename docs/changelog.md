@@ -1,5 +1,15 @@
 # mica-res - Changelog
 
+## 2026-09-20 14:12 [progress]
+
+The first catalogue read failed on the metadata's shape, and reading the route
+settled it rather than guessing: `resource.routes.ts` answers
+`meta: JSON.parse(r.meta)`, so the column's text arrives already parsed as an
+object -- with `pins` still a JSON string inside it, because that is what
+`objectMeta` wrote. The reader takes it as the route gives it; no shape is
+accepted "just in case", since a reader that tolerates two shapes cannot say
+which one it got.
+
 ## 2026-09-20 14:03 [BUG-P1]
 
 **The stale index was an old-version dependency, and the two commands that

@@ -83,8 +83,11 @@ export interface CatalogueRow {
   sha256: string
   size: number
   // The metadata the publisher wrote (`objectMeta`) and the v1 import carried
-  // over unchanged: `kind`, `origin`, `commit` and `pins` as a JSON string.
-  meta?: string
+  // over unchanged: `kind`, `origin`, `commit`, and `pins` as a JSON STRING
+  // inside it. The route parses the stored column before answering
+  // (`resource.routes.ts`: `meta: JSON.parse(r.meta)`), so this arrives as an
+  // object with one string member that is itself JSON.
+  meta?: Record<string, string>
 }
 
 /** Every object of a namespace as the service records it, metadata included. */

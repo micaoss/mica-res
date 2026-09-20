@@ -28,7 +28,7 @@ function refuse(rule: string, detail: string): never {
 }
 
 export function objectFromRow(namespace: string, row: CatalogueRow): ResourceObject {
-  const meta = row.meta === undefined || row.meta === '' ? {} : JSON.parse(row.meta) as Record<string, string>
+  const meta = row.meta ?? {}
   const kind = meta['kind']
   // An object of unknown kind would be counted as "held" by a coverage answer
   // that cannot say what it is. Refused rather than bucketed as "other": a

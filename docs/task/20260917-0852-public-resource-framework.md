@@ -262,3 +262,21 @@ Designing the public resource framework and the Worker refactor
   that found the pack-metadata defect was likewise the generic one -- which
   publishers exist, and do they all write the same thing -- not a class named
   after the first instance.
+- 2026-09-20 16:14 (agent/x32539az, user decision) **The published index
+  document is retired.** The user decided it: one description of what the
+  mirror holds, not two. The rendering, `src/index-doc.ts`, the `--out` of
+  `sync`, the `index --check` subcommand and the sync artifact are gone, and
+  the two CI steps that read the snapshot now derive their tags and digests
+  from the producers' locks (`cli.ts registry-tags`) -- the source the index
+  only ever rendered. Verified in run 35522067089.
+  **Two deletions remain and neither is in this repository's power:** the
+  `index/` objects still in the bucket, and the 535 v1 `blob/<aa>/<sha256>`
+  copies (8.0 GiB, every one also held under a readable key with the same
+  digest, 0 objects whose only copy is the old key). `MICA_RES_TOKEN` has no
+  delete route by design and `CLOUDFLARE_API_TOKEN` lacks the permissions
+  tested so far, so the user either grants R2 write or deletes the two prefixes
+  themselves.
+  **One thing worth knowing before the `index/` objects go:** whether anything
+  outside the workspace fetched them is still unanswered (the analytics query
+  is refused for want of `zone.analytics.read`). Deleting them is the user's
+  call either way; the workspace evidence is that nothing here reads them.

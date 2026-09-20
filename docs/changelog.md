@@ -1,6 +1,6 @@
 # mica-res - Changelog
 
-## 2026-09-20 15:57 [progress]
+## 2026-09-20 16:14 [progress]
 
 **The index document is gone: one description of the mirror, not two** (user,
 2026-09-20). Nothing rendered it for anyone -- the three commands that read it

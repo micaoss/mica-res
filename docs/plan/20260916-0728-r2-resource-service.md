@@ -269,6 +269,62 @@ files, a far larger set than three rows suggests (mica-build-env,
 mirrored: the image is built once, when a build-env release is cut, and every
 consumer takes it by digest afterwards.
 
+## Counting, with units
+
+**44 keys and 43 digests, and both numbers keep their meaning.** The contract
+requires 44 keys for the git packs (13 manifests plus 31 chunk names); the
+bucket stores 43 byte strings, because the first chunk of the two `uefi-*`
+packs coincides and one object carries two names. `492 + 44 = 536` answers
+"what must resolve"; `492 + 43 = 535` answers "how many distinct objects". A
+bare 43 or 44 is wrong for whichever question the reader is not asking, so
+**state the unit**.
+
+The gap between those two numbers was a defect -- `uefi-x64-kernel pack.00`
+was a name the catalogue never carried -- and it was first explained away here
+as a counting difference. **The number that disagrees with your model is worth
+more than the explanation that makes it go away.**
+
+## What the carry-forward actually saves
+
+Measured, not assumed: during the restoration it satisfied almost every object
+from bytes the bucket already held; on a normal release it saves **nothing**
+(12 published, 0 carried, 12 fetched, then 4 and 0 and 4). It is a restoration
+optimisation, not a general one.
+
+## The lag is the steady state
+
+The mirror trails a release by one sync cycle, and the reconciliation
+regularly catches mica-build mid-cut with a handful of objects named and not
+yet mirrored. A mirror URL that answers 404 is therefore "not mirrored yet"
+and reported; only a 200 whose bytes hash to something else is refused.
+
+## Someone should still do what a consumer does
+
+Three automated checks answered honestly about the object set on 2026-09-19
+and none of them was about the contract; an outside reader following the
+consumer contract by hand found in ten minutes, with no credential, what none
+of them could express. The contract walk is automated now (`cli.ts packs`) and
+the practice stays: **the next gap will be in whatever the checks are not
+about either.**
+
+## The prunable set, and why the number is trustworthy
+
+`cli.ts prunable` derives it on every sync: a release is prunable only if **no
+published lock names it** and **it is mirrored**. As of 2026-09-20: **34
+protected, 0 prunable, 20 named by nothing**, none of the 20 one of our own
+build outputs. Above the rule sits `mica:docs/design/release-lock.md` 2.1, so
+the number that decides a deletion is the index-coverage table.
+
+**A query that returns a tidy answer is indistinguishable from one that
+returns the right answer.** This one returned 30 / 0 / 24 and looked complete;
+four entries were wrong, and it took someone reading a lock by hand to find
+it. Fixing the class then found a fifth error nobody had looked for.
+
+**A join is a claim that two spellings mean the same thing, and it should be
+made in exactly one place.** The separator in the data was matched; the
+separator in the key was not -- a rule that does not depend on the thing being
+a tag.
+
 ## Risks
 
 - The repository secrets are only reachable from a workflow, so every

@@ -33,3 +33,17 @@ export function spanOf(keys: string[], startedAt: Map<string, string>): { from: 
   const to = stamps.at(-1)!
   return { from, to, days: Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) }
 }
+
+// A concluded run without a snapshot is not automatically lost history: the
+// collector runs on a schedule, so every run that started after its last pass
+// is still waiting to be collected. Only a run OLDER than that frontier is a
+// hole -- a pass that ran and missed it, or never ran at all.
+export function classifyGaps(gaps: Gap[], frontier: string | undefined): { lag: Gap[], holes: Gap[] } {
+  if (frontier === undefined)
+    return { lag: [], holes: gaps }
+  const edge = Date.parse(frontier)
+  return {
+    lag: gaps.filter(gap => Date.parse(gap.startedAt) > edge),
+    holes: gaps.filter(gap => Date.parse(gap.startedAt) <= edge),
+  }
+}

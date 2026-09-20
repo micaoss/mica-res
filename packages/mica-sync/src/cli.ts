@@ -47,7 +47,7 @@ import { fetchJson, fetchText, githubHeaders } from './fetch.ts'
 import { checkMirrors, mirrorEntries } from './mirrors.ts'
 import { manifestKey, missingChunks } from './packs.ts'
 import { parseLock } from './locks.ts'
-import { missingSnapshots, spanOf } from './history.ts'
+import { classifyGaps, missingSnapshots, spanOf } from './history.ts'
 import type { ApiRunLite, Gap } from './history.ts'
 import { indexCoverage, namesOf, prunableReport, releaseId } from './prunable.ts'
 import type { ReleaseNode } from './prunable.ts'
@@ -515,9 +515,12 @@ async function history(): Promise<void> {
   const bytes = held.reduce((total, object) => total + object.size, 0)
   console.log(`history: ${runKeys.length} run snapshots in the bucket (${(bytes / 1048576).toFixed(1)} MiB in ${held.length} objects)`)
   console.log(`  span of the snapshots GitHub still lists: ${span === undefined ? 'none' : `${span.from} .. ${span.to} (${span.days} days)`}`)
+  const { lag, holes } = classifyGaps(gaps, span?.to)
   console.log(`  concluded runs GitHub lists now: ${concluded}; without a snapshot: ${gaps.length}`)
-  for (const gap of gaps.slice(0, 10))
-    console.log(`  GAP ${gap.repository} ${gap.id} started ${gap.startedAt}`)
+  console.log(`  of those, started after the last collector pass (lag, not loss): ${lag.length}`)
+  console.log(`  HOLES (older than the last pass and never collected): ${holes.length}`)
+  for (const gap of holes.slice(0, 20))
+    console.log(`  HOLE ${gap.repository} ${gap.id} started ${gap.startedAt}`)
   for (const name of ['status/current.json', 'status/health.json'])
     console.log(`  ${name}: ${keys.has(name) ? 'present' : 'MISSING'}`)
 }

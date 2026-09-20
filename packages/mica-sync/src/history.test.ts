@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { missingSnapshots, spanOf } from './history.ts'
+import { classifyGaps, missingSnapshots, spanOf } from './history.ts'
 
 const held = new Set(['status/runs/mica-build/1.json', 'status/runs/mica-build/2.json'])
 
@@ -20,4 +20,19 @@ test('the span is read from the snapshots that exist, not from the window asked 
     days: 0,
   })
   expect(spanOf([], new Map())).toBeUndefined()
+})
+
+test('a run newer than the last collector pass is lag, an older one is a hole', () => {
+  const gaps = [
+    { repository: 'mica', id: 1, startedAt: '2026-09-20T06:00:00Z' },
+    { repository: 'mica', id: 2, startedAt: '2026-09-19T06:00:00Z' },
+  ]
+  const answer = classifyGaps(gaps, '2026-09-20T01:00:00Z')
+  expect(answer.lag.map(gap => gap.id)).toEqual([1])
+  expect(answer.holes.map(gap => gap.id)).toEqual([2])
+})
+
+test('with nothing collected yet every gap is a hole', () => {
+  const gaps = [{ repository: 'mica', id: 1, startedAt: '2026-09-20T06:00:00Z' }]
+  expect(classifyGaps(gaps, undefined).holes).toHaveLength(1)
 })

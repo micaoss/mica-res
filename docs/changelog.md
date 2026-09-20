@@ -1,5 +1,17 @@
 # mica-res - Changelog
 
+## 2026-09-20 08:21 [BUG-P2]
+
+**The lock walk used raw `fetch` and gave up a whole enumeration on one
+ECONNRESET.** `fetchText` has carried the retry policy from the start -- retry
+what means later, refuse what means no -- but the two reads that need to see a
+404 (the pins listing, and a release's `SHA256SUMS`) called `fetch` directly to
+keep that distinction, and so opted out of the retries as well. One reset
+socket from this container aborted the walk. `fetchAllowing404` now gives both
+back: a 404 is returned as absence and never retried, a reset or a 429 or a
+5xx is asked again with backoff, and a 403 is still a refusal. The caller no
+longer has to choose between handling absence and surviving a transient.
+
 ## 2026-09-20 08:05 [BUG-P1]
 
 **THE PUBLISHED INDEX HAS NOT MOVED SINCE 2026-09-16 AND NOTHING PUBLISHES

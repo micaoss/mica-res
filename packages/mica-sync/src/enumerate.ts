@@ -1,7 +1,7 @@
 // The set of objects the bucket should hold, derived from the producers' locks
 // and releases exactly as a consumer reads them.
 
-import { fetchText, githubHeaders, rawUrl } from './fetch.ts'
+import { fetchAllowing404, fetchText, githubHeaders, rawUrl } from './fetch.ts'
 import { enumerateImages } from './ghcr.ts'
 import { gitRows, parseLock, sourceRows, upstreamRows } from './locks.ts'
 import type { Lock } from './locks.ts'
@@ -43,29 +43,27 @@ export async function enumerateLocks(): Promise<ResourceObject[]> {
   const objects: ResourceObject[] = []
   const sums = new Map<string, string>()
   for (const holder of PIN_HOLDERS) {
-    const listing = await fetch(`https://api.github.com/repos/micaoss/${holder}/contents/locks/pins`, { headers: githubHeaders() })
     // A repository that keeps no pins is not a defect: mica-build-env pins
     // nothing, it only publishes.
-    if (listing.status === 404)
+    const listing = await fetchAllowing404(`https://api.github.com/repos/micaoss/${holder}/contents/locks/pins`, githubHeaders())
+    if (listing === undefined)
       continue
-    if (!listing.ok)
-      throw new Error(`pins-listing: ${listing.status} for ${holder}`)
-    for (const entry of await listing.json() as { name: string, path: string }[]) {
+    for (const entry of JSON.parse(listing) as { name: string, path: string }[]) {
       if (!entry.name.endsWith('.pin'))
         continue
       const pin = parsePin(await fetchText(rawUrl(holder, entry.path)))
       const tag = tagOf(pin)
       const key = `${pin.repository}/${tag}`
       if (!sums.has(key)) {
-        const answer = await fetch(`https://github.com/micaoss/${pin.repository}/releases/download/${tag}/SHA256SUMS`, { headers: githubHeaders() })
         // A pin can name a release whose assets are still being attached, or
         // one cut and not yet published. Skipped loudly, picked up next run --
         // the same rule the product assets follow.
-        if (!answer.ok) {
-          console.log(`  skipped ${key}: SHA256SUMS answers ${answer.status}`)
+        const answer = await fetchAllowing404(`https://github.com/micaoss/${pin.repository}/releases/download/${tag}/SHA256SUMS`, githubHeaders())
+        if (answer === undefined) {
+          console.log(`  skipped ${key}: the release has no SHA256SUMS attached yet`)
           continue
         }
-        sums.set(key, await answer.text())
+        sums.set(key, answer)
       }
       objects.push(...lockObjects({ repository: holder, pin: entry.path }, pin, sums.get(key)!))
     }

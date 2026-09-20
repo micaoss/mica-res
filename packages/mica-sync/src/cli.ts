@@ -8,6 +8,8 @@
 //   bun src/cli.ts reconcile                      the catalog against the locks
 //   bun src/cli.ts backfill --dir <tree>          republish artifact snapshots
 //   bun src/cli.ts mirrors                        the index mirror URLs, by digest
+//   bun src/cli.ts history                        is the run history in the
+//                                                 bucket, and is it unbroken?
 //   bun src/cli.ts prunable                       three lists: named, prunable
 //                                                 and mirrored, prunable and not
 //   bun src/cli.ts packs [--repair]               every declared chunk under
@@ -45,6 +47,8 @@ import { fetchJson, fetchText, githubHeaders } from './fetch.ts'
 import { checkMirrors, mirrorEntries } from './mirrors.ts'
 import { manifestKey, missingChunks } from './packs.ts'
 import { parseLock } from './locks.ts'
+import { missingSnapshots, spanOf } from './history.ts'
+import type { ApiRunLite, Gap } from './history.ts'
 import { indexCoverage, namesOf, prunableReport, releaseId } from './prunable.ts'
 import type { ReleaseNode } from './prunable.ts'
 import type { PackManifest } from './packs.ts'
@@ -487,6 +491,37 @@ async function backfill(argv: string[]): Promise<void> {
 // Fetches every mirror URL the newest version index names and compares the
 // bytes' digest with the one the index states beside it -- the check a device
 // would do.
+// How much run history the bucket holds, over what span, and whether the
+// series has a gap. Read-only and token-free: the status listings are public.
+async function history(): Promise<void> {
+  const home = process.env['MICA_RES_BASE'] ?? DEFAULT_BASE
+  const held = await walkNamespace(home, 'status')
+  const keys = new Set(held.map(object => object.key))
+  const runKeys = held.filter(object => /^status\/runs\//.test(object.key))
+
+  const gaps: Gap[] = []
+  const stamps = new Map<string, string>()
+  let concluded = 0
+  for (const repository of REPOSITORIES) {
+    const runs = await fetchJson<{ workflow_runs: ApiRunLite[] }>(
+      `https://api.github.com/repos/micaoss/${repository}/actions/runs?per_page=100`, githubHeaders())
+    for (const run of runs.workflow_runs)
+      stamps.set(`status/runs/${repository}/${run.id}.json`, run.run_started_at)
+    concluded += runs.workflow_runs.filter(run => run.status === 'completed' && run.conclusion !== null).length
+    gaps.push(...missingSnapshots(repository, runs.workflow_runs, keys))
+  }
+
+  const span = spanOf(runKeys.map(object => object.key), stamps)
+  const bytes = held.reduce((total, object) => total + object.size, 0)
+  console.log(`history: ${runKeys.length} run snapshots in the bucket (${(bytes / 1048576).toFixed(1)} MiB in ${held.length} objects)`)
+  console.log(`  span of the snapshots GitHub still lists: ${span === undefined ? 'none' : `${span.from} .. ${span.to} (${span.days} days)`}`)
+  console.log(`  concluded runs GitHub lists now: ${concluded}; without a snapshot: ${gaps.length}`)
+  for (const gap of gaps.slice(0, 10))
+    console.log(`  GAP ${gap.repository} ${gap.id} started ${gap.startedAt}`)
+  for (const name of ['status/current.json', 'status/health.json'])
+    console.log(`  ${name}: ${keys.has(name) ? 'present' : 'MISSING'}`)
+}
+
 // The prunable set across the workspace, as three lists and no opinion.
 async function prunable(): Promise<void> {
   const home = process.env['MICA_RES_BASE'] ?? DEFAULT_BASE
@@ -685,6 +720,9 @@ const [command, ...argv] = process.argv.slice(2)
 switch (command) {
   case 'sync':
     await sync(argv)
+    break
+  case 'history':
+    await history()
     break
   case 'prunable':
     await prunable()

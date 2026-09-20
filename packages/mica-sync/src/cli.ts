@@ -52,7 +52,7 @@ import { fetchJson, fetchText, githubHeaders } from './fetch.ts'
 import { checkMirrors, mirrorEntries } from './mirrors.ts'
 import { manifestKey, missingChunks } from './packs.ts'
 import { parseLock } from './locks.ts'
-import { coverageOf, imageReleases, lockCoverage, poolsCovered } from './coverage.ts'
+import { coverageOf, imageReleases, lockCoverage, poolsCovered, staleness } from './coverage.ts'
 import { guard, parseCandidate } from './guard.ts'
 import { classifyGaps, frontierOf, missingSnapshots, pageWindow, spanOf } from './history.ts'
 import type { ApiRunLite, Gap, Window } from './history.ts'
@@ -550,6 +550,17 @@ async function coverage(): Promise<void> {
   const pointer = readPointer(await (await fetch(`${home}/index/current.json`)).text())
   const document = readIndex(await (await fetch(`${home}/index/${pointer.version}.json`)).text())
   const answer = coverageOf(document.objects)
+  const site = await (await fetch(`${home}/.well-known/res.json`)).json() as { namespaces: { name: string, objects: number | null }[] }
+  // The same exclusion `reconcile` makes: `status` is the collector's output
+  // and `brand`/`docs` are the repository's own, so no producer lock names
+  // them and the index never has.
+  const ours = new Set(['status', 'brand', 'docs'])
+  const catalog = site.namespaces
+    .filter(namespace => !ours.has(namespace.name))
+    .reduce((total, namespace) => total + (namespace.objects ?? 0), 0)
+  const behind = staleness(document.objects.length, catalog, document.version)
+  if (behind !== undefined)
+    console.log(`  ${behind}`)
   console.log(`coverage of index ${document.version}: ${document.objects.length} objects`)
   console.log('  ghcr packages whose bytes the mirror holds:')
   for (const [name, count] of [...answer.registry].toSorted())

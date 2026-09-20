@@ -1,5 +1,37 @@
 # mica-res - Changelog
 
+## 2026-09-20 08:05 [BUG-P1]
+
+**THE PUBLISHED INDEX HAS NOT MOVED SINCE 2026-09-16 AND NOTHING PUBLISHES
+IT.** `cli.ts sync --apply` renders the snapshot and the pointer into the
+runner's temp directory and uploads them as a workflow artifact; no step
+writes `index/<version>.json` or `index/current.json` to the service. So the
+published pointer still names `20260916-1752` with 535 objects while the
+catalog holds 586 -- everything published since the cutover (the re-publish,
+the pack repair, and now the 18 lock objects) is in the bucket and absent from
+the index. Found by reading `coverage` straight after the lock apply: it said
+"release locks and SHA256SUMS: 0 objects" minutes after 18 were published and
+verified by digest.
+
+`index` is not one of the namespaces the service declares
+(`brand`, `docs`, `mica`, `oci`, `status`, `upstream`), and a namespace is the
+service's own entity, so publishing the index needs the framework owner to
+declare it or to grant this token that write. Reported to `uj991oa2` rather
+than worked around; the legacy `index/` objects still answer because they were
+written before the cutover.
+
+**What this does NOT affect, so the scope of the defect is not overstated:**
+`reconcile` and `audit` read the service's catalog and namespace listings, not
+the index, so the mirror's integrity checks are current -- 18/18 locks verified
+by digest against the download host. What lags is the published index document
+and every command that reads it (`coverage`, `mirrors`).
+
+Mitigated where it can be: `coverage` now compares itself against the catalog
+(excluding `status`, `brand` and `docs`, as `reconcile` does) and prints
+`STALE: the catalog holds 586 objects and index 20260916-1752 names 535 --
+every count below is the index's, not the bucket's` before any count. The one
+way this command could lie now says so first.
+
 ## 2026-09-20 07:56 [progress]
 
 **Locks and `SHA256SUMS` are mirrored, as a verification and not a copy**

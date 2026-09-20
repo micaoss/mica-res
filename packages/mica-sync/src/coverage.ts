@@ -72,3 +72,14 @@ export function imageReleases(objects: ResourceObject[]): Set<string> {
   }
   return releases
 }
+
+// The index is a SNAPSHOT, and a snapshot can be behind the bucket. Reading a
+// coverage row off a stale index once said "0 lock objects" minutes after 18
+// were published and verified, which is the one way this command can lie. So
+// it compares itself against the service's own catalog and says so.
+export function staleness(indexObjects: number, catalogObjects: number, version: string): string | undefined {
+  if (indexObjects >= catalogObjects)
+    return undefined
+  return `STALE: the catalog holds ${catalogObjects} objects and index ${version} names ${indexObjects}`
+    + ' -- every count below is the index\'s, not the bucket\'s'
+}

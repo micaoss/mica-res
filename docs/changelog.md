@@ -1,6 +1,6 @@
 # mica-res - Changelog
 
-## 2026-09-20 21:21 [progress]
+## 2026-09-20 22:38 [progress]
 
 **The v1 index's last two readers are retired, together, on the user's
 decision to delete the objects** (through coordinator `uj991oa2`, whose ruling

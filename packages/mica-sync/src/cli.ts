@@ -571,12 +571,12 @@ async function mirrors(): Promise<void> {
     console.log(`mirrors: ${index.tag_name} names no mirror URL`)
     return
   }
-  const problems = await checkMirrors(entries)
-  console.log(`mirrors: ${index.tag_name} names ${entries.length} mirror URL(s), ${problems.length} problem(s)`)
-  for (const problem of problems)
-    console.log(`  ${problem}`)
-  if (problems.length > 0)
-    throw new Error(`mirrors refused: ${problems.length} of ${entries.length} mirror URL(s) do not serve the bytes the index names`)
+  const answer = await checkMirrors(entries)
+  console.log(`mirrors: ${index.tag_name} names ${entries.length} mirror URL(s): ${answer.verified} verified, ${answer.pending.length} not mirrored yet, ${answer.wrong.length} wrong`)
+  for (const line of [...answer.pending, ...answer.wrong])
+    console.log(`  ${line}`)
+  if (answer.wrong.length > 0)
+    throw new Error(`mirrors refused: ${answer.wrong.length} mirror URL(s) do not serve the bytes the index names`)
 }
 
 async function packs(argv: string[]): Promise<void> {

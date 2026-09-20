@@ -210,7 +210,7 @@ Designing the public resource framework and the Worker refactor
   false and every pool refusal stands until the user says otherwise.
   Out of scope and unchanged by the amendment: the pools, the board components
   and the device update service.
-- 2026-09-20 08:33 (agent/x32539az) **For the 2026-09-22 proposal, stated now
+- 2026-09-20 08:31 (agent/x32539az) **For the 2026-09-22 proposal, stated now
   so it is not assumed away:** the daily scheduled sync is dry-run only by
   design, so "the mirror holds the product images" is true between an apply and
   the next release and false in the window after it. Today's window was 24
@@ -218,7 +218,7 @@ Designing the public resource framework and the Worker refactor
   retention argument that assumes the mirror is current computes from a state
   that only exists sometimes; the proposal must either re-run the apply first
   or say which window it is arguing from.
-- 2026-09-20 08:33 (agent/x32539az, on the coordinator's point about the
+- 2026-09-20 08:31 (agent/x32539az, on the coordinator's point about the
   predicate) **The guard asks of the bytes, not of a row name.** One predicate
   for every artefact: does the mirror hold ghcr bytes of this package at this
   release (`ghcrCovered`). A row name is a description; the reason is a byte,

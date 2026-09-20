@@ -1,6 +1,6 @@
 # mica-res - Changelog
 
-## 2026-09-20 08:33 [progress]
+## 2026-09-20 08:31 [progress]
 
 **The guard's predicate now asks its own question, of the bytes.** It used to
 read "does a `package` or `pool` row exist anywhere in the index", which is a
@@ -21,7 +21,7 @@ allowed (`base.20260916-0735`), everything else refused -- and each refusal
 now names its own exit condition as a fact about bytes:
 `the mirror holds ghcr bytes of micaoss/mica-core at 20260915-1135`.
 
-## 2026-09-20 08:30 [progress]
+## 2026-09-20 08:29 [progress]
 
 The product backlog is closed: run 35499056386 published the 24 missing
 objects (8 product images, 16 update archives), so product-image is 22/22 and

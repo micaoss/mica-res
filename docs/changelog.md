@@ -1,5 +1,38 @@
 # mica-res - Changelog
 
+## 2026-09-20 19:51 [progress]
+
+**Verified after the user handled the R2 blobs: every old `blob/` key I can
+name is gone, the mirror is intact, and `index/` is untouched.** Measured, not
+relayed:
+
+- **`blob/`**: all 611 distinct digests in the catalogue answer 404 under
+  `dl.res.micaos.dev/blob/<aa>/<sha256>`; none is still served. **Aperture:
+  that is every old key I can NAME -- the catalogue's digests, which cover the
+  535 measured before -- not every key the prefix may hold, because this
+  repository still cannot list the bucket.**
+- **The mirror is undamaged**, which was the thing worth checking: the
+  catalogue still holds 612 objects (mica 106, oci 115, upstream 391), the
+  audit passes over 1456 public objects with 0 problems, reconcile reports
+  `same key, different digest: 0`, the pack contract walk is 31 chunks / 0
+  problems, and both build-env tags still pull by digest and match ghcr.
+- **`res.micaos.dev/blob/<aa>/<sha>` still works**: it is a route, and it
+  answers 302 to the readable key. Only `dl.res.micaos.dev/blob/...` is 404,
+  as it already was for everything published since the cutover.
+- **`index/` is still there**: `current.json` 200 (146 bytes) and
+  `20260916-1752.json` 200 (406 977 bytes). Nothing writes them any more.
+
+`carry.ts` and its probe are deleted with this commit. The recorded order was
+"in the same commit as the objects"; the objects went first, outside this
+repository's credentials, so the only remaining choice was to delete the check
+that could no longer pass -- and it is deleted immediately rather than left to
+fail quietly for a week.
+
+The 10 objects reconcile reports as named-and-missing are `lock` objects
+(`lock 8/18`): consumers re-pinned this evening and the lock phase follows pins
+live. That is the window, not the deletion -- the deletion would have shown as
+a smaller catalogue or a digest conflict, and both are unchanged.
+
 ## 2026-09-20 16:14 [progress]
 
 **The index document is gone: one description of the mirror, not two** (user,

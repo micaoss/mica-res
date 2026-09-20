@@ -60,7 +60,6 @@ import type { ApiRunLite, Gap, Window } from './history.ts'
 import { indexCoverage, namesOf, prunableReport, releaseId } from './prunable.ts'
 import type { ReleaseNode } from './prunable.ts'
 import type { PackManifest } from './packs.ts'
-import { carriedOrigin } from './carry.ts'
 import { derivedPrefixes, reconcile, summary } from './reconcile.ts'
 import { chunkBytes, chunkNames, manifestName, packObjects, producePack, renderManifest, verifyPack } from './gitpack.ts'
 import type { GitTree } from './enumerate.ts'
@@ -140,24 +139,8 @@ async function heldByKey(publisher: Publisher, namespaces: Iterable<string>): Pr
 
 // Stage one object's bytes: pulled server-side from an https origin, or, for a
 // registry manifest that needs a token to read, read here and put to R2.
-// Counted so the report can say how much of a restoration was carried rather
-// than re-fetched.
-const carried = { fromBucket: 0, fromUpstream: 0 }
-
 async function stage(publisher: Publisher, object: ResourceObject, namespace: string, registryHeaders: Record<string, string>): Promise<string> {
   const contentType = object.mediaType ?? 'application/octet-stream'
-
-  // The v1 mirror's bytes are still in this bucket under `blob/<aa>/<sha256>`.
-  // Where one is, it is the same bytes by definition of the key, so the
-  // service pulls it from there instead of from upstream; the digest is
-  // verified while staging either way.
-  const download = process.env['MICA_RES_DOWNLOAD_BASE'] ?? 'https://dl.res.micaos.dev'
-  const carry = await carriedOrigin(download, object.sha256)
-  if (carry !== undefined) {
-    carried.fromBucket += 1
-    return stagePull(publisher, namespace, { origin: carry, sha256: object.sha256, contentType })
-  }
-  carried.fromUpstream += 1
 
   if (object.origin === undefined)
     throw new Error(`no-origin: ${object.sha256} has no upstream to mirror from`)
@@ -258,7 +241,6 @@ async function sync(argv: string[]): Promise<void> {
         await setTag(publisher!, tag)
     }
     console.log(`apply: ${staged} published, ${present} already published, 0 deleted`)
-    console.log(`  bytes: ${carried.fromBucket} carried from the bucket's existing keys, ${carried.fromUpstream} fetched from upstream`)
   }
 
   // Enumeration always covers every kind. `--kinds` gates what is UPLOADED and

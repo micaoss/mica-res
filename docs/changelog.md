@@ -1,6 +1,6 @@
 # mica-res - Changelog
 
-## 2026-09-20 08:47 [progress]
+## 2026-09-20 08:44 [progress]
 
 **The `data` row of spec 1.2.4 is implemented, and the refusal that demanded
 it was correct.** `mica-system-base 20260920-0832` is the first release
@@ -21,7 +21,7 @@ them: `producer data assets named by those locks and mirrored by NOTHING (spec
 1.2.4, out of scope): 2`. Whether they should join the locks in the mirror is a
 question for the user, raised with `uj991oa2`.
 
-## 2026-09-20 08:42 [progress]
+## 2026-09-20 08:41 [progress]
 
 **The window is real and it is minutes wide.** Twenty minutes after the
 product backlog was closed, reconcile reported two objects the locks name and

@@ -1,6 +1,6 @@
 // mica-res mirror CLI.
 //
-//   bun src/cli.ts sync [--sizes] [--out <dir>]   enumerate; write nothing
+//   bun src/cli.ts sync [--sizes]                 enumerate; write nothing
 //   bun src/cli.ts sync --apply [--kinds deb,source] [--limit <n>]
 //   bun src/cli.ts collect [--apply] [--out <dir>]
 //   bun src/cli.ts verify-pack [--name <tree>]    walk the consumer contract
@@ -21,7 +21,8 @@
 //                                                 its own manifest's name
 //   bun src/cli.ts image-pins                     which build-env releases a
 //                                                 published release still names
-//   bun src/cli.ts index --check <file>           read an index snapshot
+//   bun src/cli.ts registry-tags                  the registry names and the
+//                                                 digest behind each
 //
 // `sync` is a dry run unless `--apply` is given. Publishing goes through the
 // resource service's control plane with a `res:publish` API token
@@ -32,9 +33,7 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { enumerate } from './enumerate.ts'
-import { buildIndex, readIndex, renderIndex, renderPointer, summarise } from './index-doc.ts'
-import type { IndexDocument } from './index-doc.ts'
-import { blobPath, mergeObjects } from './objects.ts'
+import { blobPath, mergeObjects, summarise } from './objects.ts'
 import type { Kind, ResourceObject } from './objects.ts'
 import { resolveSizes } from './sizes.ts'
 import { apply as announce, decide, openIssue } from './announce.ts'
@@ -72,11 +71,6 @@ const DEFAULT_BASE = 'https://res.micaos.dev'
 
 // Phase 1 mirrors the third-party bytes; the later phases widen this.
 const DEFAULT_KINDS: Kind[] = ['deb', 'source']
-
-function stamp(now = new Date()): string {
-  const iso = now.toISOString()
-  return `${iso.slice(0, 4)}${iso.slice(5, 7)}${iso.slice(8, 10)}-${iso.slice(11, 13)}${iso.slice(14, 16)}`
-}
 
 function mib(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MiB`
@@ -186,7 +180,7 @@ async function stage(publisher: Publisher, object: ResourceObject, namespace: st
 // the bucket, and each time the shape was "something that exists stopped being
 // enumerated". This is the cheap check that catches the shape rather than the
 // three instances.
-async function refuseRegression(document: IndexDocument): Promise<void> {
+async function refuseRegression(objects: ResourceObject[]): Promise<void> {
   // Compared against the CATALOGUE, not against the last rendering of it: the
   // check is "something the bucket holds stopped being enumerated", and the
   // bucket is the service's record. Without a token there is nothing to
@@ -199,7 +193,7 @@ async function refuseRegression(document: IndexDocument): Promise<void> {
   for (const row of held.unusable)
     console.log(`  catalogue row the reader cannot describe: ${row.why}`)
   const before = summarise(held.objects)
-  const after = new Map(summarise(document.objects).map(row => [row.kind, row.count]))
+  const after = new Map(summarise(objects).map(row => [row.kind, row.count]))
   for (const row of before) {
     if ((after.get(row.kind) ?? 0) === 0)
       throw new Error(`kind-vanished: the catalogue holds ${row.count} ${row.kind} objects and this enumeration has none`)
@@ -207,7 +201,6 @@ async function refuseRegression(document: IndexDocument): Promise<void> {
 }
 
 async function sync(argv: string[]): Promise<void> {
-  const out = argv.includes('--out') ? argv[argv.indexOf('--out') + 1]! : 'tmp/sync'
   const apply = argv.includes('--apply')
   const kinds = (argv.includes('--kinds') ? argv[argv.indexOf('--kinds') + 1]!.split(',') : DEFAULT_KINDS) as Kind[]
   const limit = argv.includes('--limit') ? Number(argv[argv.indexOf('--limit') + 1]) : Infinity
@@ -305,17 +298,10 @@ async function sync(argv: string[]): Promise<void> {
   const merged = mergeObjects(objects)
   if (merged.length !== objects.length)
     console.log(`merged ${objects.length - merged.length} duplicate entr${objects.length - merged.length === 1 ? 'y' : 'ies'} onto objects already named`)
-  const document = buildIndex({ version: stamp(), objects: merged })
-  const snapshot = renderIndex(document)
-  readIndex(snapshot)
-  await refuseRegression(document)
+  await refuseRegression(merged)
 
-  await mkdir(out, { recursive: true })
-  await Bun.write(`${out}/index-${document.version}.json`, snapshot)
-  await Bun.write(`${out}/current.json`, renderPointer({ version: document.version, sha256: Bun.SHA256.hash(snapshot, 'hex') }))
-
-  console.log(`${apply ? 'applied' : 'dry run'}: ${document.objects.length} objects pinned, snapshot written to ${out}`)
-  for (const row of summarise(document.objects))
+  console.log(`${apply ? 'applied' : 'dry run'}: ${merged.length} objects pinned`)
+  for (const row of summarise(merged))
     console.log(`  ${row.kind.padEnd(14)} ${String(row.mirrored).padStart(4)}/${String(row.count).padEnd(4)} mirrored  ${mib(row.mirroredBytes).padStart(10)} of ${mib(row.bytes).padStart(10)}${row.sizesUnknown > 0 ? `  (${row.sizesUnknown} without a stated size)` : ''}`)
   console.log(`  ${'git-tree'.padEnd(14)} ${String(gitTrees.length).padStart(4)} trees    (phase 3, not packed yet)`)
 }
@@ -903,12 +889,15 @@ async function audit(): Promise<void> {
     throw new Error(`audit refused:\n  ${problems.join('\n  ')}`)
 }
 
-async function index(argv: string[]): Promise<void> {
-  const file = argv[argv.indexOf('--check') + 1]
-  if (file === undefined)
-    throw new Error('usage: index --check <file>')
-  const document = readIndex(await Bun.file(file).text())
-  console.log(`${file}: ${document.schema} ${document.version}, ${document.objects.length} objects`)
+// The registry names the mirror answers to, and the digest behind each, read
+// from the producers' locks rather than from any document: the lock is the
+// source the index only ever rendered.
+async function registryTagList(): Promise<void> {
+  const { objects } = await enumerate()
+  for (const object of mergeObjects(objects)) {
+    for (const tag of registryTags(object))
+      console.log([tag.repository, tag.tag, object.sha256, object.mediaType ?? ''].join('\t'))
+  }
 }
 
 const [command, ...argv] = process.argv.slice(2)
@@ -952,10 +941,10 @@ switch (command) {
   case 'collect':
     await collect(argv)
     break
-  case 'index':
-    await index(argv)
+  case 'registry-tags':
+    await registryTagList()
     break
   default:
-    console.error('usage: bun src/cli.ts sync [--sizes] [--apply] [--kinds <k,k>] [--limit <n>] [--out <dir>] | collect [--apply] [--out <dir>] | verify-pack [--name <tree>] | audit | image-pins | index --check <file>')
+    console.error('usage: bun src/cli.ts sync [--sizes] [--apply] [--kinds <k,k>] [--limit <n>] | collect [--apply] [--out <dir>] | verify-pack [--name <tree>] | audit | image-pins | registry-tags')
     process.exit(2)
 }

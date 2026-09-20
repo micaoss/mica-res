@@ -82,7 +82,7 @@ jobs:
       - name: Enumerate and, when asked, upload
         run: |
           set -euo pipefail
-          args=(sync --out "${RUNNER_TEMP}/sync")
+          args=(sync)
           [ "${SIZES}" = true ] && args+=(--sizes)
           if [ "${APPLY}" = true ]; then
             args+=(--apply --kinds "${KINDS}")
@@ -145,11 +145,12 @@ jobs:
       - name: Pull a mirrored build-env image by digest and compare with ghcr
         run: |
           set -euo pipefail
-          snapshot=$(ls "${RUNNER_TEMP}"/sync/index-*.json | tail -1)
           token=$(curl -sS 'https://ghcr.io/token?scope=repository:micaoss/mica-build-env:pull&service=ghcr.io' | jq -r .token)
-          jq -r '.objects[] | select(any(.readable[]; test("^/v2/micaoss/mica-build-env/manifests/base[.]"))) | [.sha256, (.readable[] | select(startswith("/v2/")))] | @tsv' "${snapshot}" \
-          | while IFS=$'\t' read -r digest readable; do
-              tag=${readable##*/}
+          # The tags and digests come from the producers' locks, which is what
+          # the index only ever rendered.
+          bun packages/mica-sync/src/cli.ts registry-tags > "${RUNNER_TEMP}/tags.tsv"
+          awk -F'\t' '$1 == "micaoss/mica-build-env" && $2 ~ /^base[.]/ { print $3 "\t" $2 }' "${RUNNER_TEMP}/tags.tsv" \
+          | while IFS=$'\t' read -r digest tag; do
               start=$(date +%s%3N)
               pulled=$(docker pull "res.micaos.dev/micaoss/mica-build-env@sha256:${digest}" | awk '/^Digest:/{print $2}')
               elapsed=$(( $(date +%s%3N) - start ))
@@ -157,25 +158,27 @@ jobs:
                 -H 'Accept: application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json' \
                 "https://ghcr.io/v2/micaoss/mica-build-env/manifests/${tag}" | awk 'BEGIN{IGNORECASE=1}/^docker-content-digest:/{print $2}' | tr -d '\r')
               echo "  ${tag}: mirror pull ${pulled} in ${elapsed} ms, ghcr serves ${upstream}"
-              [ "sha256:${digest}" = "${pulled}" ] || { echo "  digest mismatch against the index"; exit 1; }
+              [ "sha256:${digest}" = "${pulled}" ] || { echo "  digest mismatch against the lock"; exit 1; }
               [ "${pulled}" = "${upstream}" ] || { echo "  digest differs from ghcr"; exit 1; }
             done
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       # The registry read paths, timed from a runner, because the development
-      # network cannot reach the zone: a tag resolves through the index (now
-      # edge-cached) and a digest does not resolve anything.
+      # network cannot reach the zone: a tag resolves through the service's own
+      # tag record (edge-cached) and a digest resolves straight to the object.
       - name: Time the registry tag and digest paths
         run: |
           set -euo pipefail
-          snapshot=$(ls "${RUNNER_TEMP}"/sync/index-*.json | tail -1)
-          tag=$(jq -r '[.objects[].readable[] | select(startswith("/v2/"))] | .[0] // empty' "${snapshot}")
-          digest=$(jq -r '[.objects[] | select(.mediaType != null) | select(.mediaType | test("manifest.list|image.index"))] | .[0].sha256 // empty' "${snapshot}")
-          [ -n "${tag}" ] || { echo "no registry tag in the index"; exit 0; }
+          # Written by the step above: one enumeration serves both.
+          read -r repository name digest _ < "${RUNNER_TEMP}/tags.tsv" || true
+          tag="/v2/${repository}/manifests/${name}"
+          [ -n "${repository}" ] || { echo "the locks name no registry tag"; exit 0; }
           for i in 1 2; do
             curl -sS -o /dev/null -w "  by tag    ${i}: %{time_total}s\n" "https://res.micaos.dev${tag}?cold=${GITHUB_RUN_ID}${i}"
           done
           for i in 1 2; do
-            curl -sS -o /dev/null -w "  by digest ${i}: %{time_total}s\n" "https://res.micaos.dev/v2/micaoss/mica-build-env/manifests/sha256:${digest}?cold=${GITHUB_RUN_ID}${i}"
+            curl -sS -o /dev/null -w "  by digest ${i}: %{time_total}s\n" "https://res.micaos.dev/v2/${repository}/manifests/sha256:${digest}?cold=${GITHUB_RUN_ID}${i}"
           done
       # The gate a retention proposal has to pass: a candidate whose bytes only
       # ghcr holds is refused, and the refusal ends by itself on the day the
@@ -208,8 +211,3 @@ jobs:
         run: bun packages/mica-sync/src/cli.ts prunable
         env:
           GITHUB_TOKEN: ${{ github.token }}
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: sync-${{ github.run_id }}
-          path: ${{ runner.temp }}/sync

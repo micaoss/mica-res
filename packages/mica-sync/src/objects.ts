@@ -103,3 +103,22 @@ export function mergeObjects(objects: ResourceObject[]): ResourceObject[] {
   }
   return [...byDigest.values()]
 }
+
+// What an enumeration holds, per kind. Reported in the sync's own output; it
+// describes a run rather than the mirror, so nothing reads it back.
+export function summarise(objects: ResourceObject[]): { kind: Kind, count: number, bytes: number, sizesUnknown: number, mirrored: number, mirroredBytes: number }[] {
+  const rows = new Map<Kind, { kind: Kind, count: number, bytes: number, sizesUnknown: number, mirrored: number, mirroredBytes: number }>()
+  for (const object of objects) {
+    const row = rows.get(object.kind) ?? { kind: object.kind, count: 0, bytes: 0, sizesUnknown: 0, mirrored: 0, mirroredBytes: 0 }
+    row.count += 1
+    row.bytes += object.size ?? 0
+    if (object.size === undefined)
+      row.sizesUnknown += 1
+    if (object.state === 'mirrored') {
+      row.mirrored += 1
+      row.mirroredBytes += object.size ?? 0
+    }
+    rows.set(object.kind, row)
+  }
+  return [...rows.values()]
+}

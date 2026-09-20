@@ -1,5 +1,27 @@
 # mica-res - Changelog
 
+## 2026-09-20 15:57 [progress]
+
+**The index document is gone: one description of the mirror, not two** (user,
+2026-09-20). Nothing rendered it for anyone -- the three commands that read it
+moved to the catalogue this morning, no repository consumes
+`res.micaos.dev/index/current.json`, and the sync only wrote it into a
+workflow artifact. Removed: `src/index-doc.ts` and its tests, the snapshot and
+pointer writes, the `--out` of `sync` (it now writes nothing at all), the
+`index --check` subcommand and the sync artifact upload. `summarise` moves to
+`objects.ts`, where it describes a RUN rather than the mirror.
+
+Two CI steps did read the rendered snapshot -- the build-env pull-by-digest
+check and the registry timing -- and they now read the new `registry-tags`
+command, **which derives the tags and digests from the producers' locks: the
+source the index only ever rendered**. One enumeration serves both steps.
+Locally it answers 9 tags for `mica-build-env` at `20260916-0735`.
+
+Still to delete, and blocked on R2 write permission this repository's tokens do
+not have: the `index/` objects in the bucket, and the 535 v1 `blob/<aa>/<sha>`
+copies measured at 8.0 GiB, every one of which is also held under a readable
+key with the same digest.
+
 ## 2026-09-20 14:30 [BUG-P1]
 
 **The outside-readers query was refused, and the first version of the step

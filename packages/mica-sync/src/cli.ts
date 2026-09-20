@@ -21,6 +21,8 @@
 //                                                 its own manifest's name
 //   bun src/cli.ts image-pins                     which build-env releases a
 //                                                 published release still names
+//   bun src/cli.ts readers <needle> [--root <dir>]  who reads a thing, with
+//                                                 the space that was searched
 //   bun src/cli.ts registry-tags                  the registry names and the
 //                                                 digest behind each
 //
@@ -58,6 +60,7 @@ import { guard, parseCandidate } from './guard.ts'
 import { classifyGaps, frontierOf, missingSnapshots, pageWindow, spanOf } from './history.ts'
 import type { ApiRunLite, Gap, Window } from './history.ts'
 import { indexCoverage, namesOf, prunableReport, releaseId } from './prunable.ts'
+import { searchSpace, sweep, verdict } from './readers.ts'
 import type { ReleaseNode } from './prunable.ts'
 import type { PackManifest } from './packs.ts'
 import { derivedPrefixes, reconcile, summary } from './reconcile.ts'
@@ -871,6 +874,22 @@ async function audit(): Promise<void> {
     throw new Error(`audit refused:\n  ${problems.join('\n  ')}`)
 }
 
+// Who reads a thing. The answer is printed under the space it was found in,
+// because a reader count without its boundary gets quoted without it.
+async function readersCommand(argv: string[]): Promise<void> {
+  const root = argv.includes('--root') ? argv[argv.indexOf('--root') + 1]! : (process.env['MICA_WORKSPACE'] ?? '..')
+  const needles = argv.filter((one, index) => !one.startsWith('--') && argv[index - 1] !== '--root')
+  if (needles.length === 0)
+    throw new Error('usage: readers <needle> [<needle>...] [--root <dir>]')
+  console.log(searchSpace(root))
+  for (const needle of needles) {
+    const hits = await sweep(root, needle)
+    for (const hit of hits)
+      console.log(`  ${hit.file}:${hit.line}  ${hit.text.slice(0, 100)}`)
+    console.log(`  ${verdict(needle, hits)}`)
+  }
+}
+
 // The registry names the mirror answers to, and the digest behind each, read
 // from the producers' locks rather than from any document: the lock is the
 // source the index only ever rendered.
@@ -923,10 +942,13 @@ switch (command) {
   case 'collect':
     await collect(argv)
     break
+  case 'readers':
+    await readersCommand(argv)
+    break
   case 'registry-tags':
     await registryTagList()
     break
   default:
-    console.error('usage: bun src/cli.ts sync [--sizes] [--apply] [--kinds <k,k>] [--limit <n>] | collect [--apply] [--out <dir>] | verify-pack [--name <tree>] | audit | image-pins | registry-tags')
+    console.error('usage: bun src/cli.ts sync [--sizes] [--apply] [--kinds <k,k>] [--limit <n>] | collect [--apply] [--out <dir>] | verify-pack [--name <tree>] | audit | image-pins | registry-tags | readers <needle>')
     process.exit(2)
 }

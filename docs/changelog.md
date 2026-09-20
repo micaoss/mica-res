@@ -1,5 +1,23 @@
 # mica-res - Changelog
 
+## 2026-09-20 20:56 [progress]
+
+**The search space is a field of the output now, not a paragraph somebody
+remembers to write.** `cli.ts readers <needle> [--root <dir>]` prints
+`search space: <root>, every file, excluding node_modules, .git, _out, repos,
+tmp` before the hits, and ends each needle with the count and its boundary in
+ONE sentence: *"26 hit(s) for index/current.json in 13 file(s) -- inside this
+space only; repositories not checked out here, anything on a device, local
+scripts and third parties are outside it"*. A number that carries its limit
+cannot be quoted without it.
+
+It exists because the rule did not hold on its own. This repository recorded
+"a file-type search space is an aperture" in the morning and then passed
+`--include` for four extensions in the afternoon, under-counting the readers of
+the index document as five when there were seven. A rule its own author
+re-breaks within a day is a format problem. `grep` exiting 1 for "no match" is
+an answer; above 1 it throws, so a failed search never reads as an empty one.
+
 ## 2026-09-20 19:51 [progress]
 
 **Verified after the user handled the R2 blobs: every old `blob/` key I can

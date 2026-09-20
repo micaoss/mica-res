@@ -1,6 +1,6 @@
 # mica-res - Changelog
 
-## 2026-09-20 22:55 [BUG-P2]
+## 2026-09-20 22:47 [BUG-P2]
 
 **The retired route had a caller I had not swept for: the admin UI.**
 `POST /res/imports/v1` was removed from the API an hour ago, and

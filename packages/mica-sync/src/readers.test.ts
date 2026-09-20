@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { parseGrep, searchSpace, verdict } from './readers.ts'
+import { parseGrep, rootsLine, searchSpace, verdict } from './readers.ts'
 
 test('the search space names the root and what it skips', () => {
   expect(searchSpace('/srv/ybolab/mica')).toBe(
@@ -18,4 +18,10 @@ test('the boundary is in the same sentence as the count', () => {
 
 test('a grep line is read as file, line and text', () => {
   expect(parseGrep('/x/y.ts:12:  const a = 1\n')).toEqual([{ file: '/x/y.ts', line: 12, text: 'const a = 1' }])
+})
+
+test('the roots line makes the aperture reconstructable, not just acknowledged', () => {
+  expect(rootsLine(['mica-res', 'mica', 'mica-build'])).toBe(
+    '  searched 3 top-level directories: mica, mica-build, mica-res')
+  expect(rootsLine([])).toContain('(none)')
 })

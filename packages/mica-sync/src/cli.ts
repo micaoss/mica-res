@@ -60,7 +60,7 @@ import { guard, parseCandidate } from './guard.ts'
 import { classifyGaps, frontierOf, missingSnapshots, pageWindow, spanOf } from './history.ts'
 import type { ApiRunLite, Gap, Window } from './history.ts'
 import { indexCoverage, namesOf, prunableReport, releaseId } from './prunable.ts'
-import { searchSpace, sweep, verdict } from './readers.ts'
+import { rootsLine, rootsOf, searchSpace, sweep, verdict } from './readers.ts'
 import type { ReleaseNode } from './prunable.ts'
 import type { PackManifest } from './packs.ts'
 import { derivedPrefixes, reconcile, summary } from './reconcile.ts'
@@ -882,6 +882,7 @@ async function readersCommand(argv: string[]): Promise<void> {
   if (needles.length === 0)
     throw new Error('usage: readers <needle> [<needle>...] [--root <dir>]')
   console.log(searchSpace(root))
+  console.log(rootsLine(await rootsOf(root)))
   for (const needle of needles) {
     const hits = await sweep(root, needle)
     for (const hit of hits)

@@ -22,6 +22,22 @@ export function searchSpace(root: string, excluded: readonly string[] = EXCLUDED
   return `search space: ${root}, every file, excluding ${excluded.join(', ')}`
 }
 
+// What the root actually contained, so the aperture is RECONSTRUCTABLE rather
+// than merely acknowledged: "repositories not checked out here are outside it"
+// tells a reader there is a boundary, not where it ran. A reader in December
+// cannot otherwise know which repositories were in the workspace tonight -- and
+// for a sweep that finds nothing, this list is the entire evidence.
+export function rootsLine(names: readonly string[]): string {
+  const sorted = [...names].sort()
+  return `  searched ${sorted.length} top-level director${sorted.length === 1 ? 'y' : 'ies'}: ${sorted.join(', ') || '(none)'}`
+}
+
+export async function rootsOf(root: string, excluded: readonly string[] = EXCLUDED): Promise<string[]> {
+  const { readdir } = await import('node:fs/promises')
+  const entries = await readdir(root, { withFileTypes: true })
+  return entries.filter(entry => entry.isDirectory() && !excluded.includes(entry.name)).map(entry => entry.name)
+}
+
 // The boundary travels with the count, in the same sentence, always -- a
 // reader who quotes the number quotes the limit with it.
 export function verdict(needle: string, hits: Hit[]): string {

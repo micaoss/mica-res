@@ -1,5 +1,18 @@
 # mica-res - Changelog
 
+## 2026-09-20 20:44 [progress]
+
+`readers` now prints what the root CONTAINED, not only what it excluded
+(coordinator `uj991oa2`'s suggestion, taken): `searched 11 top-level
+directories: .bkd-coordinator, .claude, .mica-offline, mica, mica-boards,
+mica-build, mica-build-env, mica-core, mica-podman, mica-res,
+mica-system-base`. The aperture is now RECONSTRUCTABLE rather than merely
+acknowledged -- a reader in December cannot otherwise know which repositories
+were checked out tonight. **It matters most for the sweep that finds nothing,
+where that list is the entire evidence**, which a 0-hit run demonstrates: the
+only thing standing between "nothing reads it" and "nothing I looked at reads
+it" is the line naming where it looked.
+
 ## 2026-09-20 20:35 [progress]
 
 **The search space is a field of the output now, not a paragraph somebody

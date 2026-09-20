@@ -34,7 +34,7 @@ import { join } from 'node:path'
 import { enumerate } from './enumerate.ts'
 import { buildIndex, readIndex, renderIndex, renderPointer, summarise } from './index-doc.ts'
 import type { IndexDocument } from './index-doc.ts'
-import { mergeObjects } from './objects.ts'
+import { blobPath, mergeObjects } from './objects.ts'
 import type { Kind, ResourceObject } from './objects.ts'
 import { resolveSizes } from './sizes.ts'
 import { apply as announce, decide, openIssue } from './announce.ts'
@@ -50,7 +50,7 @@ import { ghcrToken, resolveRedirect } from './ghcr.ts'
 import { parseSnapshotFile, windowOf } from './backfill.ts'
 import { fetchJson, fetchText, githubHeaders } from './fetch.ts'
 import { checkMirrors, mirrorEntries } from './mirrors.ts'
-import { manifestKey, missingChunks } from './packs.ts'
+import { chunkKeys, manifestKey, missingChunks } from './packs.ts'
 import { dataRows, parseLock } from './locks.ts'
 import { readCatalogue } from './catalogue.ts'
 import type { Catalogue } from './catalogue.ts'
@@ -65,7 +65,7 @@ import { carriedOrigin } from './carry.ts'
 import { derivedPrefixes, reconcile, summary } from './reconcile.ts'
 import { chunkBytes, chunkNames, manifestName, packObjects, producePack, renderManifest, verifyPack } from './gitpack.ts'
 import type { GitTree } from './enumerate.ts'
-import { canonicalKey, listHeld, objectMeta, publishBatch, publisherFromEnv, registryTags, setTag, splitKey, stageBytes, stagePull } from './publish.ts'
+import { canonicalKey, listCatalogue, listHeld, objectMeta, publishBatch, publisherFromEnv, registryTags, setTag, splitKey, stageBytes, stagePull } from './publish.ts'
 import type { HeldObject, Publisher, PublishItem } from './publish.ts'
 
 const DEFAULT_BASE = 'https://res.micaos.dev'
@@ -742,6 +742,11 @@ async function packs(argv: string[]): Promise<void> {
   const publisher = repair ? publisherFromEnv() : undefined
 
   const { gitTrees } = await enumerate()
+  // One listing for the whole walk: the metadata check asks what the service
+  // records, and the service records it per object.
+  const held = publisher === undefined
+    ? undefined
+    : new Map((await listCatalogue(publisher, 'upstream')).map(row => [`upstream/${row.path}`, row]))
   let checked = 0
   let repaired = 0
   const problems: string[] = []
@@ -755,6 +760,27 @@ async function packs(argv: string[]): Promise<void> {
     const manifest = await answer.json() as PackManifest
     const missing = await missingChunks(download, tree.name, manifest)
     checked += manifest.chunks.length
+
+    // A chunk that resolves but carries no kind is invisible to every reader
+    // that asks the catalogue what the mirror holds: present, and unaccounted
+    // for. The first repair published bytes under a name and no metadata, and
+    // this is how that was found. Repaired the same way it is detected.
+    for (const chunk of chunkKeys(tree.name, manifest)) {
+      const row = held?.get(chunk.key)
+      if (row === undefined || row.meta?.['kind'] !== undefined)
+        continue
+      problems.push(`${chunk.key}: held with no kind in its metadata`)
+      if (publisher === undefined)
+        continue
+      await publishBatch(publisher, 'upstream', [{
+        path: chunk.key.slice('upstream/'.length),
+        source: { sha256: chunk.sha256 },
+        contentType: 'application/octet-stream',
+        meta: packChunkMeta(tree, chunk.sha256),
+      }])
+      repaired += 1
+      console.log(`  repaired the metadata of ${chunk.key}`)
+    }
     for (const chunk of missing) {
       problems.push(`${chunk.key}: declared by the manifest and does not resolve under its own name`)
       if (publisher === undefined)
@@ -763,7 +789,16 @@ async function packs(argv: string[]): Promise<void> {
       // a name, not an upload.
       const origin = await resolveRedirect(`${home}/blob/${chunk.sha256.slice(0, 2)}/${chunk.sha256}`, {})
       const uploadId = await stagePull(publisher, 'upstream', { origin, sha256: chunk.sha256, contentType: 'application/octet-stream' })
-      await publishBatch(publisher, 'upstream', [{ path: chunk.key.slice('upstream/'.length), source: { uploadId }, contentType: 'application/octet-stream' }])
+      await publishBatch(publisher, 'upstream', [{
+        path: chunk.key.slice('upstream/'.length),
+        source: { uploadId },
+        contentType: 'application/octet-stream',
+        // The first repair published bytes under a name and nothing else, and
+        // the object sat in the catalogue with no kind until a reader asked.
+        // A repaired object is indistinguishable from a published one or it is
+        // not repaired.
+        meta: packChunkMeta(tree, chunk.sha256),
+      }])
       repaired += 1
       console.log(`  repaired ${chunk.key} from ${chunk.sha256}`)
     }
@@ -774,6 +809,18 @@ async function packs(argv: string[]): Promise<void> {
     console.log(`  ${problem}`)
   if (problems.length > repaired)
     throw new Error(`packs refused: ${problems.length - repaired} chunk(s) do not resolve under the name the contract tells a consumer to use`)
+}
+
+// The metadata a pack chunk carries wherever it is published from.
+function packChunkMeta(tree: GitTree, sha256: string): Record<string, string> {
+  return objectMeta({
+    kind: 'git-pack',
+    sha256,
+    commit: tree.commit,
+    path: blobPath(sha256),
+    readable: [],
+    pins: [{ repository: tree.repository, lock: 'locks/upstream.lock', release: 'main', row: `git ${tree.name}` }],
+  })
 }
 
 async function reconcileCommand(): Promise<void> {

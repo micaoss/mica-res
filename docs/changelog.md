@@ -1,5 +1,24 @@
 # mica-res - Changelog
 
+## 2026-09-20 14:20 [BUG-P2]
+
+**The catalogue reader's refusal found an object the mirror holds and cannot
+describe**, on its first real run: `upstream/git/uefi-x64-kernel/f717995c....pack.00`
+carries no `kind` in its metadata. It is the chunk repaired by hand on
+2026-09-19, and the repair published BYTES UNDER A NAME AND NOTHING ELSE --
+`packs --repair` called `publishBatch` without `meta`, while every other
+publish passes `objectMeta`. The object resolved, the audit was happy (it
+compares bytes), reconcile was happy (it compares keys), and only a reader
+asking the catalogue what the mirror HOLDS could see it: present, and
+unaccounted for.
+
+Two fixes, because the instance and the shape are different: `packs --repair`
+now publishes the chunk's metadata with it, so a repaired object is
+indistinguishable from a published one; and the contract walk now CHECKS the
+metadata of every declared chunk against the catalogue, reporting
+`held with no kind in its metadata` and repairing it under `--repair`. The
+check is how the defect was found, so it is the check that keeps it found.
+
 ## 2026-09-20 14:12 [progress]
 
 The first catalogue read failed on the metadata's shape, and reading the route

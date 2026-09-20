@@ -1,5 +1,33 @@
 # mica-res - Changelog
 
+## 2026-09-20 23:24 [correction]
+
+**The sentence written to protect the route protected one route of two.** The
+entry below says "anyone who deletes the `/blob/` route breaks mica-boards'
+mirror hook". The hook has **two** halves, and `tdpnmgkr` found the other by
+probing its own rows instead of taking this repository's `bun` test:
+`fetch-source.sh` asks for `upstream/git/<name>/<commit>.json` and its ordered
+`.pack.NN` chunks, **and that route is live too** -- one redirect to `dl`, 200.
+
+**A tidy reader would have left `/blob/` alone and felt free about
+`upstream/git/`**, which is worse than no sentence at all, because it reads as
+a complete answer to the question it raises. Both routes are load-bearing for
+mica-boards' CI -- `MICA_MIRROR` is a configured repository variable there, so
+every CI build asks, not just a developer who opted in.
+
+**And the failure mode is sharper than either of us stated it: it is not
+silent.** `fetch-archive.sh` and `fetch-source.sh` both print
+`<sha12> not mirrored (<status>), fetching <url>` on every miss. What does not
+exist is any failure, any aggregate and any reader -- and per-item evidence
+with no aggregate is worse than none, because somebody looking afterwards finds
+the misses in an old job log and concludes the hook worked right up until it
+did not, **since each line on its own looks like an ordinary cache miss**.
+
+`sync.yml`'s probe step was read back rather than assumed: it already covers
+both halves -- `res` and `dl` for `blob/<aa>/<sha>`, and `res` and `dl` for
+both `upstream/git/<name>/<commit>.json` and `<commit>.pack.NN`. The probe does
+not have the defect this entry corrects; the sentence did.
+
 ## 2026-09-20 23:02 [progress]
 
 **The v1 layout is retired, not partly retired.** The user deleted `index/`

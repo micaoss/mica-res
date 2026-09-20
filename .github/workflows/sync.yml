@@ -44,6 +44,16 @@ jobs:
       # holds nothing, which no 404 can say. And note that the answer EXPIRES
       # -- a listing measured empty at 20:06 held 175 objects ten minutes
       # later. Extend this with discriminating questions, not with more paths.
+      # TWO OF THESE PATHS ARE ANOTHER REPOSITORY'S CI DEPENDENCY, not this
+      # repository's diagnostics: mica-boards' `fetch-archive.sh` asks for
+      # `blob/<aa>/<sha256>` and `fetch-source.sh` asks for
+      # `upstream/git/<name>/<commit>.json` and its `.pack.NN` chunks, both
+      # through `MICA_MIRROR`, which is a configured repository variable there.
+      # The stored `blob/` keys were deleted on 2026-09-20; the ROUTE resolves
+      # a digest against the catalogue and is live. A miss does not fail their
+      # build -- it fetches from the vendor and verifies the sha256 -- so
+      # nothing over there would report a regression. These probes are the
+      # report.
       - name: Probe the legacy and current paths
         run: |
           set -uo pipefail
@@ -60,7 +70,7 @@ jobs:
           echo 'by digest (res host only; a hit is a 302 to the download host):'
           probe https://res.micaos.dev/blob/1e/1e2b5f31fc826e1af25e2a12e37cd8d361ff25feaf224c6bbef3cc5d6cd2596b
           probe https://dl.res.micaos.dev/blob/1e/1e2b5f31fc826e1af25e2a12e37cd8d361ff25feaf224c6bbef3cc5d6cd2596b
-          echo 'the chunk the coordinator reports 404: plain, then cache-busted, both hosts:'
+          echo 'the git manifest and chunk routes mica-boards fetches through (plain, cache-busted, both hosts):'
           C=f717995cb7dcd8998ab15516b8006aea09cfde0d
           probe "https://dl.res.micaos.dev/upstream/git/uefi-x64-kernel/${C}.pack.00"
           probe "https://dl.res.micaos.dev/upstream/git/uefi-x64-kernel/${C}.pack.00?cold=${GITHUB_RUN_ID}"

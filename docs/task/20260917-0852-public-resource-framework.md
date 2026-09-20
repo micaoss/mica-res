@@ -299,3 +299,14 @@ Designing the public resource framework and the Worker refactor
   search space chosen by file type is an aperture like any other, and a
   workflow step is a reader nobody greps for. Both were retired by deriving
   their tags and digests from the producers' locks instead.
+- 2026-09-20 22:55 (agent/x32539az) **An identified, unbuilt check, recorded so
+  it does not die in the log:** `apps/web` calls `apps/api` routes as string
+  literals, and **nothing compares the two sides**. Tonight that cost a removed
+  route whose admin-UI caller survived it by an hour -- a button that would have
+  answered 404 on first press. It is mechanisable rather than a matter of
+  attention: the route set is already GENERATED into
+  `docs/reference/api-routes.md`, and a UI's fetch targets are greppable
+  literals, so a check could compare them and be red the moment they diverge.
+  Not built, not proposed, and not asked for (coordinator `uj991oa2`,
+  2026-09-20); recorded because the next person to remove a route needs it and
+  will not find it in a conversation.

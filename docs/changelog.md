@@ -1,6 +1,6 @@
 # mica-res - Changelog
 
-## 2026-09-20 08:21 [BUG-P2]
+## 2026-09-20 08:17 [BUG-P2]
 
 **The lock walk used raw `fetch` and gave up a whole enumeration on one
 ECONNRESET.** `fetchText` has carried the retry policy from the start -- retry

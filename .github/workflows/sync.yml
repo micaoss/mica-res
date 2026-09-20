@@ -51,7 +51,6 @@ jobs:
           echo 'legacy (res host, no redirect followed):'
           probe https://res.micaos.dev/d/upstream/git/cx3576-rkbin/ecb4fcbe954edf38b3ae037d5de6d9f5bccf81f4.json
           probe https://res.micaos.dev/d/mica/uefi-x64/20260916-0845/mica-uefi-x64-dev-20260916-0845.img.gz
-          probe https://res.micaos.dev/index/current.json
           echo 'current (res host, redirects to the download host):'
           probe https://res.micaos.dev/upstream/git/cx3576-rkbin/ecb4fcbe954edf38b3ae037d5de6d9f5bccf81f4.json
           probe https://res.micaos.dev/mica/uefi-x64/20260916-0845/mica-uefi-x64-dev-20260916-0845.img.gz

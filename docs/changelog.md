@@ -1,5 +1,36 @@
 # mica-res - Changelog
 
+## 2026-09-20 21:21 [progress]
+
+**The v1 index's last two readers are retired, together, on the user's
+decision to delete the objects** (through coordinator `uj991oa2`, whose ruling
+was that neither lands without the other -- deleting the objects while leaving
+the import path would be a code path whose input is guaranteed absent, which is
+worse than a stale file because a file is inspected and a code path is
+invoked):
+
+- `sync.yml`'s probe line for `res.micaos.dev/index/current.json` is gone. It
+  was a requester rather than a dependant, and probing a path that is about to
+  stop existing prints a 404 that means nothing.
+- **`import-v1.ts` is deleted whole**, with its `POST /res/imports/v1` route
+  and its tests. The authorisation was for its index-reading path; removing
+  only that would have left a module whose one purpose was reading it. The
+  import ran, the v1 mirror is gone, and the input it reads is being deleted.
+
+**And the prefix question, answered from our own write paths rather than from
+the bucket:** nothing but the resource index has ever been written under
+`index/`. The v1 layout was `blob/`, `index/<stamp>.json`, `index/current.json`
+and `site/` (plan 20260916-0728); the service writes catalogue documents under
+`_catalog/`, staging under `_staging/`, access under `_access/`, and every
+published object under `<namespace>/<path>` where the namespace must already
+exist -- `index` is not a namespace, so the publish API cannot write there.
+mica-build's `mica-index.json` (`mica/index/v1`, a different document with a
+live consumer in `mica/website`) is not mirrored at all: `releases.ts` skips
+the `mica` scope, and were it ever mirrored its key would be `mica/...`.
+
+Gates: `bun run lint`, `bun run typecheck` and `bun run test` across every
+workspace -- 625 pass, 1 skip, 0 fail.
+
 ## 2026-09-20 20:44 [progress]
 
 **A code sweep is the wrong instrument for a publicly served object, by

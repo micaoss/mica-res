@@ -8,7 +8,6 @@ import { resolve } from "node:path";
 import { createDb } from "@/db";
 import { ACCESS_SNAPSHOT_KEY, createAccessKey, grantsAllow, listAccessKeys, mintSignedUrl, openSecret, publishAccessSnapshot, revokeAccessKey, sealSecret, verifyUrlSignature } from "./access/keys";
 import { CATALOG_POINTER_KEY } from "./catalog";
-import { importV1, planV1Object } from "./import-v1";
 import { pruneSnapshots, publishCatalog } from "./publisher";
 import { processPurges } from "./purge";
 import {
@@ -243,58 +242,6 @@ describe("purge queue", () => {
     expect(result).toEqual({ done: 1, failed: 1, skipped: 0 });
     const failed = (await db.select().from(resPurges).all()).find(p => p.state === "pending")!;
     expect(failed.attempts).toBe(1);
-  });
-});
-
-describe("v1 import", () => {
-  test("plans a readable key, redirects and registry tags", () => {
-    const deb = planV1Object({
-      kind: "deb",
-      state: "mirrored",
-      sha256: "a".repeat(64),
-      path: `blob/aa/${"a".repeat(64)}`,
-      readable: ["/d/upstream/deb/bash/bash_5_amd64.deb", "/d/upstream/debian/pool/main/b/bash/bash_5_amd64.deb"],
-      origin: "https://snapshot.debian.org/x",
-    });
-    expect(deb).toMatchObject({
-      key: "upstream/debian/pool/main/b/bash/bash_5_amd64.deb",
-      redirects: [{ fromPath: "/d/upstream/deb/bash/bash_5_amd64.deb", targetKey: "upstream/debian/pool/main/b/bash/bash_5_amd64.deb" }],
-    });
-    const manifest = planV1Object({
-      kind: "oci-blob",
-      state: "mirrored",
-      sha256: "b".repeat(64),
-      mediaType: "application/vnd.oci.image.index.v1+json",
-      path: `blob/bb/${"b".repeat(64)}`,
-      readable: ["/v2/micaoss/mica-build-env/manifests/base.1"],
-    });
-    expect(manifest).toMatchObject({ key: `oci/blobs/sha256/${"b".repeat(64)}`, tags: [{ repository: "micaoss/mica-build-env", tag: "base.1" }] });
-    expect(planV1Object({ kind: "deb", state: "pending", sha256: "c", path: "p", readable: [] })).toEqual({ skip: "not mirrored" });
-  });
-
-  test("copies blobs to readable keys in pages and records redirects", async () => {
-    const bytes = ["release image", "pool deb"];
-    const shas = await Promise.all(bytes.map(b => sha256Hex(b)));
-    for (const [i, b] of bytes.entries())
-      await seedMemoryObject(publicStore, `blob/${shas[i]!.slice(0, 2)}/${shas[i]}`, b);
-    const index = {
-      schema: "mica/resource-index/v1",
-      version: "20260917-0000",
-      objects: [
-        { kind: "product-image", state: "mirrored", sha256: shas[0], path: `blob/${shas[0]!.slice(0, 2)}/${shas[0]}`, readable: ["/d/mica/uefi-x64/20260917-0000/x.img.gz"] },
-        { kind: "deb", state: "mirrored", sha256: shas[1], path: `blob/${shas[1]!.slice(0, 2)}/${shas[1]}`, readable: ["/d/upstream/deb/b/b.deb", "/d/upstream/debian/pool/main/b/b.deb"] },
-      ],
-    };
-    await seedMemoryObject(publicStore, "index/20260917-0000.json", JSON.stringify(index));
-    await seedMemoryObject(publicStore, "index/current.json", JSON.stringify({ version: "20260917-0000" }));
-
-    const first = await importV1(db, { offset: 0, limit: 1, actorId });
-    expect(first).toMatchObject({ total: 2, next: 1, created: 1, failed: [] });
-    const second = await importV1(db, { offset: 1, limit: 1, actorId });
-    expect(second).toMatchObject({ next: null, created: 1, failed: [] });
-    expect(publicStore.objects.get("upstream/debian/pool/main/b/b.deb")!.info.sha256).toBe(shas[1]);
-    // Running a page again changes nothing.
-    expect(await importV1(db, { offset: 0, limit: 2, actorId })).toMatchObject({ created: 0, unchanged: 2 });
   });
 });
 

@@ -10,7 +10,6 @@ import { describeRoute, errors, jsonCreated, jsonOk, SECURITY, TAGS, validator }
 import { adminRequired, authRequired } from "@/shared/middleware/auth";
 import { createAccessKey, listAccessKeys, mintSignedUrl, publishAccessSnapshot, revokeAccessKey } from "./access/keys";
 import { CACHE_POLICIES } from "./cache-policy";
-import { importV1 } from "./import-v1";
 import { republish, setSiteSettings, siteSettings } from "./publisher";
 import { processPurges, retryPurge } from "./purge";
 import {
@@ -333,14 +332,6 @@ export function resourceRoutes() {
     if (!(await retryPurge(db, c.req.valid("param").id)))
       throw new AppError("No such purge", 404, "NOT_FOUND");
     return c.json({ success: true, data: await processPurges(db, c.get("config")) });
-  });
-
-  router.post("/res/imports/v1", doc("Import a page of the v1 mirror index", { ...jsonOk(), ...errors(401, 403, 404, 422) }), adminRequired, validator("json", z.object({ offset: z.number().int().min(0).default(0), limit: z.number().int().min(1).max(100).default(25) })), async (c) => {
-    const body = c.req.valid("json");
-    const progress = await importV1(c.get("db"), { ...body, actorId: c.get("user")!.id });
-    await record(c, "res.import.v1", "res-import", progress.version, { offset: body.offset, created: progress.created, failed: progress.failed.length });
-    const catalog = progress.created > 0 || progress.next === null ? await commit(c) : "pending";
-    return c.json({ success: true, data: { ...progress, catalog } });
   });
 
   // ─── Access keys ───

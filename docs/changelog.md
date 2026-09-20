@@ -1,5 +1,23 @@
 # mica-res - Changelog
 
+## 2026-09-20 06:38 [progress]
+
+**The run history in the bucket is unbroken, and the retention proposal lands
+on 2026-09-22.** `bun packages/mica-sync/src/cli.ts history` (read-only, in
+`sync.yml`) walks the `status` namespace and joins it against every
+repository's concluded runs: 427 run snapshots (3.2 MiB, 429 objects) spanning
+2026-09-15T01:55:52Z .. 2026-09-20T01:06:38Z, with **0 holes**. The 61
+concluded runs without a snapshot all started after the collector's last pass,
+so they are lag, not loss -- the distinction the count alone hides, and the
+reason `classifyGaps` exists rather than a bare total.
+
+Two facts that belong with the number. The `*/30` schedule of `collect.yml`
+is fired by GitHub roughly every two to five hours (last pass 01:29, none for
+the five hours since), so the tail is routinely tens of runs deep; the
+idempotent `backfill.yml` is what closes a hole if one ever appears. And the
+collector snapshots **Actions runs and jobs, not ghcr package versions** -- so
+these snapshots do not protect image history at all. The mirror does.
+
 ## 2026-09-20 01:10 [BUG-P0]
 
 **The prunable query's join silently found nothing for slash-form releases**,

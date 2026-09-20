@@ -99,3 +99,14 @@ Designing the public resource framework and the Worker refactor
   cache-control of `public, max-age=31536000, immutable` on the object is
   right; the cached 404 that precedes it is what needs invalidating, and only
   the service can do that (`apps/api/src/modules/resource/purge.ts`).
+- 2026-09-20 06:38 (agent/x32539az, answering coordinator `uj991oa2`) **The
+  two questions that held the retention work.** (1) The snapshots are in the
+  bucket and the series is unbroken: 427 run snapshots over
+  2026-09-15T01:55:52Z .. 2026-09-20T01:06:38Z, 0 holes, measured by
+  `cli.ts history` joining the `status` listing against every repository's
+  concluded runs; the 61 uncollected runs are all newer than the last
+  collector pass. (2) The condition was a week of snapshots, and the series
+  starts 2026-09-15T01:55Z, so the week completes 2026-09-22T01:55Z and **the
+  retention proposal is written on 2026-09-22** against the three lists and
+  the index-coverage table. Caveat carried with both answers: run snapshots
+  are not ghcr package history.

@@ -1,5 +1,32 @@
 # mica-res - Changelog
 
+## 2026-09-20 01:10 [BUG-P0]
+
+**The prunable query's join silently found nothing for slash-form releases**,
+and it reported two releases a published index names as named by nobody --
+`mica-build.cx3576/20260915-2230` and `mica-build.x64/20260915-2230`, the two
+whose bytes no upstream serves. Acting on that list would have destroyed those
+bytes and broken full verification of the only clean pre-rename index. The
+coordinator verified the input rows of `mica/20260915-2242` and caught it.
+
+Cause: a lock row spells a scoped input as `mica-build.cx3576` with the stamp
+in its own field, while the release tag spelled it `cx3576/20260915-2230`, so
+one side keyed `mica-build.cx3576/20260915-2230` and the other
+`mica-build/cx3576/20260915-2230`. Matching both tag separators was not enough
+-- **the separator inside the identity had to match too.**
+
+Fixed by one normalising function, `releaseId`, through which BOTH sides of
+the join now pass: `<repository>.<scope>/<stamp>`, with a tag split on either
+separator. Extending the check to the other identity kinds found a second
+instance of the same class immediately: the index-coverage table recognised an
+index by the tag pattern `mica.<stamp>` and therefore missed the slash-form
+`mica/20260915-2242`; it now recognises one by its normalised identity.
+
+After the fix: list 1 is 34 (was 30), list 2 is still 0, list 3 is 20 (was
+24). Third naming-form miss of the day, and the first inside a query a user
+was about to act on: **a query returns "nothing found", never "nothing
+exists".**
+
 ## 2026-09-19 22:00 [pitfall]
 
 **A newly published name needs a purge precisely because its absence was

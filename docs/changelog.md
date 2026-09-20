@@ -1,5 +1,19 @@
 # mica-res - Changelog
 
+## 2026-09-20 07:08 [BUG-P2]
+
+**The hole classifier used the wrong frontier and raised three false holes
+within the hour of being written.** It compared a run's START against the
+newest snapshot's run start; the collector snapshots a run only once it is
+FINAL, so three `mica-boards` runs that began at 06:41-06:47 and finished
+after the 06:51 pass were reported as holes while they were ordinary lag. A
+long build crossing a pass boundary is the normal case, not the exception.
+Fixed where the error was: the frontier is now the collector's last pass,
+read from `status/current.json` `generatedAt`, and a gap is a hole only if the
+run reached its verdict BEFORE that pass (`updated_at`). Same defect family as
+the ones it was built to catch -- a number that reads as loss and is not --
+and it surfaced because the number was printed every run instead of once.
+
 ## 2026-09-20 07:02 [progress]
 
 **The prune refusal that retires itself.** `cli.ts guard` (new, in `sync.yml`)

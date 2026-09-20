@@ -10,19 +10,24 @@ export interface ApiRunLite {
   status: string
   conclusion: string | null
   run_started_at: string
+  // Approximately when the run reached its verdict. The collector writes a
+  // snapshot only once a run is final, so this -- not the start -- decides
+  // whether a pass could have seen it.
+  updated_at: string
 }
 
 export interface Gap {
   repository: string
   id: number
   startedAt: string
+  concludedAt: string
 }
 
 export function missingSnapshots(repository: string, runs: ApiRunLite[], held: Set<string>): Gap[] {
   return runs
     .filter(run => run.status === 'completed' && run.conclusion !== null)
     .filter(run => !held.has(`status/runs/${repository}/${run.id}.json`))
-    .map(run => ({ repository, id: run.id, startedAt: run.run_started_at }))
+    .map(run => ({ repository, id: run.id, startedAt: run.run_started_at, concludedAt: run.updated_at }))
 }
 
 export function spanOf(keys: string[], startedAt: Map<string, string>): { from: string, to: string, days: number } | undefined {
@@ -35,16 +40,22 @@ export function spanOf(keys: string[], startedAt: Map<string, string>): { from: 
 }
 
 // A concluded run without a snapshot is not automatically lost history: the
-// collector runs on a schedule, so every run that started after its last pass
-// is still waiting to be collected. Only a run OLDER than that frontier is a
-// hole -- a pass that ran and missed it, or never ran at all.
-export function classifyGaps(gaps: Gap[], frontier: string | undefined): { lag: Gap[], holes: Gap[] } {
-  if (frontier === undefined)
+// collector runs on a schedule and snapshots a run only once it is final, so
+// everything that REACHED ITS VERDICT after the last pass is still waiting to
+// be collected. Only a run that concluded BEFORE the last pass is a hole -- a
+// pass that ran and missed it, or never ran at all.
+//
+// The start time is the wrong frontier and said so within the hour: three
+// mica-boards runs that began before a pass and finished after it were
+// reported as holes while they were ordinary lag. A long build crosses a pass
+// boundary as a matter of course.
+export function classifyGaps(gaps: Gap[], lastPass: string | undefined): { lag: Gap[], holes: Gap[] } {
+  if (lastPass === undefined)
     return { lag: [], holes: gaps }
-  const edge = Date.parse(frontier)
+  const edge = Date.parse(lastPass)
   return {
-    lag: gaps.filter(gap => Date.parse(gap.startedAt) > edge),
-    holes: gaps.filter(gap => Date.parse(gap.startedAt) <= edge),
+    lag: gaps.filter(gap => Date.parse(gap.concludedAt) > edge),
+    holes: gaps.filter(gap => Date.parse(gap.concludedAt) <= edge),
   }
 }
 

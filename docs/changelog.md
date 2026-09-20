@@ -1,5 +1,44 @@
 # mica-res - Changelog
 
+## 2026-09-20 07:05 [BUG-P1]
+
+**The mirror protects one ghcr package, not "the ghcr packages".** Measured
+off the published index rather than remembered from the phases that built it
+(`cli.ts coverage`, new, read-only, in `sync.yml`): index `20260916-1752`,
+535 objects, and the only ghcr origin in it is `micaoss/mica-build-env`
+(115 objects). The pin rows present are `source` 389, `image` 219, `git` 44
+and `asset` 30 -- **no `package` and no `pool` row has ever existed here**, so
+the OCI pools that carry every Debian package this workspace publishes
+(`pool.<arch>.<release>`, `pool.<board>.<arch>.<release>`, `rootfs.<release>`)
+are mirrored nowhere and ghcr holds their only copy. The 324 `deb` objects are
+upstream Debian from `snapshot.debian.org`, pinned through `upstream.lock` --
+they are not our packages, and counting them as package coverage is the
+mistake this command exists to prevent.
+
+Two further limits of the same shape, both measured: the mirror holds **no
+lock and no `SHA256SUMS` bytes** (zero lock-named objects in the index), so
+the binding from a release to the digests it names survives only in the
+producers' releases and in consumers' committed `locks/`; and the collector's
+snapshots hold run and job **metadata**, the API's own words, never logs or
+artifacts. No phase was skipped and nothing regressed -- pools were never in
+scope. It matters now because a retention decision about a ghcr package is
+safe only where the mirror holds that package's bytes.
+
+## 2026-09-20 07:02 [progress]
+
+**An early warning for the run history, because the bound is the page, not
+the retention.** `cli.ts history` now reports the recovery margin per
+repository. The window that limits recovery is not GitHub's run retention:
+the collector reads ONE page of 100 runs (`listRuns`, no pagination) and
+`backfill.yml` reads the collector's own artifacts rather than the API, so a
+run that falls past position 100 before any pass sees it is unreachable by
+both paths. The margin is the distance from the oldest run page one still
+reaches to the oldest run nothing has collected; today the two saturated
+repositories are `mica` 48.3 h and `mica-res` 58.3 h against a collector that
+fires every two to five hours, and the other six are not saturated at all, so
+their page reaches their whole history. A negative margin prints
+`UNREACHABLE`.
+
 ## 2026-09-20 06:38 [progress]
 
 **The run history in the bucket is unbroken, and the retention proposal lands

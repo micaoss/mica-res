@@ -110,3 +110,24 @@ Designing the public resource framework and the Worker refactor
   retention proposal is written on 2026-09-22** against the three lists and
   the index-coverage table. Caveat carried with both answers: run snapshots
   are not ghcr package history.
+- 2026-09-20 07:05 (agent/x32539az, for coordinator `uj991oa2` and the pause
+  record) **WHICH INSTRUMENT PROTECTS WHICH ARTEFACT, measured.** The two-way
+  division (runs by the collector, packages by the mirror) is the right shape
+  and incomplete in three ways that a retention policy would trip over:
+  - workflow **run and job metadata** -> the collector's snapshots, unbroken,
+    427 over five days, holes zero. **Logs and artifacts -> nothing.** A
+    snapshot is the record of a run, not an archive of it.
+  - **build-env image bytes** -> the mirror (115 objects). This is the only
+    ghcr package the mirror covers.
+  - `mica-build` **product images and update archives** -> the mirror
+    (12 + 18 objects, `asset` rows).
+  - third-party **debs, source archives and git trees** -> the mirror
+    (324 + 23 + 43 objects).
+  - **the OCI pools -- every Debian package this workspace publishes ->
+    NOTHING.** No `package` or `pool` row has ever been enumerated; ghcr holds
+    the only copy.
+  - **release locks and `SHA256SUMS` -> not in the bucket at all**; the
+    release-to-digest binding lives in the producers' releases and in
+    consumers' committed `locks/`.
+  Reproducible as `bun packages/mica-sync/src/cli.ts coverage`, so the table
+  is a query and not a memory.

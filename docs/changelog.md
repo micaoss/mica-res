@@ -1,5 +1,31 @@
 # mica-res - Changelog
 
+## 2026-09-20 07:26 [progress]
+
+**Locks and `SHA256SUMS` are mirrored, as a verification and not a copy**
+(user amendment of 2026-09-20, through coordinator `uj991oa2`: the locks come
+back into scope; **the pools, the board components and the device update
+service do not**). `enumerateLocks()` reads every `locks/pins/*.pin` of the
+five pin-holding repositories, and for each pinned release it asserts the
+chain the consumer verifies: the pin states the sha256 of the release's
+`SHA256SUMS`, that file states the sha256 of `<repository>.lock`, and both
+objects are keyed by those digests -- so bytes that disagree with a pin are
+refused at enumeration (`pin-digest`) and again at publish. 26 objects over
+18 distinct names today; a pin naming a release whose assets are still
+attaching is skipped loudly and picked up next run.
+
+They land in the existing `mica` namespace under `mica/lock/<repository>/<tag>/`
+rather than a new namespace: namespaces are the service's own entities, and
+`lock/` cannot collide with a product scope, which is always a board or a
+product. `coverage` gains a row for them, and the row carries its own limit:
+**the chain from the mirror ends at the lock, whose `package` rows point into
+pools nothing mirrors. It makes the binding survivable, not the packages.**
+
+The guard's verdicts are unchanged, and a test now holds that open: a `lock`
+pin row is not a `package` or `pool` row, so `poolsCovered()` stays false and
+every pool refusal stands. Retiring one of those refusals needs the user, not
+a side effect of this phase.
+
 ## 2026-09-20 07:11 [BUG-P2]
 
 **And the corrected frontier was still one pass too tight.** Using the last

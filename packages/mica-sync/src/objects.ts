@@ -4,7 +4,7 @@
 
 import type { SourceRow, UpstreamRow } from './locks.ts'
 
-export type Kind = 'deb' | 'source' | 'oci-blob' | 'product-image' | 'update-archive' | 'git-pack'
+export type Kind = 'deb' | 'source' | 'oci-blob' | 'product-image' | 'update-archive' | 'git-pack' | 'lock'
 
 export interface Pin {
   repository: string

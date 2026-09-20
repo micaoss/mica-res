@@ -37,6 +37,21 @@ export function coverageOf(objects: ResourceObject[]): Coverage {
   return { registry, rowKinds, origins }
 }
 
+// The locks the mirror holds, counted separately from everything else because
+// of what they are NOT: a mirrored lock makes the release-to-digest BINDING
+// survivable, and the chain from the mirror ends at the lock, whose `package`
+// rows point into pools nothing mirrors. This row neighbours the pool row; it
+// never replaces it.
+export function lockCoverage(objects: ResourceObject[]): { objects: number, releases: Set<string> } {
+  const held = objects.filter(object => object.kind === 'lock')
+  const releases = new Set<string>()
+  for (const object of held) {
+    for (const pin of object.pins)
+      releases.add(`${pin.row.split(' ')[1]!}/${pin.release}`)
+  }
+  return { objects: held.length, releases }
+}
+
 // A `package` row is a Debian package published into an OCI pool. The mirror
 // has never enumerated one -- no phase covered the pools -- so if the index
 // carries no such row, pool bytes are held by ghcr alone.

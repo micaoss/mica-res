@@ -15,7 +15,7 @@ export interface IndexDocument {
 
 const STAMP = /^[0-9]{8}-[0-9]{4}$/
 const SHA256 = /^[0-9a-f]{64}$/
-const KINDS: Kind[] = ['deb', 'source', 'oci-blob', 'product-image', 'update-archive', 'git-pack']
+const KINDS: Kind[] = ['deb', 'source', 'oci-blob', 'product-image', 'update-archive', 'git-pack', 'lock']
 const STATES: State[] = ['mirrored', 'pending']
 
 function refuse(rule: string, detail: string): never {

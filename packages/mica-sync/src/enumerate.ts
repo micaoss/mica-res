@@ -1,14 +1,15 @@
 // The set of objects the bucket should hold, derived from the producers' locks
 // and releases exactly as a consumer reads them.
 
-import { fetchText, rawUrl } from './fetch.ts'
+import { fetchText, githubHeaders, rawUrl } from './fetch.ts'
 import { enumerateImages } from './ghcr.ts'
 import { gitRows, parseLock, sourceRows, upstreamRows } from './locks.ts'
 import type { Lock } from './locks.ts'
 import { mergeObjects, objectFromSourceRow } from './objects.ts'
 import type { ResourceObject } from './objects.ts'
 import { pinnedImageReleases } from './imagepins.ts'
-import { GIT_SOURCES, IMAGE_SOURCE, LOCK_SOURCES, PRODUCT_SOURCE, REPOSITORIES } from './producers.ts'
+import { lockObjects, parsePin, tagOf } from './pins.ts'
+import { GIT_SOURCES, IMAGE_SOURCE, LOCK_SOURCES, PIN_HOLDERS, PRODUCT_SOURCE, REPOSITORIES } from './producers.ts'
 import { enumerateReleases } from './releases.ts'
 
 export interface GitTree {
@@ -32,6 +33,44 @@ function releaseOf(lock: Lock): string {
   if (row === undefined)
     throw new Error('release-row: the lock has no release row')
   return row.fields[2]!
+}
+
+// The locks and `SHA256SUMS` of every release a consumer's pin names. The pin
+// states the digest of `SHA256SUMS`, that file states the digest of the lock,
+// and both objects are keyed by those digests -- so a byte that disagrees with
+// the pin is refused at enumeration and again at publish.
+export async function enumerateLocks(): Promise<ResourceObject[]> {
+  const objects: ResourceObject[] = []
+  const sums = new Map<string, string>()
+  for (const holder of PIN_HOLDERS) {
+    const listing = await fetch(`https://api.github.com/repos/micaoss/${holder}/contents/locks/pins`, { headers: githubHeaders() })
+    // A repository that keeps no pins is not a defect: mica-build-env pins
+    // nothing, it only publishes.
+    if (listing.status === 404)
+      continue
+    if (!listing.ok)
+      throw new Error(`pins-listing: ${listing.status} for ${holder}`)
+    for (const entry of await listing.json() as { name: string, path: string }[]) {
+      if (!entry.name.endsWith('.pin'))
+        continue
+      const pin = parsePin(await fetchText(rawUrl(holder, entry.path)))
+      const tag = tagOf(pin)
+      const key = `${pin.repository}/${tag}`
+      if (!sums.has(key)) {
+        const answer = await fetch(`https://github.com/micaoss/${pin.repository}/releases/download/${tag}/SHA256SUMS`, { headers: githubHeaders() })
+        // A pin can name a release whose assets are still being attached, or
+        // one cut and not yet published. Skipped loudly, picked up next run --
+        // the same rule the product assets follow.
+        if (!answer.ok) {
+          console.log(`  skipped ${key}: SHA256SUMS answers ${answer.status}`)
+          continue
+        }
+        sums.set(key, await answer.text())
+      }
+      objects.push(...lockObjects({ repository: holder, pin: entry.path }, pin, sums.get(key)!))
+    }
+  }
+  return objects
 }
 
 export async function enumerate(): Promise<Enumeration> {
@@ -70,6 +109,8 @@ export async function enumerate(): Promise<Enumeration> {
   }
 
   objects.push(...await enumerateReleases(PRODUCT_SOURCE.repository))
+
+  objects.push(...await enumerateLocks())
 
   const gitTrees: GitTree[] = []
   for (const source of GIT_SOURCES) {

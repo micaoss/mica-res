@@ -52,7 +52,7 @@ import { fetchJson, fetchText, githubHeaders } from './fetch.ts'
 import { checkMirrors, mirrorEntries } from './mirrors.ts'
 import { manifestKey, missingChunks } from './packs.ts'
 import { parseLock } from './locks.ts'
-import { coverageOf, imageReleases, poolsCovered } from './coverage.ts'
+import { coverageOf, imageReleases, lockCoverage, poolsCovered } from './coverage.ts'
 import { guard, parseCandidate } from './guard.ts'
 import { classifyGaps, frontierOf, missingSnapshots, pageWindow, spanOf } from './history.ts'
 import type { ApiRunLite, Gap, Window } from './history.ts'
@@ -557,6 +557,9 @@ async function coverage(): Promise<void> {
   console.log('  pin row kinds present:')
   for (const [row, count] of [...answer.rowKinds].toSorted())
     console.log(`    ${row.padEnd(30)} ${count} pins`)
+  const locks = lockCoverage(document.objects)
+  console.log(`  release locks and SHA256SUMS: ${locks.objects} objects over ${locks.releases.size} pinned releases`)
+  console.log('    the BINDING, not the packages: the chain from the mirror ends at the lock, whose `package` rows point into pools nothing mirrors')
   console.log(`  OCI pools (published Debian packages) covered: ${poolsCovered(answer) ? 'yes' : 'NO -- ghcr holds the only copy'}`)
   console.log('  origins:')
   for (const [host, count] of [...answer.origins].toSorted((a, b) => b[1] - a[1]))

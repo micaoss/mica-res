@@ -1,10 +1,13 @@
 // What the service mirrors, and nothing else (user decisions, 2026-09-16).
 //
 // In: third-party Debian archives and sha256-pinned tarballs, the build-env
-// images, and mica-build's product images and update archives.
-// Out: our package pools, mica-boards board components, release locks and
-// SHA256SUMS, the 21 upstream docker.io images (they are inside the build-env
-// images) and the device update service.
+// images, mica-build's product images and update archives, and -- amended by
+// the user on 2026-09-20 -- the release locks and their `SHA256SUMS`.
+// Out, unchanged by that amendment: our package pools, mica-boards board
+// components, the 21 upstream docker.io images (they are inside the build-env
+// images) and the device update service. A mirrored lock makes the BINDING
+// survivable; the `package` rows inside it still point into pools nothing
+// mirrors.
 
 export interface LockSource {
   repository: string
@@ -30,6 +33,12 @@ export const LOCK_SOURCES: LockSource[] = [
 export const IMAGE_SOURCE = { repository: 'mica-build', lock: 'locks/mica-build-env.lock', images: 'mica-build-env' }
 
 export const PRODUCT_SOURCE = { repository: 'mica-build' }
+
+// The repositories that keep `locks/pins/`, whose pins name every producer
+// release a build currently verifies against. Read from the directory rather
+// than a hard-coded list of producers, so a new pin is mirrored without an
+// edit here.
+export const PIN_HOLDERS = ['mica-build', 'mica-boards', 'mica-core', 'mica-podman', 'mica-system-base']
 
 // Phase 3: the vendor trees, mirrored as depth-1 packfiles. Enumerated now for
 // the record; nothing is produced until that phase.

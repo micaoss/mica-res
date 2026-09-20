@@ -16,7 +16,6 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { GitTree } from './enumerate.ts'
-import { blobPath } from './objects.ts'
 import type { ResourceObject } from './objects.ts'
 
 export const SCHEMA = 'mica/git-pack/v1'
@@ -59,7 +58,6 @@ export function packObjects(tree: GitTree, pack: Piece, chunks: Piece[], manifes
     sha256: chunk.sha256,
     size: chunk.size,
     commit: tree.commit,
-    path: blobPath(chunk.sha256),
     readable: [names[index]!],
     pins: [{ repository: tree.repository, lock: 'locks/upstream.lock', release: 'main', row: `git ${tree.name}` }],
   }))
@@ -71,7 +69,6 @@ export function packObjects(tree: GitTree, pack: Piece, chunks: Piece[], manifes
     size: bytes.length,
     mediaType: 'application/json',
     commit: tree.commit,
-    path: blobPath(sha256),
     readable: [manifestName(tree)],
     pins: [{ repository: tree.repository, lock: 'locks/upstream.lock', release: 'main', row: `git ${tree.name}` }],
   })

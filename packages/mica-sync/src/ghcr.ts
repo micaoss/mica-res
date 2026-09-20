@@ -4,7 +4,6 @@
 
 import { fetchJson } from './fetch.ts'
 import type { Lock } from './locks.ts'
-import { blobPath } from './objects.ts'
 import type { PinSource, ResourceObject } from './objects.ts'
 
 const MANIFEST_TYPES = [
@@ -70,7 +69,6 @@ export function descriptorObjects(manifest: Manifest, pin: PinSource, row: Image
       // A manifest of an index is read from the manifests endpoint; a config or
       // a layer from the blobs endpoint.
       origin: mediaType !== undefined && mediaType.includes('manifest') ? manifestOrigin(repository, sha256) : blobOrigin(repository, sha256),
-      path: blobPath(sha256),
       readable: [`build-env/${pin.release}/${row.name}.${row.platform}/${sha256}`],
       pins: [{ ...pin, row: `image ${row.name} ${row.platform}` }],
     }
@@ -88,7 +86,6 @@ export function manifestObject(row: ImageRow, repository: string, bytes: number,
     size: bytes,
     mediaType,
     origin: manifestOrigin(repository, row.digest),
-    path: blobPath(row.digest),
     readable: [
       `build-env/${pin.release}/${row.name}.${row.platform}/${row.digest}`,
       ...(tag === undefined ? [] : [`/v2/micaoss/${repository}/manifests/${tag}`]),

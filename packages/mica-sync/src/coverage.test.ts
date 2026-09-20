@@ -6,7 +6,6 @@ function object(origin: string, row: string): ResourceObject {
   return {
     kind: 'oci-blob',
     sha256: 'a'.repeat(64),
-    path: 'blob/aa/a',
     origin,
     readable: [],
     pins: [{ repository: 'mica-build', lock: 'locks/upstream.lock', release: 'main', row }],
@@ -32,7 +31,6 @@ test('locks are counted per release, and counting them says nothing about the po
   const lock: ResourceObject = {
     kind: 'lock',
     sha256: 'c'.repeat(64),
-    path: 'blob/cc/c',
     origin: 'https://github.com/micaoss/mica-core/releases/download/20260915-1135/mica-core.lock',
     readable: ['mica/lock/mica-core/20260915-1135/mica-core.lock'],
     pins: [{ repository: 'mica-build', lock: 'locks/pins/mica-core.pin', release: '20260915-1135', row: 'lock mica-core 20260915-1135 mica-core.lock' }],

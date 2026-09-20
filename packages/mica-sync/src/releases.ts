@@ -6,7 +6,6 @@
 import { fetchJson, fetchText, githubHeaders } from './fetch.ts'
 import { assetRows, parseLock } from './locks.ts'
 import type { AssetRow } from './locks.ts'
-import { blobPath } from './objects.ts'
 import type { ResourceObject } from './objects.ts'
 
 export const KEPT_PER_SCOPE = 3
@@ -50,7 +49,6 @@ export function assetObjects(tag: string, rows: AssetRow[], sizes: Map<string, n
       sha256: row.sha256,
       size,
       origin: `https://github.com/micaoss/${repository}/releases/download/${tag}/${row.file}`,
-      path: blobPath(row.sha256),
       readable: [`mica/${scope}/${stamp}/${row.file}`],
       pins: [{ repository, lock: `${tag}:${repository}.lock`, release: tag, row: `asset ${row.product} ${row.type} ${row.kind}` }],
     }

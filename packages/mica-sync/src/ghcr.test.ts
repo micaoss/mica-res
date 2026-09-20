@@ -25,7 +25,6 @@ test('a manifest becomes one object per config and layer', () => {
   }, pin, imageRows(lock, 'mica-build-env')[0]!)
   expect(objects.map(object => object.kind)).toEqual(['oci-blob', 'oci-blob'])
   expect(objects[1]?.size).toBe(2)
-  expect(objects[0]?.path).toBe(`blob/cc/${'c'.repeat(64)}`)
 })
 
 test('an index becomes one object per platform manifest', () => {

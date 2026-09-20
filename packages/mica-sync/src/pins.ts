@@ -9,7 +9,6 @@
 // cannot enter the bucket. Mirroring the BYTES would have been a copy; this
 // is a verification.
 
-import { blobPath } from './objects.ts'
 import type { ResourceObject } from './objects.ts'
 
 export interface Pin {
@@ -87,7 +86,6 @@ export function lockObjects(holder: { repository: string, pin: string }, pin: Pi
       sha256: digest,
       size: Buffer.byteLength(sumsText),
       origin: asset(pin.repository, tag, 'SHA256SUMS'),
-      path: blobPath(digest),
       readable: [`mica/lock/${pin.repository}/${tag}/SHA256SUMS`],
       pins: [{ ...record, row: `lock ${pin.repository} ${tag} SHA256SUMS` }],
     },
@@ -95,7 +93,6 @@ export function lockObjects(holder: { repository: string, pin: string }, pin: Pi
       kind: 'lock',
       sha256: sumsDigest(sumsText, lock),
       origin: asset(pin.repository, tag, lock),
-      path: blobPath(sumsDigest(sumsText, lock)),
       readable: [`mica/lock/${pin.repository}/${tag}/${lock}`],
       pins: [{ ...record, row: `lock ${pin.repository} ${tag} ${lock}` }],
     },

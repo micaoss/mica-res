@@ -9,7 +9,6 @@ function blob(release: string): ResourceObject {
   return {
     kind: 'oci-blob',
     sha256: 'a'.repeat(64),
-    path: 'blob/aa/a',
     origin: 'https://ghcr.io/v2/micaoss/mica-build-env/blobs/sha256:a',
     readable: [],
     pins: [{ repository: 'mica-build', lock: 'locks/mica-build-env.lock', release, row: 'image mica-build-env base amd64 ref' }],
@@ -53,7 +52,6 @@ function pooled(repository: string, release: string): ResourceObject {
   return {
     kind: 'deb',
     sha256: 'b'.repeat(64),
-    path: 'blob/bb/b',
     origin: `https://ghcr.io/v2/micaoss/${repository}/blobs/sha256:b`,
     readable: [],
     pins: [{ repository, lock: `locks/${repository}.lock`, release, row: 'package micad amd64' }],
@@ -79,7 +77,6 @@ test('another release, another repository, or a mirrored lock retires nothing', 
   const lock: ResourceObject = {
     kind: 'lock',
     sha256: 'd'.repeat(64),
-    path: 'blob/dd/d',
     origin: 'https://github.com/micaoss/mica-core/releases/download/20260915-1135/mica-core.lock',
     readable: ['mica/lock/mica-core/20260915-1135/mica-core.lock'],
     // Even with a row named like a package row -- the near miss itself -- a

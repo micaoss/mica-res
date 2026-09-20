@@ -33,7 +33,6 @@ test('the objects of a tree are the chunks plus the manifest, every one content-
     `upstream/git/cx3576-kernel/${'c'.repeat(40)}.pack.01`,
     `upstream/git/cx3576-kernel/${'c'.repeat(40)}.json`,
   ])
-  expect(objects[0]?.path).toBe(`blob/bb/${'b'.repeat(64)}`)
   // A pack is verified by git at the consumer, so the mirror records no origin
   // for it: there is no URL that serves these bytes upstream.
   expect(objects.every(object => object.origin === undefined)).toBe(true)

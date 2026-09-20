@@ -1,5 +1,35 @@
 # mica-res - Changelog
 
+## 2026-09-20 23:02 [progress]
+
+**The v1 layout is retired, not partly retired.** The user deleted `index/`
+and `site/` tonight after `blob/` earlier, and those were the whole of it:
+`blob/`, `index/<stamp>.json`, `index/current.json`, `site/`. What remained in
+the tree came out with the same sweep.
+
+**The one thing that must NOT be swept away with it**, found by the sweep and
+worth more than anything it cleaned up: **`mica-boards` still fetches from
+`blob/<aa>/<sha256>`** -- `common/scripts/fetch-archive.sh` asks the mirror for
+that path before going to the vendor. `res.micaos.dev/blob/<aa>/<sha>` is a
+ROUTE, not a stored key: it resolves a digest to its readable object and
+answers 302. Tested with a real source archive tonight, after the deletion:
+302 to `upstream/source/bun/bun-linux-aarch64.zip`, then 200 and 36.6 MB.
+**The objects are gone and the route must stay.** `sync.yml` keeps probing it
+for that reason.
+
+And the failure mode if it ever breaks is the one this repository described
+this morning without knowing it had a live instance: `fetch-archive.sh` treats
+a mirror miss as a miss, fetches from the vendor and verifies the sha256. **It
+would not fail. It would go quietly slower, and offline builds would lose a
+source** -- the "404 falls back to upstream" shape, in another repository, on
+a path we deleted the objects behind.
+
+**Removed as dead:** `ResourceObject.path` and `blobPath()`. Every object
+carried `blob/<aa>/<sha256>` in a field, and after the index rendering went,
+**nothing read it** -- the publisher keys by `canonicalKey`, the catalogue
+reads its own path, and the pack repair builds its URL itself. Seven producers
+filled it; no consumer existed.
+
 ## 2026-09-20 22:47 [BUG-P2]
 
 **The retired route had a caller I had not swept for: the admin UI.**

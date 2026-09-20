@@ -20,7 +20,6 @@ const tarball = {
 test('a .deb row becomes a deb object under the deb route', () => {
   const object = objectFromSourceRow(deb, pin)
   expect(object.kind).toBe('deb')
-  expect(object.path).toBe(`blob/aa/${'a'.repeat(64)}`)
   expect(object.readable).toEqual([
     'upstream/deb/bash/bash_5.3.3-1_amd64.deb',
     'upstream/debian/pool/main/b/bash/bash_5.3.3-1_amd64.deb',

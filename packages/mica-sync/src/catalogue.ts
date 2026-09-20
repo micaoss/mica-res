@@ -43,7 +43,6 @@ export function objectFromRow(namespace: string, row: CatalogueRow): ResourceObj
     size: row.size,
     ...(meta['commit'] === undefined ? {} : { commit: meta['commit'] }),
     ...(meta['origin'] === undefined ? {} : { origin: meta['origin'] }),
-    path: `${namespace}/${row.path}`,
     readable: [`${namespace}/${row.path}`],
     pins,
   }

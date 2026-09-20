@@ -35,7 +35,7 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { enumerate } from './enumerate.ts'
-import { blobPath, mergeObjects, summarise } from './objects.ts'
+import { mergeObjects, summarise } from './objects.ts'
 import type { Kind, ResourceObject } from './objects.ts'
 import { resolveSizes } from './sizes.ts'
 import { apply as announce, decide, openIssue } from './announce.ts'
@@ -816,7 +816,6 @@ function packChunkMeta(tree: GitTree, sha256: string): Record<string, string> {
     kind: 'git-pack',
     sha256,
     commit: tree.commit,
-    path: blobPath(sha256),
     readable: [],
     pins: [{ repository: tree.repository, lock: 'locks/upstream.lock', release: 'main', row: `git ${tree.name}` }],
   })

@@ -29,7 +29,6 @@ export interface ResourceObject {
   // sha256 -- is what a pack is trusted by.
   commit?: string
   origin?: string
-  path: string
   // Every readable download path that resolves to these bytes; one byte
   // string can be pinned under more than one name.
   readable: string[]
@@ -40,10 +39,6 @@ export interface PinSource {
   repository: string
   lock: string
   release: string
-}
-
-export function blobPath(sha256: string): string {
-  return `blob/${sha256.slice(0, 2)}/${sha256}`
 }
 
 function fileName(url: string): string {
@@ -66,7 +61,6 @@ export function objectFromSourceRow(row: SourceRow | UpstreamRow, pin: PinSource
     kind,
     sha256: row.sha256,
     origin: row.url,
-    path: blobPath(row.sha256),
     readable: [
       `upstream/${kind}/${row.name}/${fileName(row.url)}`,
       ...(alias === undefined ? [] : [alias]),

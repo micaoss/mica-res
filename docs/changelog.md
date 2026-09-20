@@ -1,6 +1,6 @@
 # mica-res - Changelog
 
-## 2026-09-20 23:24 [correction]
+## 2026-09-20 23:14 [correction]
 
 **The sentence written to protect the route protected one route of two.** The
 entry below says "anyone who deletes the `/blob/` route breaks mica-boards'

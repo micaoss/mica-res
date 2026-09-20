@@ -99,9 +99,16 @@ export function prunableReport(nodes: ReleaseNode[], mirrored: Set<string>): Pru
   return { named, prunableMirrored, prunableUnmirrored }
 }
 
-/** For each release, the indexes that name it -- directly or through a scope. */
+/**
+ * For each release, the indexes that name it.
+ *
+ * An index is recognised by its NORMALISED identity, `<repository>.mica/<stamp>`,
+ * not by a tag pattern: matching `mica\.<stamp>` on the tag would miss the
+ * slash-form `mica/20260915-2242` -- the same silent miss as the join itself,
+ * one function further along.
+ */
 export function indexCoverage(nodes: ReleaseNode[]): Map<string, string[]> {
-  const indexes = nodes.filter(node => /^mica\.[0-9]{8}-[0-9]{4}$/.test(node.tag))
+  const indexes = nodes.filter(node => node.id.startsWith('mica-build.mica/'))
   const covered = new Map<string, string[]>()
   for (const index of indexes) {
     for (const named of index.names)

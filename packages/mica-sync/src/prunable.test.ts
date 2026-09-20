@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { namesOf, prunableReport, releaseId } from './prunable.ts'
+import { indexCoverage, namesOf, prunableReport, releaseId } from './prunable.ts'
 import { parseLock } from './locks.ts'
 
 const index = parseLock([
@@ -95,4 +95,14 @@ test('a built row and an image reference key the same way as an input row', () =
   expect(namesOf(lock)).toContain(releaseId('mica-core', '20260919-2226'))
   expect(namesOf(lock)).toContain(releaseId('mica-build-env', '20260916-0735'))
   expect(namesOf(lock)).toContain(releaseId('mica-build', 'cx3576.20260919-2356'))
+})
+
+test('the slash-form index counts in the coverage table, like any other', () => {
+  const nodes = [
+    { id: releaseId('mica-build', 'mica/20260915-2242'), repository: 'mica-build', tag: 'mica/20260915-2242', names: ['mica-build.x64/20260915-2230'] },
+    { id: releaseId('mica-build', 'mica.20260916-0852'), repository: 'mica-build', tag: 'mica.20260916-0852', names: ['mica-build.uefi-x64/20260916-0845'] },
+  ]
+  const covered = indexCoverage(nodes)
+  expect(covered.get('mica-build.x64/20260915-2230')).toEqual(['mica/20260915-2242'])
+  expect(covered.get('mica-build.uefi-x64/20260916-0845')).toEqual(['mica.20260916-0852'])
 })

@@ -1,6 +1,6 @@
 # mica-res - Changelog
 
-## 2026-09-20 20:56 [progress]
+## 2026-09-20 20:35 [progress]
 
 **The search space is a field of the output now, not a paragraph somebody
 remembers to write.** `cli.ts readers <needle> [--root <dir>]` prints

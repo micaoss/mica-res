@@ -97,10 +97,6 @@
     "catalog": {
       "published": "目录已发布。",
       "pending": "发布失败，后台任务会重试。"
-    },
-    "import": "导入 v1 镜像",
-    "importHint": "在 R2 内部把每个已镜像的 v1 blob 复制到可读路径并记录，旧名称映射为跳转。可重复执行。",
-    "importRun": "开始导入",
-    "importProgress": "已处理 {{done}}/{{total}}，新建 {{created}}"
+    }
   }
 }

@@ -1,5 +1,31 @@
 # mica-res - Changelog
 
+## 2026-09-20 22:55 [BUG-P2]
+
+**The retired route had a caller I had not swept for: the admin UI.**
+`POST /res/imports/v1` was removed from the API an hour ago, and
+`apps/web/src/app/routes/_app/admin/-resources-ops.tsx` still POSTed to it
+behind a button -- a panel that would have answered 404 the first time anybody
+pressed it. My sweep for the route covered `apps/api`; the caller was in
+`apps/web`, in TSX, in the same repository. **"Readers are not all in the
+code" has a sibling: they are not all in the same LAYER either**, and a route
+is exactly the shape that gets called from a UI, a doc and a test, each of
+which a different sweep would find.
+
+Removed with it: the `ImportPage` type, the import panel's state, `runImport`,
+the card, and the four `site.import*` i18n keys in both locales
+(`check:i18n` green). The route is also gone from the generated
+`docs/reference/api-routes.md` (regenerated) and from the handwritten
+`docs/reference/api.md` (edited by hand -- the generator does not own it).
+
+`.github/workflows/index-readers.yml` is deleted in the same round, on the
+coordinator's ruling that its condition -- "not until the answer is recorded"
+-- can never be met now that the user settles the question by deleting. A
+condition that cannot be satisfied is not a hold.
+
+Gates: lint, typecheck, `check:i18n`, `check:api-docs`, and tests across every
+workspace -- 625 + 118 pass, 0 fail.
+
 ## 2026-09-20 22:38 [progress]
 
 **The v1 index's last two readers are retired, together, on the user's

@@ -73,21 +73,10 @@ export function PurgesTab() {
   );
 }
 
-interface ImportPage {
-  readonly total: number;
-  readonly next: number | null;
-  readonly created: number;
-  readonly failed: string[];
-  readonly skipped: string[];
-}
-
 export function SiteTab() {
   const { t } = useTranslation("resources");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [importing, setImporting] = useState(false);
-  const [progress, setProgress] = useState<string>("");
-  const [failures, setFailures] = useState<string[]>([]);
 
   useEffect(() => {
     api<{ title: string; description: string }>("/res/site")
@@ -118,28 +107,6 @@ export function SiteTab() {
     }
   };
 
-  const runImport = async () => {
-    setImporting(true);
-    setFailures([]);
-    let offset: number | null = 0;
-    let created = 0;
-    try {
-      while (offset !== null) {
-        const page: ImportPage = await api<ImportPage>("/res/imports/v1", { method: "POST", body: { offset, limit: 25 } });
-        created += page.created;
-        setFailures(f => [...f, ...page.failed]);
-        offset = page.next;
-        setProgress(t("site.importProgress", { done: offset ?? page.total, total: page.total, created }));
-      }
-    }
-    catch (err) {
-      toast.error(errorMessage(err, t("actionFailed")));
-    }
-    finally {
-      setImporting(false);
-    }
-  };
-
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <Card>
@@ -157,15 +124,6 @@ export function SiteTab() {
             <Button onClick={() => void saveSite()}>{t("save")}</Button>
             <Button variant="outline" onClick={() => void publish()}>{t("site.publish")}</Button>
           </div>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader><CardTitle>{t("site.import")}</CardTitle></CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-sm text-muted-foreground">{t("site.importHint")}</p>
-          <Button variant="outline" disabled={importing} onClick={() => void runImport()}>{t("site.importRun")}</Button>
-          {progress && <p className="text-sm">{progress}</p>}
-          {failures.length > 0 && <Textarea readOnly value={failures.join("\n")} rows={5} className="font-mono text-xs" />}
         </CardContent>
       </Card>
     </div>

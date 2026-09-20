@@ -222,7 +222,6 @@ for the GETs). Full semantics: [modules/resource.md](../modules/resource.md).
 | POST | `/res/catalog/publish` | Admin | Publish a catalog snapshot now. |
 | GET | `/res/purges` | Admin | CDN purge queue. |
 | POST | `/res/purges/:id/retry` | Admin | Retry a purge. |
-| POST | `/res/imports/v1` | Admin | Import a page of the v1 mirror (`offset`, `limit`). |
 | GET / POST | `/res/access-keys` | Admin | List / create access keys (secret shown once). |
 | POST | `/res/access-keys/:id/revoke` | Admin | Revoke a key. |
 | POST | `/res/access-keys/:id/sign` | Admin | Mint a signed download URL. |

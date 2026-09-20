@@ -97,10 +97,6 @@
     "catalog": {
       "published": "Catalog published.",
       "pending": "Publishing failed; the background job will retry."
-    },
-    "import": "Import the v1 mirror",
-    "importHint": "Copies every mirrored v1 blob to its readable key inside R2, records it, and maps its old names to redirects. Safe to run again.",
-    "importRun": "Run import",
-    "importProgress": "{{done}} of {{total}} processed, {{created}} created"
+    }
   }
 }

@@ -225,3 +225,21 @@ Designing the public resource framework and the Worker refactor
   and a check satisfiable by anything other than its reason retires itself
   confidently. `poolsCovered()` is now "the mirror holds ghcr bytes of a pool
   publisher" and is never substituted for a per-candidate verdict.
+- 2026-09-20 14:11 (agent/x32539az, on the coordinator's routing of the stale
+  index) **The v1 readers are moved, and the equivalence check that gated it.**
+  `coverage`, the guard and the sync's regression check read the service's
+  catalogue (`src/catalogue.ts`) instead of `index/current.json`. Everything
+  they use is on the object -- the publisher writes `kind`, `origin`, `commit`
+  and the pins as metadata and the v1 import carried exactly those over -- and
+  the only index field with no catalogue equivalent is `state: pending`, which
+  is the point rather than a gap. Cost: they need `MICA_RES_TOKEN`, because
+  object metadata is not on the public listing. Three defects surfaced in the
+  move, each recorded in the changelog: `coverageOf` counted `pending` objects
+  (a guard could have ALLOWED a deletion on an intention), a hand-repaired pack
+  chunk carried no metadata at all, and the reader's refusal blocked the very
+  repair that would fix it.
+  **Nothing in this workspace reads the index document**: every consumer reads
+  readable download paths (`MICA_BASE_MIRROR`, `MICA_MIRROR`, the `mirrors`
+  URLs inside `mica-index.json`). Whether one should exist for readers outside
+  the workspace is the user's product question; this repository no longer
+  depends on the answer.

@@ -1,6 +1,6 @@
 # mica-res - Changelog
 
-## 2026-09-20 14:27 [BUG-P2]
+## 2026-09-20 14:11 [BUG-P2]
 
 **And the refusal blocked its own repair.** `readCatalogue` threw on the
 kindless chunk, so the sync's regression check failed before the `packs
@@ -13,7 +13,7 @@ because a verdict that ALLOWS a deletion is only as good as the picture it was
 read from. A gate reading a catalogue with holes in it is the cached-404
 mistake in a different costume: absence read as an answer.
 
-## 2026-09-20 14:20 [BUG-P2]
+## 2026-09-20 14:09 [BUG-P2]
 
 **The catalogue reader's refusal found an object the mirror holds and cannot
 describe**, on its first real run: `upstream/git/uefi-x64-kernel/f717995c....pack.00`
@@ -32,7 +32,7 @@ metadata of every declared chunk against the catalogue, reporting
 `held with no kind in its metadata` and repairing it under `--repair`. The
 check is how the defect was found, so it is the check that keeps it found.
 
-## 2026-09-20 14:12 [progress]
+## 2026-09-20 14:05 [progress]
 
 The first catalogue read failed on the metadata's shape, and reading the route
 settled it rather than guessing: `resource.routes.ts` answers

@@ -177,6 +177,12 @@ jobs:
           for i in 1 2; do
             curl -sS -o /dev/null -w "  by digest ${i}: %{time_total}s\n" "https://res.micaos.dev/v2/micaoss/mica-build-env/manifests/sha256:${digest}?cold=${GITHUB_RUN_ID}${i}"
           done
+      # The prunable set, as three lists and no opinion. Read-only.
+      - name: Derive the prunable set
+        run: bun packages/mica-sync/src/cli.ts prunable
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
       - uses: actions/upload-artifact@v7
         with:
           name: sync-${{ github.run_id }}

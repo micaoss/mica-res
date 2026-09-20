@@ -103,19 +103,35 @@ async function mirrorTree(tree: GitTree, publisher: Publisher): Promise<{ object
   const pieces = chunkBytes(pack)
   const chunks = pieces.map(piece => ({ sha256: Bun.SHA256.hash(piece, 'hex'), size: piece.length }))
   const names = chunkNames(tree, chunks.length)
-  const items: PublishItem[] = []
-  for (const [index, piece] of pieces.entries())
-    items.push({ path: splitKey(names[index]!).path, source: { uploadId: await stageBytes(publisher, 'upstream', piece, 'application/octet-stream') } })
-
   const whole = { sha256: Bun.SHA256.hash(pack, 'hex'), size: pack.length }
   const manifest = renderManifest(tree, whole, chunks)
+  // The objects first, so every publish below carries the metadata the main
+  // sync path writes. This path used to publish bytes under a name and
+  // nothing else -- the same omission the hand repair made, in the NORMAL
+  // route: a second publisher inside one tool that writes less than the first.
+  const objects = packObjects(tree, whole, chunks, manifest)
+
+  const items: PublishItem[] = []
+  for (const [index, piece] of pieces.entries()) {
+    items.push({
+      path: splitKey(names[index]!).path,
+      source: { uploadId: await stageBytes(publisher, 'upstream', piece, 'application/octet-stream') },
+      meta: objectMeta(objects[index]!),
+    })
+  }
+
   // The manifest last, in its own batch: a consumer that finds the manifest
   // finds every chunk it names.
   await publishBatch(publisher, 'upstream', items)
   const manifestId = await stageBytes(publisher, 'upstream', new TextEncoder().encode(manifest), 'application/json')
-  await publishBatch(publisher, 'upstream', [{ path: splitKey(manifestName(tree)).path, source: { uploadId: manifestId }, contentType: 'application/json' }])
+  await publishBatch(publisher, 'upstream', [{
+    path: splitKey(manifestName(tree)).path,
+    source: { uploadId: manifestId },
+    contentType: 'application/json',
+    meta: objectMeta(objects.at(-1)!),
+  }])
   console.log(`  ${tree.name}: ${(pack.length / 1048576).toFixed(1)} MiB in ${chunks.length} chunk(s) at ${names[0]}`)
-  return { objects: packObjects(tree, whole, chunks, manifest), produced: true }
+  return { objects, produced: true }
 }
 
 // Held objects by canonical key, one listing per namespace.

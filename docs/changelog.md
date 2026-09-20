@@ -1,5 +1,24 @@
 # mica-res - Changelog
 
+## 2026-09-20 21:02 [progress]
+
+**A code sweep is the wrong instrument for a publicly served object, by
+construction.** `edge/http.ts` and `edge/s3.ts` serve ANY key taken from the
+request path, so a public `GET /index/current.json` is answered by code that
+NAMES NOTHING. For anything behind that generic path, the interesting readers
+are invisible to a sweep **by design rather than by accident**: no wider needle
+and no wider search space can close it. Recorded in `src/readers.ts` beside the
+tool, because it is a property of what the tool is rather than a limit of how
+it was run -- "nothing reads it", from a sweep, can only ever mean "nothing in
+our code names it", and for a served object those two sentences are not close.
+
+Found while widening the needle from two literals to the store's whole read
+surface (`getText(`, `getStream(`, `presignGet(`, `copyFrom(`): the widening
+confirmed `import-v1.ts` is still the only constructed reader of `index/` --
+`catalog-reader.ts` builds `_catalog/...`, `edge/http.ts:284` builds
+`oci/blobs/sha256/...` -- and turned up the generic path, which names no key at
+all.
+
 ## 2026-09-20 20:37 [progress]
 
 `readers` now prints what the root CONTAINED, not only what it excluded

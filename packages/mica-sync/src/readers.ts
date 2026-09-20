@@ -10,6 +10,14 @@
 // under-counted the readers of the index document. A format survives its
 // author; a rule waits for them to remember it.
 
+// AND THE LIMIT NO NEEDLE AND NO SPACE CAN CLOSE, written here rather than in
+// a record because it is a property of what this tool is: for an object served
+// from a GENERIC path -- `edge/http.ts` answers any key taken from the request
+// -- the code that serves it NAMES NOTHING. So a clean sweep for a publicly
+// served object means "nothing in our code names it", never "nothing reads
+// it", and the gap between those two sentences is where every external reader
+// lives. That aperture is architectural, not a matter of how widely this was
+// run.
 export const EXCLUDED = ['node_modules', '.git', '_out', 'repos', 'tmp']
 
 export interface Hit {

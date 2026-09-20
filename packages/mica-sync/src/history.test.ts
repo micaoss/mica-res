@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { classifyGaps, missingSnapshots, spanOf } from './history.ts'
+import { classifyGaps, missingSnapshots, pageWindow, spanOf } from './history.ts'
 
 const held = new Set(['status/runs/mica-build/1.json', 'status/runs/mica-build/2.json'])
 
@@ -35,4 +35,20 @@ test('a run newer than the last collector pass is lag, an older one is a hole', 
 test('with nothing collected yet every gap is a hole', () => {
   const gaps = [{ repository: 'mica', id: 1, startedAt: '2026-09-20T06:00:00Z' }]
   expect(classifyGaps(gaps, undefined).holes).toHaveLength(1)
+})
+
+test('the margin is the distance from the page floor to the oldest uncollected run', () => {
+  const runs = [
+    { id: 1, status: 'completed', conclusion: 'success', run_started_at: '2026-09-17T00:00:00Z' },
+    { id: 2, status: 'completed', conclusion: 'success', run_started_at: '2026-09-20T00:00:00Z' },
+  ]
+  const gaps = [{ repository: 'mica', id: 2, startedAt: '2026-09-20T00:00:00Z' }]
+  const window = pageWindow('mica', runs, gaps, 2)
+  expect(window.saturated).toBe(true)
+  expect(window.marginHours).toBe(72)
+})
+
+test('a page that is not full reaches the whole history', () => {
+  const runs = [{ id: 1, status: 'completed', conclusion: 'success', run_started_at: '2026-09-20T00:00:00Z' }]
+  expect(pageWindow('mica', runs, [], 100).saturated).toBe(false)
 })

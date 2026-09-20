@@ -177,6 +177,10 @@ jobs:
           for i in 1 2; do
             curl -sS -o /dev/null -w "  by digest ${i}: %{time_total}s\n" "https://res.micaos.dev/v2/micaoss/mica-build-env/manifests/sha256:${digest}?cold=${GITHUB_RUN_ID}${i}"
           done
+      # Which artefact the mirror actually holds bytes of. Read-only.
+      - name: Report what the mirror covers
+        run: bun packages/mica-sync/src/cli.ts coverage
+
       # Is the run history in the bucket, and is it unbroken? A gap matters
       # more than a count.
       - name: Report the run history and its gaps

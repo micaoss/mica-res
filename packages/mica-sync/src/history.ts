@@ -47,3 +47,31 @@ export function classifyGaps(gaps: Gap[], frontier: string | undefined): { lag: 
     holes: gaps.filter(gap => Date.parse(gap.startedAt) <= edge),
   }
 }
+
+// The window that actually bounds recovery is NOT GitHub's run retention: the
+// collector reads ONE page of 100 runs per repository (`listRuns`, no
+// pagination) and `backfill` reads the collector's own artifacts, not the API.
+// So a run that has fallen past position 100 before any pass saw it is
+// unreachable by both paths. The early warning is therefore the distance
+// between the oldest run page one still reaches and the oldest run nothing has
+// collected: while the floor is older than the gap, every gap is still
+// recoverable. A page that is not full reaches the whole history and cannot
+// lose anything.
+export interface Window {
+  repository: string
+  saturated: boolean
+  floor: string | undefined
+  oldestGap: string | undefined
+  marginHours: number | undefined
+}
+
+export function pageWindow(repository: string, runs: ApiRunLite[], gaps: Gap[], perPage = 100): Window {
+  const stamps = runs.map(run => run.run_started_at).toSorted()
+  const floor = stamps[0]
+  const oldestGap = gaps.map(gap => gap.startedAt).toSorted()[0]
+  const saturated = runs.length >= perPage
+  const marginHours = floor === undefined || oldestGap === undefined
+    ? undefined
+    : (Date.parse(oldestGap) - Date.parse(floor)) / 3_600_000
+  return { repository, saturated, floor, oldestGap, marginHours }
+}

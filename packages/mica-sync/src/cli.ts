@@ -8,6 +8,8 @@
 //   bun src/cli.ts reconcile                      the catalog against the locks
 //   bun src/cli.ts backfill --dir <tree>          republish artifact snapshots
 //   bun src/cli.ts mirrors                        the index mirror URLs, by digest
+//   bun src/cli.ts coverage                       which artefact the mirror
+//                                                 actually holds bytes of
 //   bun src/cli.ts history                        is the run history in the
 //                                                 bucket, and is it unbroken?
 //   bun src/cli.ts prunable                       three lists: named, prunable
@@ -27,7 +29,7 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { enumerate } from './enumerate.ts'
-import { buildIndex, readIndex, renderIndex, renderPointer, summarise } from './index-doc.ts'
+import { buildIndex, readIndex, readPointer, renderIndex, renderPointer, summarise } from './index-doc.ts'
 import type { IndexDocument } from './index-doc.ts'
 import { mergeObjects } from './objects.ts'
 import type { Kind, ResourceObject } from './objects.ts'
@@ -47,8 +49,9 @@ import { fetchJson, fetchText, githubHeaders } from './fetch.ts'
 import { checkMirrors, mirrorEntries } from './mirrors.ts'
 import { manifestKey, missingChunks } from './packs.ts'
 import { parseLock } from './locks.ts'
-import { classifyGaps, missingSnapshots, spanOf } from './history.ts'
-import type { ApiRunLite, Gap } from './history.ts'
+import { coverageOf, poolsCovered } from './coverage.ts'
+import { classifyGaps, missingSnapshots, pageWindow, spanOf } from './history.ts'
+import type { ApiRunLite, Gap, Window } from './history.ts'
 import { indexCoverage, namesOf, prunableReport, releaseId } from './prunable.ts'
 import type { ReleaseNode } from './prunable.ts'
 import type { PackManifest } from './packs.ts'
@@ -491,6 +494,26 @@ async function backfill(argv: string[]): Promise<void> {
 // Fetches every mirror URL the newest version index names and compares the
 // bytes' digest with the one the index states beside it -- the check a device
 // would do.
+// Which artefact the mirror protects, read off the published index. The answer
+// a retention proposal needs, and the one nobody can hold in their head.
+async function coverage(): Promise<void> {
+  const home = process.env['MICA_RES_BASE'] ?? DEFAULT_BASE
+  const pointer = readPointer(await (await fetch(`${home}/index/current.json`)).text())
+  const document = readIndex(await (await fetch(`${home}/index/${pointer.version}.json`)).text())
+  const answer = coverageOf(document.objects)
+  console.log(`coverage of index ${document.version}: ${document.objects.length} objects`)
+  console.log('  ghcr packages whose bytes the mirror holds:')
+  for (const [name, count] of [...answer.registry].toSorted())
+    console.log(`    ${name.padEnd(30)} ${count} objects`)
+  console.log('  pin row kinds present:')
+  for (const [row, count] of [...answer.rowKinds].toSorted())
+    console.log(`    ${row.padEnd(30)} ${count} pins`)
+  console.log(`  OCI pools (published Debian packages) covered: ${poolsCovered(answer) ? 'yes' : 'NO -- ghcr holds the only copy'}`)
+  console.log('  origins:')
+  for (const [host, count] of [...answer.origins].toSorted((a, b) => b[1] - a[1]))
+    console.log(`    ${host.padEnd(30)} ${count} objects`)
+}
+
 // How much run history the bucket holds, over what span, and whether the
 // series has a gap. Read-only and token-free: the status listings are public.
 async function history(): Promise<void> {
@@ -500,6 +523,7 @@ async function history(): Promise<void> {
   const runKeys = held.filter(object => /^status\/runs\//.test(object.key))
 
   const gaps: Gap[] = []
+  const windows: Window[] = []
   const stamps = new Map<string, string>()
   let concluded = 0
   for (const repository of REPOSITORIES) {
@@ -508,7 +532,9 @@ async function history(): Promise<void> {
     for (const run of runs.workflow_runs)
       stamps.set(`status/runs/${repository}/${run.id}.json`, run.run_started_at)
     concluded += runs.workflow_runs.filter(run => run.status === 'completed' && run.conclusion !== null).length
-    gaps.push(...missingSnapshots(repository, runs.workflow_runs, keys))
+    const missing = missingSnapshots(repository, runs.workflow_runs, keys)
+    gaps.push(...missing)
+    windows.push(pageWindow(repository, runs.workflow_runs, missing))
   }
 
   const span = spanOf(runKeys.map(object => object.key), stamps)
@@ -521,6 +547,15 @@ async function history(): Promise<void> {
   console.log(`  HOLES (older than the last pass and never collected): ${holes.length}`)
   for (const gap of holes.slice(0, 20))
     console.log(`  HOLE ${gap.repository} ${gap.id} started ${gap.startedAt}`)
+  // The early warning: a gap older than the page floor is one nothing can
+  // reach any more, because neither the collector nor backfill paginates.
+  console.log('  recovery margin (page floor .. oldest uncollected run):')
+  for (const window of windows) {
+    const margin = window.marginHours === undefined
+      ? 'no gap'
+      : `${window.marginHours.toFixed(1)} h${window.marginHours < 0 ? '  UNREACHABLE' : ''}`
+    console.log(`    ${window.repository.padEnd(18)} page ${window.saturated ? 'FULL ' : 'open '} floor ${window.floor ?? '-'}  oldest gap ${window.oldestGap ?? '-'}  margin ${margin}`)
+  }
   for (const name of ['status/current.json', 'status/health.json'])
     console.log(`  ${name}: ${keys.has(name) ? 'present' : 'MISSING'}`)
 }
@@ -723,6 +758,9 @@ const [command, ...argv] = process.argv.slice(2)
 switch (command) {
   case 'sync':
     await sync(argv)
+    break
+  case 'coverage':
+    await coverage()
     break
   case 'history':
     await history()

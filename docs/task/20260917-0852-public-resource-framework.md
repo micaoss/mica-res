@@ -243,3 +243,22 @@ Designing the public resource framework and the Worker refactor
   URLs inside `mica-index.json`). Whether one should exist for readers outside
   the workspace is the user's product question; this repository no longer
   depends on the answer.
+- 2026-09-20 14:35 (agent/x32539az) **Open, and held open on purpose:**
+  `.github/workflows/index-readers.yml` stays dispatch-only and is NOT to be
+  deleted until it has answered. `CLOUDFLARE_API_TOKEN` lacks
+  `com.cloudflare.api.account.zone.analytics.read` for `micaos.dev`, so the
+  question "does anything outside this workspace read the published index
+  document" is unanswered rather than answered negatively; the user grants that
+  scope or issues a second token. A workflow that exists and refuses is a
+  question still open, and a deleted one is a question that was never asked
+  (coordinator `uj991oa2`, 2026-09-20). When it runs, the claim it supports is
+  "no request in the last N days", never "nothing reads it".
+- 2026-09-20 14:35 (agent/x32539az) **Why a green run was not evidence here,
+  recorded because it is the strongest instance this repository has:** the
+  guard read a four-day-old rendering, which made it err toward REFUSING, which
+  hid the `pending`-object defect instead of triggering it. Two present checks
+  cancelled each other; neither a red audit nor a red reconcile could have
+  shown it, since one compares bytes and the other compares keys. The question
+  that found the pack-metadata defect was likewise the generic one -- which
+  publishers exist, and do they all write the same thing -- not a class named
+  after the first instance.

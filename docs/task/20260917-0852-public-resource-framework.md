@@ -190,3 +190,23 @@ Designing the public resource framework and the Worker refactor
   against `docs/retention/candidates.txt`, whose absence means nothing is
   proposed. The 2026-09-22 proposal is written against this gate, not beside
   it.
+- 2026-09-20 08:06 (agent/x32539az, on the user's amendment through
+  `uj991oa2`) **The lock phase is in, and it is a verification.**
+  `enumerateLocks()` walks `locks/pins/*.pin` in the five pin-holding
+  repositories; for each pinned release the pin's stated `SHA256SUMS` digest is
+  what the fetched file must hash to (`pin-digest` refusal otherwise), that
+  file states the lock's digest, and both objects are keyed by those digests,
+  so the publisher refuses bytes that disagree. 18 distinct objects (9 pinned
+  releases x lock + `SHA256SUMS`), applied in run 35498220604 and **verified
+  18/18 by digest against `dl.res.micaos.dev`**. Keys are
+  `mica/lock/<repository>/<tag>/<file>` in the existing `mica` namespace --
+  namespaces are the service's entities, and `lock/` cannot collide with a
+  product scope.
+  **The limit, which travels with the result every time it is reported:** the
+  chain from the mirror ends at the lock, whose `package` rows point into pools
+  nothing mirrors. It makes the BINDING survivable, not the packages.
+  **No guard verdict changes**, and `src/pins.test.ts` holds that open: a
+  `lock` pin row is not a `package` or `pool` row, so `poolsCovered()` stays
+  false and every pool refusal stands until the user says otherwise.
+  Out of scope and unchanged by the amendment: the pools, the board components
+  and the device update service.

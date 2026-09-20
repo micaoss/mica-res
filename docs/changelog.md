@@ -1,6 +1,11 @@
 # mica-res - Changelog
 
-## 2026-09-20 07:30 [correction]
+## 2026-09-20 06:54 [correction]
+
+Two stamps in the entries below were written ahead of the clock (07:05 and
+07:02 for work committed at 06:49 and 06:45) and are corrected to their commit
+times; the coordinator's citation of commits `5daa07b` and `2306c45` is
+unaffected.
 
 **The pools are unmirrored BY DECISION, not by oversight, and the entry below
 is reclassified.** `docs/task/20260916-0728-r2-resource-service-phase-0.md`
@@ -22,7 +27,7 @@ where it belongs: a decision's consequence, measurable by
 pools would reverse "not to be re-added" and is the user's call, not a phase
 this repository can start.**
 
-## 2026-09-20 07:05 [BUG-P1]
+## 2026-09-20 06:49 [BUG-P1]
 
 **The mirror protects one ghcr package, not "the ghcr packages".** Measured
 off the published index rather than remembered from the phases that built it
@@ -46,7 +51,7 @@ artifacts. No phase was skipped and nothing regressed -- pools were never in
 scope. It matters now because a retention decision about a ghcr package is
 safe only where the mirror holds that package's bytes.
 
-## 2026-09-20 07:02 [progress]
+## 2026-09-20 06:45 [progress]
 
 **An early warning for the run history, because the bound is the page, not
 the retention.** `cli.ts history` now reports the recovery margin per

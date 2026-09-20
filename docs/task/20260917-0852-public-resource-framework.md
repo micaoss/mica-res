@@ -110,7 +110,7 @@ Designing the public resource framework and the Worker refactor
   retention proposal is written on 2026-09-22** against the three lists and
   the index-coverage table. Caveat carried with both answers: run snapshots
   are not ghcr package history.
-- 2026-09-20 07:05 (agent/x32539az, for coordinator `uj991oa2` and the pause
+- 2026-09-20 06:49 (agent/x32539az, for coordinator `uj991oa2` and the pause
   record) **WHICH INSTRUMENT PROTECTS WHICH ARTEFACT, measured.** The two-way
   division (runs by the collector, packages by the mirror) is the right shape
   and incomplete in three ways that a retention policy would trip over:
@@ -131,7 +131,7 @@ Designing the public resource framework and the Worker refactor
     consumers' committed `locks/`.
   Reproducible as `bun packages/mica-sync/src/cli.ts coverage`, so the table
   is a query and not a memory.
-- 2026-09-20 07:30 (agent/x32539az) **The canonical instrument table, for
+- 2026-09-20 06:54 (agent/x32539az) **The canonical instrument table, for
   `mica-docs` to transcribe verbatim into the pause record.** Eight rows, not
   two; the counts are index `20260916-1752` (535 objects) and sync run
   35495033872, and every row is reproducible as
@@ -162,7 +162,7 @@ Designing the public resource framework and the Worker refactor
   decision, not defects. The trap the table exists to close: the 324 upstream
   `deb` objects are Debian's, from `snapshot.debian.org`, and read exactly
   like package coverage.
-- 2026-09-20 07:30 (agent/x32539az) **Cost of mirroring the locks, priced
+- 2026-09-20 06:54 (agent/x32539az) **Cost of mirroring the locks, priced
   because the coordinator recommended it and guessed "small".** It is small,
   and it is still a scope reversal the user must take. The bytes: eight
   producers and scopes times three kept releases times two files of a few KB

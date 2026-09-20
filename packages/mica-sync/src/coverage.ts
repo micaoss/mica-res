@@ -43,3 +43,17 @@ export function coverageOf(objects: ResourceObject[]): Coverage {
 export function poolsCovered(coverage: Coverage): boolean {
   return (coverage.rowKinds.get('package') ?? 0) > 0 || (coverage.rowKinds.get('pool') ?? 0) > 0
 }
+
+// The releases whose build-env blobs the mirror actually holds. A tag is safe
+// to lose only where the bytes of THAT release are held, not where some
+// release of the same image is.
+export function imageReleases(objects: ResourceObject[]): Set<string> {
+  const releases = new Set<string>()
+  for (const object of objects) {
+    for (const pin of object.pins) {
+      if (pin.row.startsWith('image ') && /^[0-9]{8}-[0-9]{4}$/.test(pin.release))
+        releases.add(pin.release)
+    }
+  }
+  return releases
+}

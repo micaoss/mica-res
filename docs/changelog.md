@@ -1,5 +1,34 @@
 # mica-res - Changelog
 
+## 2026-09-20 07:12 [progress]
+
+**The prune refusal that retires itself.** `cli.ts guard` (new, in `sync.yml`)
+takes prune candidates as `<owner>/<package>:<tag>` and answers one verdict
+each, reading the condition off the published index every run rather than off
+a sentence someone has to remember: a pool, a `rootfs`, or a mica-boards
+board component is refused while `poolsCovered()` is false, and **the refusal
+disappears on its own the day the index carries a `package` or `pool` row** --
+no edit here, nobody to notice that the reason ended. Every verdict states
+what would retire it.
+
+The tag families are the ones the org's packages actually carry, read from
+ghcr: `pool.<arch>`, `pool.<board>.<arch>`, `rootfs`, `board|kernel|uboot|firmware.<board>`,
+`base|bsp|c|go|rust[.<arch>]`, `image|update.<product>`. **An unrecognised
+family is a refusal**, because a classifier that cannot place a candidate has
+not established that another copy exists. A build-env release is allowed only
+where the mirror holds the blobs of THAT release; `image.*` and `update.*` are
+refused with the distinction stated, since the mirror holds the release's
+`.img.gz` and `.micaupd` assets and never those OCI bytes. Today, against
+index `20260916-1752`: one allowed (`base.20260916-0735`), everything else
+refused. Exit code 1 on any refusal, so a candidate list cannot pass CI while
+it is unsafe.
+
+A defect found in the gate itself while testing it, and fixed: an argv slice
+ate the first candidate, so `guard <one-candidate>` printed "no candidates
+given" and exited 0 -- the gate reporting nothing to check while a candidate
+stood in front of it. The guard now refuses when arguments are given and none
+parse, which is the shape of that failure rather than the instance.
+
 ## 2026-09-20 06:54 [correction]
 
 Two stamps in the entries below were written ahead of the clock (07:05 and

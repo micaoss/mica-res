@@ -177,6 +177,13 @@ jobs:
           for i in 1 2; do
             curl -sS -o /dev/null -w "  by digest ${i}: %{time_total}s\n" "https://res.micaos.dev/v2/micaoss/mica-build-env/manifests/sha256:${digest}?cold=${GITHUB_RUN_ID}${i}"
           done
+      # The gate a retention proposal has to pass: a candidate whose bytes only
+      # ghcr holds is refused, and the refusal ends by itself on the day the
+      # mirror covers that artefact. No candidate file means nothing is
+      # proposed for deletion, which is the state today.
+      - name: Refuse prune candidates nothing but ghcr holds
+        run: bun packages/mica-sync/src/cli.ts guard --file docs/retention/candidates.txt
+
       # Which artefact the mirror actually holds bytes of. Read-only.
       - name: Report what the mirror covers
         run: bun packages/mica-sync/src/cli.ts coverage

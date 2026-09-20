@@ -8,6 +8,9 @@
 //   bun src/cli.ts reconcile                      the catalog against the locks
 //   bun src/cli.ts backfill --dir <tree>          republish artifact snapshots
 //   bun src/cli.ts mirrors                        the index mirror URLs, by digest
+//   bun src/cli.ts guard [--file <path>] [<pkg>:<tag> ...]
+//                                                 refuse a prune candidate
+//                                                 nothing but ghcr holds
 //   bun src/cli.ts coverage                       which artefact the mirror
 //                                                 actually holds bytes of
 //   bun src/cli.ts history                        is the run history in the
@@ -49,7 +52,8 @@ import { fetchJson, fetchText, githubHeaders } from './fetch.ts'
 import { checkMirrors, mirrorEntries } from './mirrors.ts'
 import { manifestKey, missingChunks } from './packs.ts'
 import { parseLock } from './locks.ts'
-import { coverageOf, poolsCovered } from './coverage.ts'
+import { coverageOf, imageReleases, poolsCovered } from './coverage.ts'
+import { guard, parseCandidate } from './guard.ts'
 import { classifyGaps, missingSnapshots, pageWindow, spanOf } from './history.ts'
 import type { ApiRunLite, Gap, Window } from './history.ts'
 import { indexCoverage, namesOf, prunableReport, releaseId } from './prunable.ts'
@@ -494,6 +498,51 @@ async function backfill(argv: string[]): Promise<void> {
 // Fetches every mirror URL the newest version index names and compares the
 // bytes' digest with the one the index states beside it -- the check a device
 // would do.
+async function publishedIndex(): Promise<IndexDocument> {
+  const home = process.env['MICA_RES_BASE'] ?? DEFAULT_BASE
+  const pointer = readPointer(await (await fetch(`${home}/index/current.json`)).text())
+  return readIndex(await (await fetch(`${home}/index/${pointer.version}.json`)).text())
+}
+
+// The gate a retention proposal has to pass: a candidate whose bytes only ghcr
+// holds is refused, and the refusal ends by itself when the mirror covers that
+// artefact. Exits non-zero on any refusal, so a candidate list cannot be
+// approved while it is unsafe.
+async function guardCandidates(argv: string[]): Promise<void> {
+  const file = argv.includes('--file') ? argv[argv.indexOf('--file') + 1]! : undefined
+  // A missing candidate file is not an error: it is the state where nothing is
+  // proposed for deletion, which is what a green run should look like today.
+  const text = file === undefined || !await Bun.file(file).exists() ? '' : await Bun.file(file).text()
+  const words = [...argv.filter(one => one.includes(':')), ...text.split('\n')]
+    .map(one => one.replace(/#.*$/, '').trim())
+    .filter(one => one.length > 0)
+  // Dropping a candidate silently is the failure mode this whole gate exists
+  // to prevent, and it happened here once: a slice bug ate the first argument
+  // and the guard reported "no candidates" while one was in front of it. An
+  // argument that survives flag parsing and matches nothing is a refusal.
+  const offered = argv.filter((one, index) => !one.startsWith('--') && argv[index - 1] !== '--file')
+  if (words.length === 0 && offered.length > 0)
+    throw new Error(`candidate-form: ${offered.length} argument(s) given and none parsed as <owner>/<package>:<tag>`)
+  if (words.length === 0) {
+    console.log('guard: no candidates given; nothing is proposed for deletion')
+    return
+  }
+  const document = await publishedIndex()
+  const answer = coverageOf(document.objects)
+  const releases = imageReleases(document.objects)
+  const verdicts = guard(words.map(parseCandidate), answer, releases)
+  for (const one of verdicts) {
+    console.log(`  ${one.allowed ? 'ALLOWED ' : 'REFUSED '} ${one.candidate}  [${one.artefact ?? 'unplaced'}]`)
+    console.log(`             ${one.reason}`)
+    if (!one.allowed)
+      console.log(`             retires when: ${one.retiresWhen}`)
+  }
+  const refused = verdicts.filter(one => !one.allowed)
+  console.log(`guard: ${verdicts.length - refused.length} allowed, ${refused.length} refused (index ${document.version})`)
+  if (refused.length > 0)
+    process.exitCode = 1
+}
+
 // Which artefact the mirror protects, read off the published index. The answer
 // a retention proposal needs, and the one nobody can hold in their head.
 async function coverage(): Promise<void> {
@@ -758,6 +807,9 @@ const [command, ...argv] = process.argv.slice(2)
 switch (command) {
   case 'sync':
     await sync(argv)
+    break
+  case 'guard':
+    await guardCandidates(argv)
     break
   case 'coverage':
     await coverage()

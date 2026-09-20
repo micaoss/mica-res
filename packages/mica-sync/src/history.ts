@@ -86,3 +86,14 @@ export function pageWindow(repository: string, runs: ApiRunLite[], gaps: Gap[], 
     : (Date.parse(oldestGap) - Date.parse(floor)) / 3_600_000
   return { repository, saturated, floor, oldestGap, marginHours }
 }
+
+// One pass can race a run: the collector lists runs at the start of a pass and
+// writes `current.json` at the end of it, so a run that concludes in between
+// is absent from that pass and still older than its stamp. TWO passes cannot
+// race the same run. The frontier is therefore the end of the PREVIOUS pass:
+// a run that concluded before it and still has no snapshot was missed by a
+// whole pass, which is what a hole means.
+export function frontierOf(passes: { updated_at: string }[], fallback: string | undefined): string | undefined {
+  const finished = passes.map(pass => pass.updated_at).toSorted().reverse()
+  return finished[1] ?? fallback
+}

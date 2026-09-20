@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { classifyGaps, missingSnapshots, pageWindow, spanOf } from './history.ts'
+import { classifyGaps, frontierOf, missingSnapshots, pageWindow, spanOf } from './history.ts'
 
 const held = new Set(['status/runs/mica-build/1.json', 'status/runs/mica-build/2.json'])
 
@@ -58,4 +58,10 @@ test('a run that began before a pass and finished after it is lag, not a hole', 
   const answer = classifyGaps(gaps, '2026-09-20T06:51:25Z')
   expect(answer.holes).toHaveLength(0)
   expect(answer.lag).toHaveLength(1)
+})
+
+test('the frontier is the end of the previous pass, so one pass cannot race a run into a hole', () => {
+  const passes = [{ updated_at: '2026-09-20T06:55:28Z' }, { updated_at: '2026-09-20T01:29:15Z' }]
+  expect(frontierOf(passes, undefined)).toBe('2026-09-20T01:29:15Z')
+  expect(frontierOf([{ updated_at: '2026-09-20T06:55:28Z' }], '2026-09-19T00:00:00Z')).toBe('2026-09-19T00:00:00Z')
 })

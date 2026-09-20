@@ -1,5 +1,17 @@
 # mica-res - Changelog
 
+## 2026-09-20 07:14 [BUG-P2]
+
+**And the corrected frontier was still one pass too tight.** Using the last
+pass's own stamp left two `mica` runs as holes that concluded 70 and 14
+seconds before `current.json` was written: the collector LISTS runs at the
+start of a pass and writes the pointer at the end of it, so a run concluding
+in between is absent from that pass and older than its stamp. One pass can
+race a run; two cannot. The frontier is now the END OF THE PREVIOUS PASS
+(`frontierOf`, from `collect.yml`'s own completed runs), and a hole is a run
+that a whole pass ran after and still missed -- which is what the word was
+always supposed to mean.
+
 ## 2026-09-20 07:08 [BUG-P2]
 
 **The hole classifier used the wrong frontier and raised three false holes

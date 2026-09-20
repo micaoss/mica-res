@@ -54,7 +54,7 @@ import { manifestKey, missingChunks } from './packs.ts'
 import { parseLock } from './locks.ts'
 import { coverageOf, imageReleases, poolsCovered } from './coverage.ts'
 import { guard, parseCandidate } from './guard.ts'
-import { classifyGaps, missingSnapshots, pageWindow, spanOf } from './history.ts'
+import { classifyGaps, frontierOf, missingSnapshots, pageWindow, spanOf } from './history.ts'
 import type { ApiRunLite, Gap, Window } from './history.ts'
 import { indexCoverage, namesOf, prunableReport, releaseId } from './prunable.ts'
 import type { ReleaseNode } from './prunable.ts'
@@ -597,11 +597,14 @@ async function history(): Promise<void> {
   const lastPass = current.ok
     ? (JSON.parse(await current.text()) as { generatedAt?: string }).generatedAt
     : undefined
-  console.log(`  collector's last pass: ${lastPass ?? 'unknown, falling back to the newest snapshot'}`)
-  const { lag, holes } = classifyGaps(gaps, lastPass ?? span?.to)
+  const passes = await fetchJson<{ workflow_runs: { updated_at: string }[] }>(
+    'https://api.github.com/repos/micaoss/mica-res/actions/workflows/collect.yml/runs?status=completed&per_page=5', githubHeaders())
+  const frontier = frontierOf(passes.workflow_runs, lastPass ?? span?.to)
+  console.log(`  collector's last pass: ${lastPass ?? 'unknown'}; frontier (end of the pass before it): ${frontier ?? 'unknown'}`)
+  const { lag, holes } = classifyGaps(gaps, frontier)
   console.log(`  concluded runs GitHub lists now: ${concluded}; without a snapshot: ${gaps.length}`)
-  console.log(`  of those, concluded after the last collector pass (lag, not loss): ${lag.length}`)
-  console.log(`  HOLES (older than the last pass and never collected): ${holes.length}`)
+  console.log(`  of those, concluded after that frontier (lag, not loss): ${lag.length}`)
+  console.log(`  HOLES (a whole pass ran after they concluded and still missed them): ${holes.length}`)
   for (const gap of holes.slice(0, 20))
     console.log(`  HOLE ${gap.repository} ${gap.id} started ${gap.startedAt}, concluded ${gap.concludedAt}`)
   // The early warning: a gap older than the page floor is one nothing can

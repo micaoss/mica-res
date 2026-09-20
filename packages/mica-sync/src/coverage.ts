@@ -11,6 +11,12 @@ import type { ResourceObject } from './objects.ts'
 
 export interface Coverage {
   registry: Map<string, number>
+  // Per ghcr package, the releases whose bytes the mirror actually holds FROM
+  // ghcr. This is the predicate the guard asks, and it is deliberately about
+  // the bytes' origin rather than about a row's name: a check that can be
+  // satisfied by something other than its reason retires itself confidently,
+  // which is worse than a record that merely goes stale.
+  releases: Map<string, Set<string>>
   rowKinds: Map<string, number>
   origins: Map<string, number>
 }
@@ -21,20 +27,37 @@ function bump(counts: Map<string, number>, key: string): void {
   counts.set(key, (counts.get(key) ?? 0) + 1)
 }
 
+const STAMP = /^(?:.+\.)?([0-9]{8}-[0-9]{4})$/
+
 export function coverageOf(objects: ResourceObject[]): Coverage {
   const registry = new Map<string, number>()
+  const releases = new Map<string, Set<string>>()
   const rowKinds = new Map<string, number>()
   const origins = new Map<string, number>()
   for (const object of objects) {
     const match = object.origin === undefined ? null : GHCR.exec(object.origin)
-    if (match !== null)
+    if (match !== null) {
       bump(registry, match[1]!)
+      for (const pin of object.pins) {
+        const stamp = STAMP.exec(pin.release)
+        if (stamp !== null)
+          releases.set(match[1]!, (releases.get(match[1]!) ?? new Set()).add(stamp[1]!))
+      }
+    }
     if (object.origin !== undefined)
       bump(origins, new URL(object.origin).host)
     for (const pin of object.pins)
       bump(rowKinds, pin.row.split(' ')[0]!)
   }
-  return { registry, rowKinds, origins }
+  return { registry, releases, rowKinds, origins }
+}
+
+// Does the mirror hold ghcr bytes of this package at this release? The whole
+// question, asked directly: not "is there a row of some kind", not "does the
+// mirror hold something for this repository", and not "some release of the
+// same image".
+export function ghcrCovered(coverage: Coverage, ghcrPackage: string, release: string): boolean {
+  return coverage.releases.get(ghcrPackage)?.has(release) === true
 }
 
 // The locks the mirror holds, counted separately from everything else because
@@ -52,25 +75,18 @@ export function lockCoverage(objects: ResourceObject[]): { objects: number, rele
   return { objects: held.length, releases }
 }
 
-// A `package` row is a Debian package published into an OCI pool. The mirror
-// has never enumerated one -- no phase covered the pools -- so if the index
-// carries no such row, pool bytes are held by ghcr alone.
-export function poolsCovered(coverage: Coverage): boolean {
-  return (coverage.rowKinds.get('package') ?? 0) > 0 || (coverage.rowKinds.get('pool') ?? 0) > 0
-}
+// The repositories whose Debian packages live in OCI pools. mica-build-env is
+// not one of them: it publishes images, and its blobs being mirrored says
+// nothing about a pool.
+const POOL_PUBLISHERS = ['mica-core', 'mica-system-base', 'mica-podman', 'mica-boards']
 
-// The releases whose build-env blobs the mirror actually holds. A tag is safe
-// to lose only where the bytes of THAT release are held, not where some
-// release of the same image is.
-export function imageReleases(objects: ResourceObject[]): Set<string> {
-  const releases = new Set<string>()
-  for (const object of objects) {
-    for (const pin of object.pins) {
-      if (pin.row.startsWith('image ') && /^[0-9]{8}-[0-9]{4}$/.test(pin.release))
-        releases.add(pin.release)
-    }
-  }
-  return releases
+// Are the pools covered at all? Asked of the BYTES, so nothing but pool bytes
+// can answer yes: a lock object's origin is a GitHub release asset, a `deb`
+// object's is `snapshot.debian.org`, and neither is ghcr bytes of a pool
+// publisher. The row kinds are reported for reading; they are not the
+// predicate, because a row name is a description and the reason is a byte.
+export function poolsCovered(coverage: Coverage): boolean {
+  return POOL_PUBLISHERS.some(repository => (coverage.registry.get(`micaoss/${repository}`) ?? 0) > 0)
 }
 
 // The index is a SNAPSHOT, and a snapshot can be behind the bucket. Reading a

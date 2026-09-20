@@ -11,7 +11,7 @@
 // ghcr rather than assumed. An unrecognised family is a REFUSAL: a classifier
 // that cannot place a candidate has not established that it is safe to delete.
 
-import { poolsCovered } from './coverage.ts'
+import { ghcrCovered, poolsCovered } from './coverage.ts'
 import type { Coverage } from './coverage.ts'
 
 export type Artefact = 'pool' | 'rootfs' | 'board-component' | 'build-env-image' | 'product-oci'
@@ -55,7 +55,7 @@ export function parseCandidate(text: string): Candidate {
   return { package: match[1]!, tag: match[2]! }
 }
 
-export function verdict(candidate: Candidate, coverage: Coverage, imageReleases: Set<string>): Verdict {
+export function verdict(candidate: Candidate, coverage: Coverage): Verdict {
   const name = `${candidate.package}:${candidate.tag}`
   const placed = classify(candidate.tag)
   if (placed === undefined) {
@@ -68,8 +68,12 @@ export function verdict(candidate: Candidate, coverage: Coverage, imageReleases:
       retiresWhen: 'the family is added to FAMILIES with the coverage that applies to it',
     }
   }
+  // One predicate for every artefact, and it is the reason itself: does the
+  // mirror hold ghcr bytes of THIS package at THIS release? Nothing else can
+  // satisfy it -- not a lock (a GitHub release asset), not a deb (Debian's
+  // archive), not another release of the same image.
+  const held = ghcrCovered(coverage, candidate.package, placed.release)
   if (placed.artefact === 'build-env-image') {
-    const held = imageReleases.has(placed.release)
     return {
       candidate: name,
       artefact: placed.artefact,
@@ -78,7 +82,7 @@ export function verdict(candidate: Candidate, coverage: Coverage, imageReleases:
       reason: held
         ? `the mirror holds the blobs of build-env ${placed.release}`
         : `the mirror holds no blob pinned to build-env ${placed.release}`,
-      retiresWhen: held ? 'it does not refuse' : `an image row pins build-env ${placed.release}`,
+      retiresWhen: held ? 'it does not refuse' : `the mirror holds ghcr bytes of ${candidate.package} at ${placed.release}`,
     }
   }
   if (placed.artefact === 'product-oci') {
@@ -86,27 +90,29 @@ export function verdict(candidate: Candidate, coverage: Coverage, imageReleases:
       candidate: name,
       artefact: placed.artefact,
       release: placed.release,
-      allowed: false,
-      reason: 'the mirror holds this release\'s .img.gz and .micaupd ASSETS, never these OCI bytes -- whether the OCI form is needed is the user\'s call, not this check\'s',
-      retiresWhen: 'an image row pins the product images of that release',
+      allowed: held,
+      reason: held
+        ? `the mirror holds ghcr bytes of ${candidate.package} at ${placed.release}`
+        : 'the mirror holds this release\'s .img.gz and .micaupd ASSETS, never these OCI bytes -- whether the OCI form is needed is the user\'s call, not this check\'s',
+      retiresWhen: held ? 'it does not refuse' : `the mirror holds ghcr bytes of ${candidate.package} at ${placed.release}`,
     }
   }
-  // The self-retiring part: the condition is read off the index every run, so
-  // the day a `package` or `pool` row exists this stops refusing without an
-  // edit here and without anyone remembering that the reason ended.
-  const covered = poolsCovered(coverage)
+  // The self-retiring part, and it retires only on its own reason: this
+  // release's bytes being in the mirror. `poolsCovered()` is reported beside
+  // it for reading, never substituted for it -- a candidate is not made safe
+  // by some OTHER release of some OTHER pool having been mirrored.
   return {
     candidate: name,
     artefact: placed.artefact,
     release: placed.release,
-    allowed: covered,
-    reason: covered
-      ? 'a `package` or `pool` row names pool bytes, so ghcr is no longer the only copy'
-      : 'ghcr holds the only copy: out of the accepted scope of 2026-09-16 ("not to be re-added")',
-    retiresWhen: covered ? 'it does not refuse' : 'the index carries a `package` or `pool` row, which `poolsCovered()` reports',
+    allowed: held,
+    reason: held
+      ? `the mirror holds ghcr bytes of ${candidate.package} at ${placed.release}`
+      : `ghcr holds the only copy: out of the accepted scope of 2026-09-16 ("not to be re-added")${poolsCovered(coverage) ? ', though other pool bytes are now mirrored -- this release is not' : ''}`,
+    retiresWhen: held ? 'it does not refuse' : `the mirror holds ghcr bytes of ${candidate.package} at ${placed.release}`,
   }
 }
 
-export function guard(candidates: Candidate[], coverage: Coverage, imageReleases: Set<string>): Verdict[] {
-  return candidates.map(candidate => verdict(candidate, coverage, imageReleases))
+export function guard(candidates: Candidate[], coverage: Coverage): Verdict[] {
+  return candidates.map(candidate => verdict(candidate, coverage))
 }

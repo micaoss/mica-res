@@ -52,7 +52,7 @@ import { fetchJson, fetchText, githubHeaders } from './fetch.ts'
 import { checkMirrors, mirrorEntries } from './mirrors.ts'
 import { manifestKey, missingChunks } from './packs.ts'
 import { parseLock } from './locks.ts'
-import { coverageOf, imageReleases, lockCoverage, poolsCovered, staleness } from './coverage.ts'
+import { coverageOf, lockCoverage, poolsCovered, staleness } from './coverage.ts'
 import { guard, parseCandidate } from './guard.ts'
 import { classifyGaps, frontierOf, missingSnapshots, pageWindow, spanOf } from './history.ts'
 import type { ApiRunLite, Gap, Window } from './history.ts'
@@ -529,8 +529,7 @@ async function guardCandidates(argv: string[]): Promise<void> {
   }
   const document = await publishedIndex()
   const answer = coverageOf(document.objects)
-  const releases = imageReleases(document.objects)
-  const verdicts = guard(words.map(parseCandidate), answer, releases)
+  const verdicts = guard(words.map(parseCandidate), answer)
   for (const one of verdicts) {
     console.log(`  ${one.allowed ? 'ALLOWED ' : 'REFUSED '} ${one.candidate}  [${one.artefact ?? 'unplaced'}]`)
     console.log(`             ${one.reason}`)

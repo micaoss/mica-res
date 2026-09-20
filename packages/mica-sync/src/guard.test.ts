@@ -27,39 +27,64 @@ test('every published tag family is placed', () => {
 })
 
 test('a tag family nobody recognises is refused, never allowed', () => {
-  const answer = verdict(parseCandidate('ghcr.io/micaoss/mica-core:something-else'), EMPTY, new Set())
+  const answer = verdict(parseCandidate('ghcr.io/micaoss/mica-core:something-else'), EMPTY)
   expect(answer.allowed).toBe(false)
   expect(answer.reason).toStartWith('tag-unknown')
 })
 
-test('a pool is refused while no package or pool row exists, and the refusal names what ends it', () => {
-  const answer = verdict(parseCandidate('micaoss/mica-core:pool.amd64.20260915-1135'), EMPTY, new Set())
+test('a pool is refused while nothing mirrors it, and the refusal names its own exit condition', () => {
+  const answer = verdict(parseCandidate('micaoss/mica-core:pool.amd64.20260915-1135'), EMPTY)
   expect(answer.allowed).toBe(false)
-  expect(answer.retiresWhen).toContain('poolsCovered()')
+  expect(answer.retiresWhen).toBe('the mirror holds ghcr bytes of micaoss/mica-core at 20260915-1135')
 })
 
 test('a build-env release the mirror holds is allowed, one it does not is refused', () => {
   const coverage = coverageOf([blob('20260916-0735')])
-  const releases = new Set(['20260916-0735'])
-  expect(verdict(parseCandidate('micaoss/mica-build-env:base.20260916-0735'), coverage, releases).allowed).toBe(true)
-  expect(verdict(parseCandidate('micaoss/mica-build-env:base.20260101-0000'), coverage, releases).allowed).toBe(false)
+  expect(verdict(parseCandidate('micaoss/mica-build-env:base.20260916-0735'), coverage).allowed).toBe(true)
+  expect(verdict(parseCandidate('micaoss/mica-build-env:base.20260101-0000'), coverage).allowed).toBe(false)
 })
 
 test('guard answers one verdict per candidate', () => {
   const candidates = ['micaoss/mica-core:pool.amd64.20260915-1135', 'micaoss/mica-system-base:rootfs.20260915-1102'].map(parseCandidate)
-  expect(guard(candidates, EMPTY, new Set()).filter(one => one.allowed)).toHaveLength(0)
+  expect(guard(candidates, EMPTY).filter(one => one.allowed)).toHaveLength(0)
 })
 
-test('the pool refusal retires itself when a pool row appears', () => {
-  const pooled: ResourceObject = {
+function pooled(repository: string, release: string): ResourceObject {
+  return {
     kind: 'deb',
     sha256: 'b'.repeat(64),
     path: 'blob/bb/b',
-    origin: 'https://ghcr.io/v2/micaoss/mica-core/blobs/sha256:b',
+    origin: `https://ghcr.io/v2/micaoss/${repository}/blobs/sha256:b`,
     readable: [],
-    pins: [{ repository: 'mica-core', lock: 'locks/mica-core.lock', release: '20260915-1135', row: 'package micad amd64' }],
+    pins: [{ repository, lock: `locks/${repository}.lock`, release, row: 'package micad amd64' }],
   }
-  const answer = verdict(parseCandidate('micaoss/mica-core:pool.amd64.20260915-1135'), coverageOf([pooled]), new Set())
+}
+
+test('the pool refusal retires when THIS release\'s pool bytes are mirrored', () => {
+  const answer = verdict(parseCandidate('micaoss/mica-core:pool.amd64.20260915-1135'), coverageOf([pooled('mica-core', '20260915-1135')]))
   expect(answer.allowed).toBe(true)
-  expect(answer.reason).toContain('no longer the only copy')
+  expect(answer.reason).toContain('holds ghcr bytes of micaoss/mica-core at 20260915-1135')
+})
+
+// The hazard the coordinator could only state abstractly: a predicate that
+// answers "something for this repository" or "some pool somewhere" retires a
+// refusal the user never lifted.
+test('another release, another repository, or a mirrored lock retires nothing', () => {
+  const otherRelease = coverageOf([pooled('mica-core', '20260919-2226')])
+  expect(verdict(parseCandidate('micaoss/mica-core:pool.amd64.20260915-1135'), otherRelease).allowed).toBe(false)
+
+  const otherRepository = coverageOf([pooled('mica-podman', '20260915-1135')])
+  expect(verdict(parseCandidate('micaoss/mica-core:pool.amd64.20260915-1135'), otherRepository).allowed).toBe(false)
+
+  const lock: ResourceObject = {
+    kind: 'lock',
+    sha256: 'd'.repeat(64),
+    path: 'blob/dd/d',
+    origin: 'https://github.com/micaoss/mica-core/releases/download/20260915-1135/mica-core.lock',
+    readable: ['mica/lock/mica-core/20260915-1135/mica-core.lock'],
+    // Even with a row named like a package row -- the near miss itself -- a
+    // GitHub release asset is not ghcr bytes of a pool.
+    pins: [{ repository: 'mica-build', lock: 'locks/pins/mica-core.pin', release: '20260915-1135', row: 'package micad amd64' }],
+  }
+  expect(verdict(parseCandidate('micaoss/mica-core:pool.amd64.20260915-1135'), coverageOf([lock])).allowed).toBe(false)
 })

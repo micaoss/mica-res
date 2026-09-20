@@ -1,5 +1,35 @@
 # mica-res - Changelog
 
+## 2026-09-20 08:33 [progress]
+
+**The guard's predicate now asks its own question, of the bytes.** It used to
+read "does a `package` or `pool` row exist anywhere in the index", which is a
+description of an object rather than the reason the refusal exists. Every
+verdict now comes from one predicate -- **does the mirror hold ghcr bytes of
+THIS package at THIS release** (`ghcrCovered`, matched on the object's ghcr
+origin and its pin's release) -- so nothing but the reason can satisfy it: a
+mirrored lock is a GitHub release asset, a `deb` is Debian's archive, and
+another release of the same image is another release. `poolsCovered()` is
+likewise asked of the bytes (ghcr bytes of a pool publisher: mica-core,
+mica-system-base, mica-podman, mica-boards) and is reported beside a verdict,
+never substituted for one.
+
+Three tests hold the hazard open, including the near miss itself: a pin row
+literally named `package micad amd64` on an object whose origin is a GitHub
+release asset retires nothing. Verdicts are unchanged in outcome today -- 1
+allowed (`base.20260916-0735`), everything else refused -- and each refusal
+now names its own exit condition as a fact about bytes:
+`the mirror holds ghcr bytes of micaoss/mica-core at 20260915-1135`.
+
+## 2026-09-20 08:30 [progress]
+
+The product backlog is closed: run 35499056386 published the 24 missing
+objects (8 product images, 16 update archives), so product-image is 22/22 and
+update-archive 34/34, reconcile reports **0 in the locks and missing**, and the
+audit passes over 1122 public objects with 0 problems. The 30 held and named by
+no lock are the superseded product assets of `cx3576.20260916-0847`, awaiting
+the user's decision on that release.
+
 ## 2026-09-20 08:17 [BUG-P2]
 
 **The lock walk used raw `fetch` and gave up a whole enumeration on one

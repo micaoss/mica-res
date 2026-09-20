@@ -181,12 +181,20 @@ jobs:
       # ghcr holds is refused, and the refusal ends by itself on the day the
       # mirror covers that artefact. No candidate file means nothing is
       # proposed for deletion, which is the state today.
+      # Reads the service's catalogue, which needs the publish token: the
+      # public listing carries path, size and sha256 but not an object's
+      # metadata, and the metadata is where the kind, the origin and the pins
+      # live. Listing is inside the token's scope; it has no delete route.
       - name: Refuse prune candidates nothing but ghcr holds
         run: bun packages/mica-sync/src/cli.ts guard --file docs/retention/candidates.txt
+        env:
+          MICA_RES_TOKEN: ${{ secrets.MICA_RES_TOKEN }}
 
       # Which artefact the mirror actually holds bytes of. Read-only.
       - name: Report what the mirror covers
         run: bun packages/mica-sync/src/cli.ts coverage
+        env:
+          MICA_RES_TOKEN: ${{ secrets.MICA_RES_TOKEN }}
 
       # Is the run history in the bucket, and is it unbroken? A gap matters
       # more than a count.

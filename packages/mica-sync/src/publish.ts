@@ -78,6 +78,29 @@ async function call<T>(publisher: Publisher, method: string, path: string, body?
   return (JSON.parse(text) as { data: T }).data
 }
 
+export interface CatalogueRow {
+  path: string
+  sha256: string
+  size: number
+  // The metadata the publisher wrote (`objectMeta`) and the v1 import carried
+  // over unchanged: `kind`, `origin`, `commit` and `pins` as a JSON string.
+  meta?: string
+}
+
+/** Every object of a namespace as the service records it, metadata included. */
+export async function listCatalogue(publisher: Publisher, namespace: string): Promise<CatalogueRow[]> {
+  const rows: CatalogueRow[] = []
+  let after: string | undefined
+  for (;;) {
+    const query = new URLSearchParams({ limit: '5000', ...(after === undefined ? {} : { after }) })
+    const page = await call<CatalogueRow[]>(publisher, 'GET', `/res/namespaces/${namespace}/objects?${query}`)
+    rows.push(...page)
+    if (page.length < 5000)
+      return rows
+    after = page.at(-1)!.path
+  }
+}
+
 /** Every live object of a namespace, by path. */
 export async function listHeld(publisher: Publisher, namespace: string): Promise<Map<string, HeldObject>> {
   const held = new Map<string, HeldObject>()

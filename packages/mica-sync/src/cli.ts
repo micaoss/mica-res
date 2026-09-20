@@ -32,7 +32,7 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { enumerate } from './enumerate.ts'
-import { buildIndex, readIndex, readPointer, renderIndex, renderPointer, summarise } from './index-doc.ts'
+import { buildIndex, readIndex, renderIndex, renderPointer, summarise } from './index-doc.ts'
 import type { IndexDocument } from './index-doc.ts'
 import { mergeObjects } from './objects.ts'
 import type { Kind, ResourceObject } from './objects.ts'
@@ -52,7 +52,9 @@ import { fetchJson, fetchText, githubHeaders } from './fetch.ts'
 import { checkMirrors, mirrorEntries } from './mirrors.ts'
 import { manifestKey, missingChunks } from './packs.ts'
 import { dataRows, parseLock } from './locks.ts'
-import { coverageOf, lockCoverage, poolsCovered, staleness } from './coverage.ts'
+import { readCatalogue } from './catalogue.ts'
+import type { Catalogue } from './catalogue.ts'
+import { coverageOf, lockCoverage, poolsCovered } from './coverage.ts'
 import { guard, parseCandidate } from './guard.ts'
 import { classifyGaps, frontierOf, missingSnapshots, pageWindow, spanOf } from './history.ts'
 import type { ApiRunLite, Gap, Window } from './history.ts'
@@ -168,20 +170,21 @@ async function stage(publisher: Publisher, object: ResourceObject, namespace: st
 // the bucket, and each time the shape was "something that exists stopped being
 // enumerated". This is the cheap check that catches the shape rather than the
 // three instances.
-async function refuseRegression(document: IndexDocument, base: string): Promise<void> {
-  const pointer = await fetch(`${base}/index/current.json`)
-  if (!pointer.ok)
+async function refuseRegression(document: IndexDocument): Promise<void> {
+  // Compared against the CATALOGUE, not against the last rendering of it: the
+  // check is "something the bucket holds stopped being enumerated", and the
+  // bucket is the service's record. Without a token there is nothing to
+  // compare against, and that is said rather than passed.
+  if ((process.env['MICA_RES_TOKEN'] ?? '') === '') {
+    console.log('  regression check skipped: MICA_RES_TOKEN is not set, so the catalogue cannot be read')
     return
-  const version = (await pointer.json() as { version: string }).version
-  const previous = await fetch(`${base}/index/${version}.json`)
-  if (!previous.ok)
-    return
-
-  const before = summarise(readIndex(await previous.text()).objects)
+  }
+  const held = await heldObjects()
+  const before = summarise(held.objects)
   const after = new Map(summarise(document.objects).map(row => [row.kind, row.count]))
   for (const row of before) {
     if ((after.get(row.kind) ?? 0) === 0)
-      throw new Error(`kind-vanished: index ${version} has ${row.count} ${row.kind} objects and this enumeration has none`)
+      throw new Error(`kind-vanished: the catalogue holds ${row.count} ${row.kind} objects and this enumeration has none`)
   }
 }
 
@@ -287,7 +290,7 @@ async function sync(argv: string[]): Promise<void> {
   const document = buildIndex({ version: stamp(), objects: merged })
   const snapshot = renderIndex(document)
   readIndex(snapshot)
-  await refuseRegression(document, process.env['MICA_RES_BASE'] ?? DEFAULT_BASE)
+  await refuseRegression(document)
 
   await mkdir(out, { recursive: true })
   await Bun.write(`${out}/index-${document.version}.json`, snapshot)
@@ -498,10 +501,18 @@ async function backfill(argv: string[]): Promise<void> {
 // Fetches every mirror URL the newest version index names and compares the
 // bytes' digest with the one the index states beside it -- the check a device
 // would do.
-async function publishedIndex(): Promise<IndexDocument> {
+
+// What the mirror holds, from the service's own record of it. The index
+// document is a rendering of this and sat four days stale while two commands
+// believed it; reading the catalogue means there is nothing left to be stale.
+// It needs the publish token because the public listing carries path, size and
+// sha256 but not an object's metadata, and the metadata is where `kind`,
+// `origin` and the pins live.
+async function heldObjects(): Promise<Catalogue> {
   const home = process.env['MICA_RES_BASE'] ?? DEFAULT_BASE
-  const pointer = readPointer(await (await fetch(`${home}/index/current.json`)).text())
-  return readIndex(await (await fetch(`${home}/index/${pointer.version}.json`)).text())
+  const site = await (await fetch(`${home}/.well-known/res.json`)).json() as { namespaces: { name: string, visibility: string, listable: boolean }[] }
+  const namespaces = site.namespaces.filter(one => one.visibility === 'public' && one.listable).map(one => one.name)
+  return readCatalogue(publisherFromEnv(), namespaces)
 }
 
 // The gate a retention proposal has to pass: a candidate whose bytes only ghcr
@@ -527,8 +538,8 @@ async function guardCandidates(argv: string[]): Promise<void> {
     console.log('guard: no candidates given; nothing is proposed for deletion')
     return
   }
-  const document = await publishedIndex()
-  const answer = coverageOf(document.objects)
+  const catalogue = await heldObjects()
+  const answer = coverageOf(catalogue.objects)
   const verdicts = guard(words.map(parseCandidate), answer)
   for (const one of verdicts) {
     console.log(`  ${one.allowed ? 'ALLOWED ' : 'REFUSED '} ${one.candidate}  [${one.artefact ?? 'unplaced'}]`)
@@ -537,37 +548,24 @@ async function guardCandidates(argv: string[]): Promise<void> {
       console.log(`             retires when: ${one.retiresWhen}`)
   }
   const refused = verdicts.filter(one => !one.allowed)
-  console.log(`guard: ${verdicts.length - refused.length} allowed, ${refused.length} refused (index ${document.version})`)
+  console.log(`guard: ${verdicts.length - refused.length} allowed, ${refused.length} refused (${catalogue.objects.length} objects held across ${catalogue.namespaces.length} namespaces)`)
   if (refused.length > 0)
     process.exitCode = 1
 }
 
-// Which artefact the mirror protects, read off the published index. The answer
-// a retention proposal needs, and the one nobody can hold in their head.
+// Which artefact the mirror protects, read from the catalogue. The answer a
+// retention proposal needs, and the one nobody can hold in their head.
 async function coverage(): Promise<void> {
-  const home = process.env['MICA_RES_BASE'] ?? DEFAULT_BASE
-  const pointer = readPointer(await (await fetch(`${home}/index/current.json`)).text())
-  const document = readIndex(await (await fetch(`${home}/index/${pointer.version}.json`)).text())
-  const answer = coverageOf(document.objects)
-  const site = await (await fetch(`${home}/.well-known/res.json`)).json() as { namespaces: { name: string, objects: number | null }[] }
-  // The same exclusion `reconcile` makes: `status` is the collector's output
-  // and `brand`/`docs` are the repository's own, so no producer lock names
-  // them and the index never has.
-  const ours = new Set(['status', 'brand', 'docs'])
-  const catalog = site.namespaces
-    .filter(namespace => !ours.has(namespace.name))
-    .reduce((total, namespace) => total + (namespace.objects ?? 0), 0)
-  const behind = staleness(document.objects.length, catalog, document.version)
-  if (behind !== undefined)
-    console.log(`  ${behind}`)
-  console.log(`coverage of index ${document.version}: ${document.objects.length} objects`)
+  const catalogue = await heldObjects()
+  const answer = coverageOf(catalogue.objects)
+  console.log(`coverage of the catalogue: ${catalogue.objects.length} objects across ${catalogue.namespaces.join(', ')}`)
   console.log('  ghcr packages whose bytes the mirror holds:')
   for (const [name, count] of [...answer.registry].toSorted())
     console.log(`    ${name.padEnd(30)} ${count} objects`)
   console.log('  pin row kinds present:')
   for (const [row, count] of [...answer.rowKinds].toSorted())
     console.log(`    ${row.padEnd(30)} ${count} pins`)
-  const locks = lockCoverage(document.objects)
+  const locks = lockCoverage(catalogue.objects)
   console.log(`  release locks and SHA256SUMS: ${locks.objects} objects over ${locks.releases.size} pinned releases`)
   console.log('    the BINDING, not the packages: the chain from the mirror ends at the lock, whose `package` rows point into pools nothing mirrors')
   console.log(`  OCI pools (published Debian packages) covered: ${poolsCovered(answer) ? 'yes' : 'NO -- ghcr holds the only copy'}`)

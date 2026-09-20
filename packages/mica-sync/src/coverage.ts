@@ -29,7 +29,12 @@ function bump(counts: Map<string, number>, key: string): void {
 
 const STAMP = /^(?:.+\.)?([0-9]{8}-[0-9]{4})$/
 
-export function coverageOf(objects: ResourceObject[]): Coverage {
+export function coverageOf(all: ResourceObject[]): Coverage {
+  // An object the enumeration marks `pending` is one the locks name and the
+  // bucket does not hold. Counting it would let "the mirror holds these bytes"
+  // be answered by an intention -- the same substitution as a row name
+  // standing in for a byte.
+  const objects = all.filter(object => object.state !== 'pending')
   const registry = new Map<string, number>()
   const releases = new Map<string, Set<string>>()
   const rowKinds = new Map<string, number>()
@@ -87,15 +92,4 @@ const POOL_PUBLISHERS = ['mica-core', 'mica-system-base', 'mica-podman', 'mica-b
 // predicate, because a row name is a description and the reason is a byte.
 export function poolsCovered(coverage: Coverage): boolean {
   return POOL_PUBLISHERS.some(repository => (coverage.registry.get(`micaoss/${repository}`) ?? 0) > 0)
-}
-
-// The index is a SNAPSHOT, and a snapshot can be behind the bucket. Reading a
-// coverage row off a stale index once said "0 lock objects" minutes after 18
-// were published and verified, which is the one way this command can lie. So
-// it compares itself against the service's own catalog and says so.
-export function staleness(indexObjects: number, catalogObjects: number, version: string): string | undefined {
-  if (indexObjects >= catalogObjects)
-    return undefined
-  return `STALE: the catalog holds ${catalogObjects} objects and index ${version} names ${indexObjects}`
-    + ' -- every count below is the index\'s, not the bucket\'s'
 }

@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { coverageOf, lockCoverage, poolsCovered, staleness } from './coverage.ts'
+import { coverageOf, lockCoverage, poolsCovered } from './coverage.ts'
 import type { ResourceObject } from './objects.ts'
 
 function object(origin: string, row: string): ResourceObject {
@@ -41,9 +41,4 @@ test('locks are counted per release, and counting them says nothing about the po
   expect(answer.objects).toBe(1)
   expect([...answer.releases]).toEqual(['mica-core/20260915-1135'])
   expect(poolsCovered(coverageOf([lock]))).toBe(false)
-})
-
-test('an index behind the catalog says so before its counts are read', () => {
-  expect(staleness(535, 586, '20260916-1752')).toContain('STALE')
-  expect(staleness(586, 586, '20260920-0756')).toBeUndefined()
 })

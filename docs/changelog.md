@@ -1,5 +1,54 @@
 # mica-res - Changelog
 
+## 2026-09-20 14:03 [BUG-P1]
+
+**The stale index was an old-version dependency, and the two commands that
+believed it now read the service's catalogue.** `coverage`, the guard and the
+sync's regression check read `index/current.json` -- a `mica/resource-index/v1`
+document, the same v1 whose `blob/<aa>/<sha256>` layout
+`apps/api/src/modules/resource/import-v1.ts` was written to import out of.
+`reconcile` and `audit` were green and current all day precisely because they
+read the namespaces and the objects instead. The fix is not an `index`
+namespace, which would have made the client's staleness permanent and
+legitimate: it is that these three stop reading a rendering of the bucket and
+read the bucket's own record (`src/catalogue.ts`, `readCatalogue`).
+
+**The equivalence check first, because a field with no home would have been the
+real work.** Every field these commands use is on the object: the publisher
+writes `kind`, `origin`, `commit` and the pins as metadata (`objectMeta`), and
+the v1 import carried exactly those four over unchanged (`planV1Object`), so
+imported and freshly published objects are indistinguishable here. `size`,
+`sha256` and `contentType` are columns. The one index field with no catalogue
+equivalent is **`state: pending`**, and that is the point rather than a gap: a
+pinned object the bucket does not hold is not in the catalogue, and a question
+about what the mirror HOLDS must not be answerable by something it merely
+intends to hold.
+
+**A defect that was live until this commit, found by that check:**
+`coverageOf` counted every index object regardless of `state`, so a `pending`
+object -- pinned, not yet uploaded -- could satisfy `ghcrCovered` and the guard
+could have ALLOWED deleting ghcr bytes the mirror does not hold. The stale
+index happened to contain none, which is luck rather than safety. `coverageOf`
+now drops anything marked `pending`, and reading the catalogue removes the
+shape entirely.
+
+**The cost, stated because it is the only one:** the catalogue's object
+metadata is not on the public listing (which carries path, size, sha256,
+contentType, publishedAt), so `coverage` and the guard now need
+`MICA_RES_TOKEN`. Listing is inside that token's scope and it has no delete
+route. The staleness banner is gone with the thing it warned about, which is
+what it was built to do.
+
+**Who reads the index document, on the workspace evidence:** nothing. Every
+consumer reads readable download paths -- `mica-system-base`'s build takes
+`MICA_BASE_MIRROR=pool:https://dl.res.micaos.dev/upstream/debian`,
+`mica-boards:common/scripts/mirror.sh` takes `MICA_MIRROR=https://res.micaos.dev`,
+and `mica-build`'s `mica-index.json` names `dl.res.micaos.dev/mica/...` URLs
+that `mirrors` verifies by digest. The only mentions of `/index/current.json`
+in any repository are records of an incident. Edge request logs would be needed
+to say anything about readers outside the workspace, and this container cannot
+see them.
+
 ## 2026-09-20 08:44 [progress]
 
 **The `data` row of spec 1.2.4 is implemented, and the refusal that demanded

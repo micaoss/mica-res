@@ -8,7 +8,7 @@ import { getSetting, setSetting } from "@/modules/settings/settings.service";
 import { ulid } from "@/shared/lib/id";
 import { buildCatalog, CATALOG_POINTER_KEY } from "./catalog";
 import { PUBLIC_BINDING } from "./resource.service";
-import { resAliases, resNamespaces, resObjects, resOciTags, resRedirects, resSnapshots, resStores } from "./schema";
+import { resAliases, resNamespaces, resObjects, resOciTags, resSnapshots, resStores } from "./schema";
 import { getStore } from "./storage/registry";
 
 export type PublisherConfig = Pick<Config, "RES_HOME_URL" | "RES_DOWNLOAD_URL" | "RES_S3_URL">;
@@ -79,7 +79,6 @@ export async function publishCatalog(db: AppDatabase, config: PublisherConfig): 
       publishedAt: o.publishedAt,
     })),
     aliases: await db.select().from(resAliases).all(),
-    redirects: await db.select().from(resRedirects).all(),
     ociTags: await db.select().from(resOciTags).all(),
   });
 

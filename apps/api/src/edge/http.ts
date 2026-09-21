@@ -1,7 +1,7 @@
 /**
  * res.micaos.dev at the edge. Nothing here returns the bytes of a public
  * object: an object is a redirect to the download host, a directory is a
- * listing built from the catalog, a legacy URL is a redirect, and a
+ * listing built from the catalog, a digest lookup is a redirect, and a
  * protected object is a redirect to a short-lived presigned URL. Only the
  * admin API reaches the Durable Object; this returns `null` for it.
  */
@@ -25,7 +25,7 @@ export interface EdgeDeps {
 
 const OBJECT_REDIRECT_CACHE = "public, max-age=300";
 const ALIAS_REDIRECT_CACHE = "public, max-age=60";
-const LEGACY_REDIRECT_CACHE = "public, max-age=3600";
+const REDIRECT_CACHE = "public, max-age=3600";
 const LISTING_CACHE = "public, max-age=30";
 
 function jsonError(status: number, code: string, message: string, extra: HeadersInit = {}): Response {
@@ -63,7 +63,7 @@ export async function handleResHost(request: Request, deps: EdgeDeps): Promise<R
   if (path === `${admin}/api` || path.startsWith(`${admin}/api/`))
     return null;
   if (path === admin)
-    return redirect(`${admin}/`, 301, LEGACY_REDIRECT_CACHE);
+    return redirect(`${admin}/`, 301, REDIRECT_CACHE);
   if (path.startsWith(`${admin}/`))
     return serveAsset(request, url, deps, `${admin}/`);
 
@@ -88,30 +88,30 @@ export async function handleResHost(request: Request, deps: EdgeDeps): Promise<R
     return jsonError(503, "CATALOG_UNAVAILABLE", "No catalog has been published yet");
   const base = manifest.site.download;
 
-  // Legacy v1 URLs.
+  // A digest lookup: `/blob/<aa>/<sha256>` resolves the digest against the
+  // catalog and redirects to the object's readable key. THIS IS NOT LEGACY.
+  // mica-boards fetches through it in CI -- `common/scripts/fetch-archive.sh`
+  // asks for this path, and `fetch-source.sh` asks for the git manifest and
+  // chunk keys -- both via `MICA_MIRROR`, a repository variable there. The
+  // stored `blob/` KEYS of the v1 layout were deleted on 2026-09-20; this
+  // route resolves a digest and is live. A miss does not fail their build, it
+  // fetches from the vendor, so removing this would slow every build and cost
+  // offline builds a source without any failure anywhere.
   if (segments[0] === "blob" && segments.length === 3) {
     const key = (await deps.reader.digests())[segments[2]!];
-    return key && segments[2]!.startsWith(segments[1]!) ? redirect(downloadUrl(base, key), 302, LEGACY_REDIRECT_CACHE) : jsonError(404, "NOT_FOUND", "No object has this digest");
+    return key && segments[2]!.startsWith(segments[1]!) ? redirect(downloadUrl(base, key), 302, REDIRECT_CACHE) : jsonError(404, "NOT_FOUND", "No object has this digest");
   }
-  if (segments[0] === "d") {
-    const target = (await deps.reader.redirects())[`/${segments.join("/")}`];
-    if (target)
-      return redirect(downloadUrl(base, target), 302, LEGACY_REDIRECT_CACHE);
-    return resolveNamespacePath(request, url, segments.slice(1), deps, base, true);
-  }
-  if (segments[0] === "index" && segments.length === 2)
-    return redirect(downloadUrl(base, segments.join("/")), 302, "no-store");
 
-  return resolveNamespacePath(request, url, segments, deps, base, false);
+  return resolveNamespacePath(request, url, segments, deps, base);
 }
 
-async function resolveNamespacePath(request: Request, url: URL, segments: string[], deps: EdgeDeps, base: string, legacy: boolean): Promise<Response> {
+async function resolveNamespacePath(request: Request, url: URL, segments: string[], deps: EdgeDeps, base: string): Promise<Response> {
   const [name, ...rest] = segments;
   const ns = name ? await deps.reader.namespace(name) : undefined;
   if (!ns)
     return jsonError(404, "NOT_FOUND", "No such namespace");
-  if (rest.length === 0 && !legacy)
-    return redirect(`/${encodeURIComponent(ns.name)}/`, 301, LEGACY_REDIRECT_CACHE);
+  if (rest.length === 0)
+    return redirect(`/${encodeURIComponent(ns.name)}/`, 301, REDIRECT_CACHE);
 
   const isDirectory = rest.length === 0 || rest.at(-1) === "";
   const relative = rest.filter((s, i) => s !== "" || i < rest.length - 1).join("/");

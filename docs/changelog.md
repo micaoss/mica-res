@@ -1,5 +1,41 @@
 # mica-res - Changelog
 
+## 2026-09-21 10:26 [progress]
+
+**The v1 compatibility surface is removed; the service serves v2 only** (user,
+2026-09-21: no v1 compatibility, including the import). What went, in one
+round:
+
+- **the `/d/` readable paths** -- the edge branch, the `legacy` parameter of
+  `resolveNamespacePath`, and with them the whole redirect mechanism: the
+  `PUT /res/redirects` route, `setRedirect`, the `res_redirects` table
+  (migration `0001`, `DROP TABLE`), its entry in the backup table list, the
+  `redirects.json` file in every new catalog snapshot, the `redirects` member
+  of the manifest, and `reader.redirects()`;
+- **the `index/<stamp>.json` pointer route**, whose objects the user deleted
+  yesterday;
+- the route's and the table's rows in `docs/reference/api.md`,
+  `api-routes.md` (regenerated, 108 routes) and `database.md`.
+
+**Asserted rather than deleted**, so restoring compatibility turns a test red
+instead of passing quietly: `edge.test.ts` "serves nothing of the v1 layout"
+checks that `/d/...` and `/index/...` answer **404**.
+
+**AND THE ONE THING THAT LOOKS LIKE v1 AND IS NOT: `/blob/<aa>/<sha256>`
+STAYS.** It sat under a comment reading "Legacy v1 URLs", which is how a name
+becomes a trap: the v1 **stored keys** under `blob/` were deleted on
+2026-09-20, but this **route** resolves a digest against the catalog, and
+**mica-boards fetches through it in CI** -- `fetch-archive.sh` asks for this
+path and `fetch-source.sh` asks for the git manifest and chunk keys, both
+through `MICA_MIRROR`, a repository variable there. Deleting it would not fail
+their build: it would fetch from the vendor, verify the sha256, and cost every
+build time and offline builds a source, with no failure anywhere. The comment
+now says what the route is and who depends on it.
+
+Gates: lint, typecheck, `check:i18n`, `check:api-docs`, and tests across every
+workspace -- 626 + 118 pass, 1 skip, 0 fail. **The `DROP TABLE` takes effect
+when the service is next deployed**, since migrations run at startup.
+
 ## 2026-09-20 23:14 [correction]
 
 **The sentence written to protect the route protected one route of two.** The

@@ -217,7 +217,6 @@ for the GETs). Full semantics: [modules/resource.md](../modules/resource.md).
 | GET / PUT | `/res/namespaces/:name/aliases` | Policy, token | List / set aliases. |
 | POST | `/res/namespaces/:name/aliases/delete` | Policy (manager) | Delete an alias. |
 | PUT | `/res/namespaces/oci/oci-tags` | Policy, token | Point a registry tag at a published manifest. |
-| PUT | `/res/redirects` | Admin | Set a legacy `/d/` redirect. |
 | GET / PUT | `/res/site` | Authenticated / Admin | Home page title and description. |
 | POST | `/res/catalog/publish` | Admin | Publish a catalog snapshot now. |
 | GET | `/res/purges` | Admin | CDN purge queue. |

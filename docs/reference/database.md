@@ -145,7 +145,6 @@ Owned by the `resource` module; see [modules/resource.md](../modules/resource.md
 | `res_namespaces` | Top-level directories and their settings. |
 | `res_objects` | Published keys: sha256, size, etag, content type, cache policy, meta, delete state. Partial unique index on `(namespace, path)` while `purged_at IS NULL`. |
 | `res_aliases` | Mutable pointers inside a namespace. |
-| `res_redirects` | Legacy `/d/` names to keys. |
 | `res_oci_tags` | Registry tags to manifest digests. |
 | `res_uploads` | Staged uploads. |
 | `res_snapshots` | Catalog versions written. |

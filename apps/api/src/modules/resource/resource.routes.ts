@@ -31,7 +31,6 @@ import {
   restoreObject,
   setAlias,
   setOciTag,
-  setRedirect,
   updateNamespace,
   writeUploadBody,
 } from "./resource.service";
@@ -296,13 +295,6 @@ export function resourceRoutes() {
     const body = c.req.valid("json");
     await setOciTag(c.get("db"), body);
     await record(c, "res.oci_tag.set", "res-oci-tag", `${body.repository}:${body.tag}`, { digest: body.digest });
-    return c.json({ success: true, data: { catalog: await commit(c) } });
-  });
-
-  router.put("/res/redirects", doc("Set a legacy /d/ redirect", { ...jsonOk(), ...errors(401, 403, 422) }), adminRequired, validator("json", z.object({ fromPath: z.string(), targetKey: z.string() })), async (c) => {
-    const body = c.req.valid("json");
-    await setRedirect(c.get("db"), body.fromPath, body.targetKey);
-    await record(c, "res.redirect.set", "res-redirect", body.fromPath, { targetKey: body.targetKey });
     return c.json({ success: true, data: { catalog: await commit(c) } });
   });
 

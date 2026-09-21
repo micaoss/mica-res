@@ -7,7 +7,7 @@ import { AppError, NotFoundError, ValidationError } from "@/shared/lib/errors";
 import { ulid } from "@/shared/lib/id";
 import { cacheControlFor, effectivePolicy, isCachePolicy } from "./cache-policy";
 import { encodeKeyPath, isValidDirectoryPrefix, isValidNamespaceName, objectKey, objectPathProblem } from "./paths";
-import { resAliases, resNamespaces, resObjects, resOciTags, resPurges, resRedirects, resStores, resUploads } from "./schema";
+import { resAliases, resNamespaces, resObjects, resOciTags, resPurges, resStores, resUploads } from "./schema";
 import { getStore } from "./storage/registry";
 
 export type ResourceConfig = Pick<
@@ -513,12 +513,6 @@ export async function deleteAlias(db: AppDatabase, namespace: string, path: stri
 
 export async function listAliases(db: AppDatabase, namespace: string) {
   return db.select().from(resAliases).where(eq(resAliases.namespace, namespace)).orderBy(asc(resAliases.path)).all();
-}
-
-export async function setRedirect(db: AppDatabase, fromPath: string, targetKey: string): Promise<void> {
-  if (!fromPath.startsWith("/d/") || fromPath.includes(".."))
-    throw new ValidationError("Invalid redirect", { fieldErrors: { fromPath: ["must be a /d/ path"] } });
-  await db.insert(resRedirects).values({ fromPath, targetKey, createdAt: now() }).onConflictDoUpdate({ target: resRedirects.fromPath, set: { targetKey } }).run();
 }
 
 const RE_REPOSITORY = /^[a-z0-9]+(?:[._-][a-z0-9]+)*(?:\/[a-z0-9]+(?:[._-][a-z0-9]+)*)*$/;

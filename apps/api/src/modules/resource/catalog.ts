@@ -59,9 +59,8 @@ export interface CatalogManifest {
   readonly namespaces: readonly CatalogNamespace[];
   /** repository -> tag -> `sha256:<hex>` */
   readonly registry: Readonly<Record<string, Readonly<Record<string, string>>>>;
-  /** Public store keys of the digest index and the legacy redirects. */
+  /** Public store key of the digest index. */
   readonly digests: string;
-  readonly redirects: string;
 }
 
 export interface CatalogObject {
@@ -109,7 +108,6 @@ export interface CatalogInput {
   /** Live objects only (not soft-deleted). */
   readonly objects: ReadonlyArray<CatalogObject & { readonly namespace: string }>;
   readonly aliases: ReadonlyArray<{ readonly namespace: string; readonly path: string; readonly targetPath: string }>;
-  readonly redirects: ReadonlyArray<{ readonly fromPath: string; readonly targetKey: string }>;
   readonly ociTags: ReadonlyArray<{ readonly repository: string; readonly tag: string; readonly digest: string }>;
 }
 
@@ -162,19 +160,12 @@ export function buildCatalog(input: CatalogInput): { pointer: CatalogPointer; ma
     if (visibilityOf.get(o.namespace) === "public" && digests[o.sha256] === undefined)
       digests[o.sha256] = objectKey(o.namespace, o.path);
   }
-  const redirects: Record<string, string> = {};
-  for (const r of input.redirects.toSorted((a, b) => (a.fromPath < b.fromPath ? -1 : 1))) {
-    if (visibilityOf.get(r.targetKey.split("/")[0]!) === "public")
-      redirects[r.fromPath] = r.targetKey;
-  }
   const registry: Record<string, Record<string, string>> = {};
   for (const t of input.ociTags.toSorted((a, b) => (`${a.repository}:${a.tag}` < `${b.repository}:${b.tag}` ? -1 : 1)))
     (registry[t.repository] ??= {})[t.tag] = t.digest;
 
   const digestsKey = `${base}/digests.json`;
-  const redirectsKey = `${base}/redirects.json`;
   files.push({ store: input.publicStore, key: digestsKey, text: render(digests) });
-  files.push({ store: input.publicStore, key: redirectsKey, text: render(redirects) });
 
   const manifest: CatalogManifest = {
     schema: CATALOG_SCHEMA,
@@ -184,7 +175,6 @@ export function buildCatalog(input: CatalogInput): { pointer: CatalogPointer; ma
     namespaces,
     registry,
     digests: digestsKey,
-    redirects: redirectsKey,
   };
   const manifestKey = `${base}/manifest.json`;
   files.push({ store: input.publicStore, key: manifestKey, text: render(manifest) });

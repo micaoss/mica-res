@@ -66,14 +66,6 @@ export const resAliases = sqliteTable("res_aliases", {
   updatedAt: text("updated_at").notNull(),
 }, t => [primaryKey({ columns: [t.namespace, t.path] })]);
 
-// A name that used to exist (the v1 `/d/...` readable names) and now
-// redirects to a key.
-export const resRedirects = sqliteTable("res_redirects", {
-  fromPath: text("from_path").primaryKey(),
-  targetKey: text("target_key").notNull(),
-  createdAt: text("created_at").notNull(),
-});
-
 export const resOciTags = sqliteTable("res_oci_tags", {
   repository: text("repository").notNull(),
   tag: text("tag").notNull(),

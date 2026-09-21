@@ -8,7 +8,7 @@ import { resolve } from "node:path";
 import { createDb } from "@/db";
 import { createAccessKey, mintSignedUrl, publishAccessSnapshot, revokeAccessKey } from "@/modules/resource/access/keys";
 import { publishCatalog } from "@/modules/resource/publisher";
-import { createNamespace, createUpload, PROTECT_BINDING, PUBLIC_BINDING, publishObject, seedResources, setAlias, setOciTag, setRedirect, writeUploadBody } from "@/modules/resource/resource.service";
+import { createNamespace, createUpload, PROTECT_BINDING, PUBLIC_BINDING, publishObject, seedResources, setAlias, setOciTag, writeUploadBody } from "@/modules/resource/resource.service";
 import { createMemoryStore, seedMemoryObject } from "@/modules/resource/storage/memory-store";
 import { __resetStoresForTests, getStore, registerStore } from "@/modules/resource/storage/registry";
 import { sha256Hex, signHeaders } from "@/modules/resource/storage/sigv4";
@@ -76,7 +76,6 @@ beforeEach(async () => {
   await put("mica", "uefi-x64/20260917-0000/mica.micaupd", "update");
   await put("mica", "cx3576/20260917-0000/mica.img.gz", "cx image");
   await setAlias(db, { namespace: "mica", path: "uefi-x64/latest", targetPath: "uefi-x64/20260917-0000/mica.img.gz" });
-  await setRedirect(db, "/d/mica/uefi-x64/20260917-0000/mica.img.gz", "mica/uefi-x64/20260917-0000/mica.img.gz");
   const index = "{\"schemaVersion\":2,\"mediaType\":\"application/vnd.oci.image.index.v1+json\"}";
   const indexSha = await sha256Hex(index);
   await put("oci", `blobs/sha256/${indexSha}`, index, "application/vnd.oci.image.index.v1+json");
@@ -141,15 +140,23 @@ describe("res host", () => {
     expect((await res("/mica/nope/"))!.status).toBe(404);
   });
 
-  test("resolves aliases, a docs site index and legacy URLs", async () => {
+  test("resolves aliases, a docs site index and digest lookups", async () => {
     expect((await res("/mica/uefi-x64/latest"))!.headers.get("location")).toBe("https://dl.example.test/mica/uefi-x64/20260917-0000/mica.img.gz");
     expect((await res("/docs/guide/1.0/"))!.headers.get("location")).toBe("https://dl.example.test/docs/guide/1.0/index.html");
     const digest = shas["mica/uefi-x64/20260917-0000/mica.img.gz"]!;
     expect((await res(`/blob/${digest.slice(0, 2)}/${digest}`))!.headers.get("location")).toBe("https://dl.example.test/mica/uefi-x64/20260917-0000/mica.img.gz");
     expect((await res(`/blob/ff/${digest}`))!.status).toBe(404);
-    expect((await res("/d/mica/uefi-x64/20260917-0000/mica.img.gz"))!.status).toBe(302);
-    expect((await res("/d/mica/cx3576/20260917-0000/mica.img.gz"))!.headers.get("location")).toBe("https://dl.example.test/mica/cx3576/20260917-0000/mica.img.gz");
-    expect((await res("/index/current.json"))!.headers.get("location")).toBe("https://dl.example.test/index/current.json");
+  });
+
+  // The v1 compatibility surface is gone (user, 2026-09-21): no `/d/` readable
+  // paths, no `index/` pointer route, no redirect table. Asserted rather than
+  // deleted, so restoring compatibility turns this red instead of passing
+  // quietly.
+  test("serves nothing of the v1 layout", async () => {
+    expect((await res("/d/mica/uefi-x64/20260917-0000/mica.img.gz"))!.status).toBe(404);
+    expect((await res("/d/upstream/deb/b/b.deb"))!.status).toBe(404);
+    expect((await res("/index/current.json"))!.status).toBe(404);
+    expect((await res("/index/20260916-1752.json"))!.status).toBe(404);
   });
 
   test("describes the site without counting protected content", async () => {

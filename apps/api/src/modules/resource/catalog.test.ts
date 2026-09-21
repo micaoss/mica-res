@@ -20,7 +20,6 @@ function input(overrides: Partial<CatalogInput> = {}): CatalogInput {
     ],
     objects: [object("mica", "b/2", "b"), object("mica", "a/1", "a"), object("secret", "x/1", "c")],
     aliases: [{ namespace: "mica", path: "latest", targetPath: "b/2" }],
-    redirects: [{ fromPath: "/d/mica/old", targetKey: "mica/a/1" }, { fromPath: "/d/secret/old", targetKey: "secret/x/1" }],
     ociTags: [{ repository: "micaoss/env", tag: "base", digest: "sha256:aa" }],
     ...overrides,
   };
@@ -39,7 +38,6 @@ describe("buildCatalog", () => {
       "_catalog/v1/digests.json",
       "_catalog/v1/manifest.json",
       "_catalog/v1/ns/mica.json",
-      "_catalog/v1/redirects.json",
     ]);
   });
 
@@ -50,8 +48,6 @@ describe("buildCatalog", () => {
     expect(secret.examples).toEqual([]);
     const digests = JSON.parse(files.find(f => f.key.endsWith("digests.json"))!.text) as Record<string, string>;
     expect(Object.values(digests).sort()).toEqual(["mica/a/1", "mica/b/2"]);
-    const redirects = JSON.parse(files.find(f => f.key.endsWith("redirects.json"))!.text) as Record<string, string>;
-    expect(redirects).toEqual({ "/d/mica/old": "mica/a/1" });
   });
 
   test("indexes a digest under its earliest published key and counts public bytes", () => {

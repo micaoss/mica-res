@@ -1,0 +1,1 @@
+DROP TABLE `res_redirects`;

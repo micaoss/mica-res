@@ -5,7 +5,7 @@
 > [`api.md`](api.md); this file is the flat per-route index that CI
 > verifies is up to date.
 
-> 109 routes total.
+> 108 routes total.
 
 | Method | Path |
 |---|---|
@@ -103,7 +103,6 @@
 | POST | `/api/res/namespaces/:name/uploads/pull` |
 | GET | `/api/res/purges` |
 | POST | `/api/res/purges/:id/retry` |
-| PUT | `/api/res/redirects` |
 | GET | `/api/res/site` |
 | PUT | `/api/res/site` |
 | GET | `/api/res/stores` |

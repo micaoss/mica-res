@@ -17,7 +17,6 @@ export interface CatalogReader {
   namespace: (name: string) => Promise<CatalogNamespace | undefined>;
   shard: (ns: CatalogNamespace) => Promise<NamespaceShard | null>;
   digests: () => Promise<Readonly<Record<string, string>>>;
-  redirects: () => Promise<Readonly<Record<string, string>>>;
   access: () => Promise<AccessSnapshot | null>;
 }
 
@@ -73,10 +72,6 @@ export function createCatalogReader(opts: {
     async digests() {
       const m = await manifest();
       return m ? (await memo<Record<string, string>>(opts.publicBinding, m.digests)) ?? {} : {};
-    },
-    async redirects() {
-      const m = await manifest();
-      return m ? (await memo<Record<string, string>>(opts.publicBinding, m.redirects)) ?? {} : {};
     },
     async access() {
       if (!access || now() - access.at > CATALOG_TTL_MS)

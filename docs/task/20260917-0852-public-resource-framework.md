@@ -310,7 +310,7 @@ Designing the public resource framework and the Worker refactor
   Not built, not proposed, and not asked for (coordinator `uj991oa2`,
   2026-09-20); recorded because the next person to remove a route needs it and
   will not find it in a conversation.
-- 2026-09-21 10:40 (agent/x32539az) **Routing changed and the open state moved
+- 2026-09-21 12:11 (agent/x32539az) **Routing changed and the open state moved
   with it.** The master coordinator `uj991oa2` is paused on the user's
   instruction; the user coordinates directly, and nothing written to that issue
   will be read. Recorded here rather than left in a conversation because **an

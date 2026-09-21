@@ -310,3 +310,32 @@ Designing the public resource framework and the Worker refactor
   Not built, not proposed, and not asked for (coordinator `uj991oa2`,
   2026-09-20); recorded because the next person to remove a route needs it and
   will not find it in a conversation.
+- 2026-09-21 10:40 (agent/x32539az) **Routing changed and the open state moved
+  with it.** The master coordinator `uj991oa2` is paused on the user's
+  instruction; the user coordinates directly, and nothing written to that issue
+  will be read. Recorded here rather than left in a conversation because **an
+  unread channel and a slow one look identical from the sending end.** The
+  workspace `CLAUDE.md` still names `uj991oa2` under *Coordination* -- that
+  line is stale from 2026-09-21; the predecessor log is at
+  `/srv/ybolab/mica/.bkd-coordinator/log.md`.
+
+  **The three decisions this repository holds, all the user's:**
+  1. **The five pinned releases' locks** (`lock 8/18`): `mica-boards`
+     `*.20260920-1536` for four boards and `mica-system-base 20260920-0832`,
+     under 20 KB, one dispatch. Unpublished by the user's ruling. Consequence
+     recorded rather than softened: **`reconcile` reports them as
+     named-and-missing for as long as those pins hold**, the number is not
+     stable at 10 (a board round moves four), so there is no honest baseline to
+     write down. If the answer stays no, the consistent repair is to stop the
+     lock phase following pins at all.
+  2. **Whether producer `data` assets join the mirror** (spec 1.2.4; today
+     `mica-system-base 20260920-0832` carries two `.tsv` files, KB-scale). This
+     would be a second scope amendment after the locks.
+  3. **Whether the `/blob/<aa>/<sha256>` route goes too.** It is not v1
+     storage -- it resolves a digest against the catalogue and **mica-boards
+     fetches through it in CI**. Removing it needs mica-boards to change first,
+     and the failure it would cause is silent: a vendor fetch, a slower build,
+     and offline builds one source short.
+
+  v1 compatibility itself is removed and asserted (`/d/...` and `/index/...`
+  must 404, `edge.test.ts`).
